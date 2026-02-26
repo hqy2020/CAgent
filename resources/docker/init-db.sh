@@ -1,0 +1,18 @@
+#!/bin/bash
+# MySQL 初始化脚本 — 按正确顺序执行 SQL
+# 由 docker-entrypoint-initdb.d 自动调用
+
+set -e
+
+echo ">>> [RAgent] 开始初始化数据库..."
+
+echo ">>> [1/3] 创建表结构..."
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" < /sql-scripts/schema_table.sql
+
+echo ">>> [2/3] 插入默认管理员用户..."
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" < /sql-scripts/init_data.sql
+
+echo ">>> [3/3] 插入学习中心与面试题库数据..."
+mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" < /sql-scripts/init_study_data.sql
+
+echo ">>> [RAgent] 数据库初始化完成!"

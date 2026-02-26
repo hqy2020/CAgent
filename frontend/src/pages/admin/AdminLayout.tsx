@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
+  BookOpen,
   ChevronDown,
   ChevronRight,
   ChevronsLeft,
@@ -9,6 +10,7 @@ import {
   Database,
   GitBranch,
   Github,
+  GraduationCap,
   Layers,
   LayoutDashboard,
   Lightbulb,
@@ -144,6 +146,21 @@ const menuGroups: MenuGroup[] = [
         icon: Settings
       },
     ]
+  },
+  {
+    title: "学习",
+    items: [
+      {
+        path: "/admin/study",
+        label: "学习中心",
+        icon: BookOpen
+      },
+      {
+        path: "/admin/interview",
+        label: "面试题库",
+        icon: GraduationCap
+      },
+    ]
   }
 ];
 
@@ -156,7 +173,9 @@ const breadcrumbMap: Record<string, string> = {
   traces: "链路追踪",
   "sample-questions": "示例问题",
   settings: "系统设置",
-  users: "用户管理"
+  users: "用户管理",
+  study: "学习中心",
+  interview: "面试题库"
 };
 
 export function AdminLayout() {

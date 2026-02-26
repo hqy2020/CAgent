@@ -1,4 +1,4 @@
-# RAgent
+# CAgent — 我的个人 AI 知识中枢
 
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
 ![Java](https://img.shields.io/badge/Java-17-ff7f2a.svg)
@@ -6,550 +6,246 @@
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
 ![Milvus](https://img.shields.io/badge/Milvus-2.6.x-00b3ff.svg)
 
-> 企业级 RAG 智能体平台（Monorepo）
->
-> 把知识库检索、多通道召回、MCP 工具调用、会话记忆、流式输出、链路追踪、数据入库流水线放在同一套工程里。
+基于 RAG + LLM 构建的个人知识管理与问答系统，服务于我的第二大脑 **GardenOfOpeningClouds**。
 
-后端默认入口：`http://localhost:8080/api/ragent`
+后端入口：`http://localhost:8080/api/ragent`
 
-## 目录
+---
 
-- [项目定位](#项目定位)
-- [核心能力](#核心能力)
-- [核心流程重点](#核心流程重点)
-- [架构总览](#架构总览)
-- [代码导航](#代码导航)
-- [快速启动](#快速启动)
-- [配置速查](#配置速查)
-- [API 地图核心](#api-地图核心)
-- [SSE 事件协议v3](#sse-事件协议v3)
-- [扩展点像框架一样扩](#扩展点像框架一样扩)
-- [开发建议与注意事项](#开发建议与注意事项)
-- [Roadmap Ideas](#roadmap-ideas)
-- [Contributing](#contributing)
-- [License](#license)
+## 这是什么
 
-## 项目定位
+我有一个长期维护的知识体系 GardenOfOpeningClouds，里面积累了大量技术笔记、学习路线和面试复盘。但随着内容增长，我遇到了几个让人头疼的问题：
 
-RAgent 不是“只有一个 `/chat` 接口”的 Demo，而是一套偏工程化的 RAG Agent 平台，目标是解决真实业务里常见的几个难点：
+- **碎片知识检索慢**：笔记散落在各处，想起一个概念却找不到当时的上下文
+- **笔记不可对话**：静态 Markdown 文件无法追问，只能反复翻页
+- **面试复习分散**：题目、答案、难度分级散落在不同地方，临时抱佛脚效率极低
 
-- 检索覆盖率不足：通过意图定向检索 + 全局向量兜底 + 后处理器链提升命中率与质量。
-- 工具调用与知识检索混用：MCP 工具结果和 KB 文档结果统一进入 Prompt 编排。
-- 长会话上下文失控：支持会话记忆、摘要、标题生成、消息持久化。
-- 模型可用性不稳定：支持多模型候选、失败降级、健康状态与熔断恢复。
-- 线上可观测性差：提供 RAG Trace（run/node 维度）与管理后台视图。
-- 文档入库流程分散：内置可编排的 Ingestion Pipeline（抓取/解析/增强/分块/索引）。
+CAgent 是我为解决这些问题搭建的系统：把知识库向量化，用 RAG 实现对话式检索，同时把学习笔记和面试题库结构化沉淀进来，让知识真正"可被问"。
 
-## 核心能力
+---
 
-- `RAG v3` 流式对话主链路（SSE）
-- Query Rewrite + 多问句拆分
-- 意图识别 + 歧义引导（可提前返回引导文案）
-- 多通道 KB 检索（`SearchChannel`）
-- 后处理器链（`SearchResultPostProcessor`）
-- MCP 工具参数抽取 / 执行 / 聚合上下文
-- Prompt 场景编排（KB only / MCP only / Mixed）
-- LLM 路由（优先级、失败切换、流式首包探测）
-- 会话记忆、摘要、反馈、任务取消
-- RAG Trace 可观测性（run / node）
-- Ingestion Pipeline（`fetcher -> parser -> enhancer -> chunker -> enricher -> indexer`）
-- 管理后台（React + Vite + TypeScript）
+## 我做了什么扩展
 
-## 核心流程（重点）
+在原有 RAG 底座基础上，我新增了两个核心模块：
 
-这一节是整个项目的“心智模型”。先读完这几条流程，再进源码会快很多。
+### 学习中心（Study Center）
 
-### 1. 在线问答主链路（RAG v3 / 推荐）
+用于系统化存储我的技术笔记和学习路线，采用三层结构：
 
-请求入口：`GET /rag/v3/chat`（SSE）
-
-```text
-User Question
-  -> 会话初始化 / taskId / conversationId
-  -> 记忆加载（history + append 当前问题）
-  -> Query Rewrite + 多问句拆分
-  -> 子问题意图识别
-  -> 歧义引导判定（命中则直接返回引导，不再继续）
-  -> RetrievalEngine
-       -> KB: MultiChannelRetrievalEngine（多通道检索 + 后处理器链）
-       -> MCP: 参数抽取 -> 工具执行 -> 结果聚合
-  -> RAGPromptService（组装 system / context / history / user）
-  -> RoutingLLMService（模型选择 / 流式首包探测 / 失败切换）
-  -> SSE 推送（meta/message/finish/...）
-  -> 消息落库 / 标题生成 / trace 记录
+```
+模块（Module）
+  └── 章节（Chapter）
+        └── 文档（Document）
 ```
 
-对应关键代码：
+- **模块**：对应一个大方向，例如"Java 并发"、"系统设计"、"数据库原理"
+- **章节**：模块下的主题划分，例如"AQS 源码"、"锁机制"
+- **文档**：具体的知识内容，支持 Markdown 格式
 
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/rag/controller/RAGChatController.java`
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/rag/service/impl/RAGChatServiceImpl.java`
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/rag/core/retrieve/RetrievalEngine.java`
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/rag/core/prompt/RAGPromptService.java`
-- `infra-ai/src/main/java/com/nageoffer/ai/ragent/infra/chat/RoutingLLMService.java`
+这套结构让我把过去散乱的笔记按学科树组织起来，方便在 RAG 对话时精准定位到具体领域的文档。
 
-### 2. 检索内核（KB 多通道检索）
+### 面试题库（Interview Hub）
 
-`RetrievalEngine` 负责“总编排”，`MultiChannelRetrievalEngine` 专注 KB 检索本身。
+用于按分类管理面试题，复习时随时提问：
 
-```text
-SubQuestions
-  -> SearchContext
-  -> 并行执行启用的 SearchChannel（按 priority 排序）
-       - IntentDirectedSearchChannel（意图定向）
-       - VectorGlobalSearchChannel（全局向量兜底，按阈值触发）
-  -> 汇总 SearchChannelResult
-  -> 后处理器链（按 order 排序）
-       - DeduplicationPostProcessor
-       - RerankPostProcessor
-  -> Final Retrieved Chunks (Top-K)
+```
+分类（Category）
+  └── 题目（Question）
+        ├── 难度等级（1-5）
+        ├── 参考答案（Markdown）
+        └── 标签（逗号分隔）
 ```
 
-这套设计的价值：
+- 按技术方向分类（Java、Redis、MySQL、系统设计…）
+- 难度分级，可按需筛选
+- 答案支持 Markdown，保留代码块、对比表格等格式
 
-- 检索策略可插拔（新增一个通道就是实现 `SearchChannel`）
-- 后处理逻辑可组合（去重、rerank、过滤、合并都能独立演进）
-- 容错更稳（单通道失败不拖垮整条检索链）
+---
 
-### 3. MCP 工具调用链路（与 KB 并行共存）
+## 系统架构
 
-当意图命中 `MCP` 类型节点时，系统会进入工具执行路径：
+### 总览
 
-```text
-Question
-  -> 命中 MCP IntentNode（携带 mcpToolId）
-  -> MCPToolRegistry 找到对应 MCPToolExecutor
-  -> MCPParameterExtractor 抽取参数（可使用节点自定义参数 Prompt）
-  -> MCPService 批量执行工具
-  -> ContextFormatter 格式化为 MCP 上下文片段
-  -> 与 KB 上下文一起进入 Prompt 编排
+![CAgent Architecture](docs/assets/ragent-architecture-overview.svg)
+
+### 模块组成
+
+```
+frontend (React + Vite)
+  └── bootstrap (Spring Boot 应用入口 + 全部业务实现)
+        ├── rag            — RAG 对话主链路（v3）
+        ├── study          — 学习中心（我新增）
+        ├── interview      — 面试题库（我新增）
+        ├── knowledge      — 知识库 CRUD + 向量集合管理
+        ├── ingestion      — 文档入库 Pipeline
+        ├── admin          — 管理后台 Dashboard
+        └── user           — 用户认证（SA-Token）
+
+  依赖层：
+        ├── framework      — 通用基础（Result/Exception/Trace/Idempotent）
+        └── infra-ai       — AI 路由（Chat/Embedding/Rerank 多模型容错）
 ```
 
-内置示例工具：
+### 运行时拓扑
 
-- `sales_query`（`SalesMCPExecutor`）
-
-### 4. Ingestion Pipeline（文档入库链路）
-
-入口支持文件上传、URL、飞书、S3 等来源。核心思想是“流水线节点化”。
-
-```text
-Source (file/url/feishu/s3)
-  -> FetcherNode   （抓取原始内容）
-  -> ParserNode    （文本解析，含 Tika 等）
-  -> EnhancerNode  （内容增强）
-  -> ChunkerNode   （分块）
-  -> EnricherNode  （片段增强/标签化）
-  -> IndexerNode   （向量化 + 写入 Milvus）
-  -> 任务日志 / 节点日志落库
 ```
-
-对应关键代码：
-
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/ingestion/engine/IngestionEngine.java`
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/ingestion/node/FetcherNode.java`
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/ingestion/node/ParserNode.java`
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/ingestion/node/ChunkerNode.java`
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/ingestion/node/IndexerNode.java`
-
-### 5. 模型路由与容错（Chat / Embedding / Rerank）
-
-`infra-ai` 层把模型调用做成了“路由器”而不是“写死某一个 Provider”：
-
-- 多候选模型按优先级选择
-- 失败自动切换下一个候选
-- 模型健康状态记录（失败计数）
-- 熔断窗口（避免持续打坏模型）
-- 流式首包探测，避免失败模型的半截输出污染前端
-
-这使得线上运行时能在 `Ollama / 百炼 / SiliconFlow` 等提供商之间更稳定地切换。
-
-## 架构总览
-
-### 0. 一图看懂（Runtime + Modules）
-
-![RAgent Runtime Architecture](docs/assets/ragent-architecture-overview.svg)
-
-说明：
-
-- 图是可编辑 `SVG`，位于 `docs/assets/ragent-architecture-overview.svg`
-- 展示的是“运行时主链路 + 模块职责”，不是类图/时序图
-
-### 1. Monorepo 分层
-
-```text
-ragent/
-├── bootstrap      # Spring Boot 应用入口 + 业务实现（RAG / Ingestion / Admin / User）
-├── framework      # 通用基础层（Result/Exception/Context/Trace/Idempotent）
-├── infra-ai       # AI 基础设施（Chat/Embedding/Rerank 客户端与模型路由）
-├── mcp-server     # MCP 扩展模块（当前偏预留/扩展位）
-├── frontend       # React + Vite 管理台与聊天前端
-├── docs           # 架构说明与示例文档
-└── resources      # 基础设施资源（如 Milvus compose）
-```
-
-### 2. 运行时拓扑（Runtime Topology）
-
-```text
-Browser (frontend:5173)
-  -> /api/ragent/* (Vite Proxy 或直接 API Base URL)
-  -> Spring Boot (bootstrap:8080)
-       -> framework (上下文/返回值/trace/幂等)
-       -> rag core (rewrite/intent/retrieve/prompt/memory/mcp)
+Browser (localhost:5173)
+  -> /api/ragent/* (Vite Proxy)
+  -> Spring Boot (8080)
+       -> rag core (rewrite / intent / retrieve / prompt / memory / mcp)
        -> ingestion engine (pipeline + nodes)
-       -> infra-ai (chat/embedding/rerank routing)
-       -> MySQL / Redis / Milvus / RustFS(S3)
+       -> infra-ai (chat / embedding / rerank 多模型路由)
+       -> MySQL / Redis / Milvus / RustFS
 ```
 
-## 代码导航
+---
 
-如果你准备二开，建议按下面顺序看代码：
+## 核心功能
 
-1. 请求入口与编排
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/rag/controller/RAGChatController.java`
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/rag/service/impl/RAGChatServiceImpl.java`
+### 对话式知识检索
 
-2. 检索与工具链
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/rag/core/retrieve/RetrievalEngine.java`
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/rag/core/retrieve/MultiChannelRetrievalEngine.java`
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/rag/core/mcp/`
+- RAG v3 流式对话（SSE），支持深度思考模式
+- Query Rewrite + 多问句拆分，一个问题自动拆解为多个子查询
+- 意图识别 + 意图定向检索：不同意图命中不同知识库分区
+- 全局向量兜底：意图置信度不足时自动回退到全局检索
+- 后处理器链：去重 → Rerank，提升召回质量
+- MCP 工具调用：工具结果与文档上下文统一进入 Prompt
 
-3. Prompt 与模型调用
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/rag/core/prompt/RAGPromptService.java`
-- `infra-ai/src/main/java/com/nageoffer/ai/ragent/infra/chat/RoutingLLMService.java`
+### 知识沉淀
 
-4. 数据入库链路
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/ingestion/engine/IngestionEngine.java`
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/ingestion/node/`
+- 学习中心：模块 → 章节 → 文档三层结构，系统化存储技术笔记
+- 知识库：文档上传 → Ingestion Pipeline（解析/分块/向量化）→ Milvus 索引
+- 支持 PDF、Word、Markdown 等格式（Apache Tika 解析）
+- 多种分块策略：固定大小 / 段落 / 句子 / 结构感知
 
-5. 可观测性与治理
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/rag/aop/RagTraceAspect.java`
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/rag/controller/RagTraceController.java`
-- `bootstrap/src/main/java/com/nageoffer/ai/ragent/rag/aop/ChatRateLimitAspect.java`
+### 复盘备战
+
+- 面试题库：分类管理题目，难度分级，Markdown 答案
+- 会话记忆与摘要：长对话自动摘要，支持跨会话记忆
+- RAG Trace 链路追踪：每次对话可查看检索链路详情
+
+---
 
 ## 快速启动
 
-### 1. 环境要求
+### 环境依赖
 
-- JDK `17+`
-- Maven `3.9+`
-- Node.js `18+`
-- MySQL `8+`
+- JDK 17+
+- Maven 3.9+
+- Node.js 18+
+- MySQL 8+
 - Redis
-- Docker（用于 Milvus / RustFS）
+- Docker（用于 Milvus + RustFS）
 
-### 2. 启动向量与对象存储依赖（Milvus + RustFS）
+### 1. 启动向量库与对象存储
 
 ```bash
 cd resources/docker/milvus
 docker compose -f milvus-stack-2.6.6.compose.yaml up -d
 ```
 
-会启动（按 compose 配置）：
+启动内容：Milvus（19530）、RustFS（9000）、etcd、Attu（8000，Milvus 可视化）
 
-- `milvus-standalone`（默认 `19530`）
-- `rustfs`（默认 `9000`）
-- `etcd`
-- `attu`（默认 `8000`，Milvus 可视化）
+### 2. 配置后端
 
-### 3. 配置后端
+编辑 `bootstrap/src/main/resources/application.yaml`，检查：
 
-编辑 `bootstrap/src/main/resources/application.yaml`。
-
-至少检查这些项：
-
-- `spring.datasource.*`（MySQL）
-- `spring.data.redis.*`（Redis）
-- `milvus.uri`
-- `rustfs.*`
-- `ai.providers.*.api-key`（如使用百炼 / SiliconFlow）
-
-默认示例值（仅适合本地开发）：
-
-- `server.port=8080`
-- `server.servlet.context-path=/api/ragent`
-- MySQL：`root/root`
-- Redis：`127.0.0.1:6379`（示例密码 `123456`）
-
-可选环境变量（推荐）：
-
-```bash
-export BAILIAN_API_KEY=xxx
-export SILICONFLOW_API_KEY=xxx
+```yaml
+spring.datasource.*        # MySQL 连接
+spring.data.redis.*        # Redis 连接
+milvus.uri                 # 向量库地址
+rustfs.*                   # 对象存储地址
+ai.providers.*.api-key     # 模型 API Key（百炼 / SiliconFlow）
 ```
 
-### 4. 启动后端（Spring Boot）
+初始化数据库：执行 `resources/database/schema_table.sql`
+
+### 3. 启动后端
 
 ```bash
 ./mvnw -pl bootstrap spring-boot:run
 ```
 
-或打包运行：
-
-```bash
-./mvnw clean package -DskipTests
-java -jar bootstrap/target/bootstrap-*.jar
-```
-
-### 5. 启动前端（React + Vite）
+### 4. 启动前端
 
 ```bash
 cd frontend
 npm install
-```
-
-创建 `frontend/.env.local`（推荐）：
-
-```bash
-VITE_API_BASE_URL=/api/ragent
-```
-
-说明：
-
-- 使用上面配置时，前端通过 Vite 代理访问后端（`/api` -> `http://localhost:8080`）
-- 如果不走代理，可改为：`VITE_API_BASE_URL=http://localhost:8080/api/ragent`
-
-启动前端：
-
-```bash
 npm run dev
 ```
 
-访问：
+创建 `frontend/.env.local`：
+
+```
+VITE_API_BASE_URL=/api/ragent
+```
+
+访问地址：
 
 - 前端：`http://localhost:5173`
 - 后端：`http://localhost:8080/api/ragent`
 
-## 配置速查
+默认管理员账号：`admin / admin`
 
-### 1. 模型配置（`ai.*`）
+---
 
-项目内置了三类 AI 能力路由：
+## 配置说明
 
-- `ai.chat.*`
-- `ai.embedding.*`
-- `ai.rerank.*`
+### 模型配置（`ai.*`）
 
-每类都支持：
+支持 Ollama / 百炼 / SiliconFlow 三类提供商，每类配置候选列表和优先级：
 
-- `default-model`
-- `candidates[]`（候选模型列表）
-- `priority`（优先级）
+```yaml
+ai:
+  selection:
+    failure-threshold: 3        # 失败次数阈值，超过则熔断
+    open-duration-ms: 60000     # 熔断打开时长
+  providers:
+    bailian:
+      api-key: ${BAILIAN_API_KEY}
+    siliconflow:
+      api-key: ${SILICONFLOW_API_KEY}
+```
 
-全局容错策略：
+### RAG 检索调参（`rag.*`）
 
-- `ai.selection.failure-threshold`：失败阈值
-- `ai.selection.open-duration-ms`：熔断打开时长
+```yaml
+rag:
+  search.channels:
+    vector-global.confidence-threshold: 0.7   # 全局向量检索触发阈值
+    intent-directed.min-intent-score: 0.6      # 意图定向最低置信度
+  memory:
+    max-history: 10                            # 最大记忆轮数
+```
 
-### 2. RAG 配置（`rag.*`）
-
-- `rag.query-rewrite.*`：改写与历史截断
-- `rag.rate-limit.*`：全局并发限流
-- `rag.memory.*`：会话记忆与摘要策略
-- `rag.search.channels.*`：检索通道触发阈值/候选倍数
-- `rag.trace.*`：链路追踪开关与错误长度
-
-### 3. 检索策略关键参数（推荐先理解）
-
-- `rag.search.channels.vector-global.confidence-threshold`
-- `rag.search.channels.vector-global.top-k-multiplier`
-- `rag.search.channels.intent-directed.min-intent-score`
-- `rag.search.channels.intent-directed.top-k-multiplier`
-
-## API 地图（核心）
-
-Base Path：`/api/ragent`
-
-### 1. 认证与用户
-
-- `POST /auth/login`
-- `POST /auth/logout`
-- `GET /user/me`
-- `GET /users`
-- `POST /users`
-
-### 2. RAG 对话与会话
-
-- `GET /rag/v3/chat`（SSE）
-- `POST /rag/v3/stop`
-- `GET /conversations`
-- `GET /conversations/{conversationId}/messages`
-- `POST /conversations/messages/{messageId}/feedback`
-
-### 3. 知识库与文档
-
-- `POST /knowledge-base`
-- `GET /knowledge-base`
-- `GET /knowledge-base/{kb-id}`
-- `POST /knowledge-base/{kb-id}/docs/upload`
-- `POST /knowledge-base/docs/{doc-id}/chunk`
-- `GET /knowledge-base/{kb-id}/docs`
-- `GET /knowledge-base/docs/search`
-- `GET /knowledge-base/docs/{docId}/chunk-logs`
-- `GET /knowledge-base/docs/{doc-id}/chunks`
-- `POST /knowledge-base/docs/{doc-id}/chunks`
-
-### 4. Ingestion Pipeline
-
-- `POST /ingestion/pipelines`
-- `GET /ingestion/pipelines/{id}`
-- `GET /ingestion/pipelines`
-- `POST /ingestion/tasks`
-- `POST /ingestion/tasks/upload`
-- `GET /ingestion/tasks/{id}`
-- `GET /ingestion/tasks/{id}/nodes`
-- `GET /ingestion/tasks`
-
-### 5. 配置与观测
-
-- `GET /rag/settings`
-- `GET /rag/traces/runs`
-- `GET /rag/traces/runs/{traceId}`
-- `GET /rag/traces/runs/{traceId}/nodes`
-- `GET /admin/dashboard/overview`
-- `GET /admin/dashboard/performance`
-- `GET /admin/dashboard/trends`
-
-说明：完整接口请直接查看 `bootstrap/src/main/java/com/nageoffer/ai/ragent/**/controller/`。
+---
 
 ## SSE 事件协议（v3）
 
-`GET /rag/v3/chat` 以事件流返回：
+`GET /rag/v3/chat` 流式返回：
 
-- `meta`：`{ conversationId, taskId }`
-- `message`：`{ type: "response" | "think", delta }`
-- `finish`：`{ messageId, title }`
-- `cancel`：`{ messageId, title }`
-- `reject`：`{ type: "response", delta }`
-- `done`：`[DONE]`
+| 事件 | 数据 | 说明 |
+|------|------|------|
+| `meta` | `{ conversationId, taskId }` | 会话初始化 |
+| `message` | `{ type: "response"\|"think", delta }` | 流式 token |
+| `finish` | `{ messageId, title }` | 正常结束 |
+| `cancel` | `{ messageId, title }` | 用户取消 |
+| `reject` | `{ type: "response", delta }` | 被拒绝 |
+| `done` | `[DONE]` | 流结束 |
 
-### curl 调试示例（SSE）
-
-说明：
-
-- 使用 `curl -N` 关闭缓冲，才能看到流式输出
-- 如果开启了鉴权，请带上 `Authorization`（`sa-token` 默认 token 名）
-- `question` 必填，`conversationId` / `deepThinking` 可选
+调试示例：
 
 ```bash
 curl -N -G 'http://localhost:8080/api/ragent/rag/v3/chat' \
   -H 'Accept: text/event-stream' \
   -H 'Authorization: <YOUR_TOKEN>' \
-  --data-urlencode 'question=请总结一下当前知识库里关于发票报销的规则' \
-  --data-urlencode 'deepThinking=false'
+  --data-urlencode 'question=帮我总结一下 AQS 的核心原理'
 ```
 
-带会话 ID（续聊）示例：
+---
 
-```bash
-curl -N -G 'http://localhost:8080/api/ragent/rag/v3/chat' \
-  -H 'Accept: text/event-stream' \
-  -H 'Authorization: <YOUR_TOKEN>' \
-  --data-urlencode 'question=再给我一个报销材料清单' \
-  --data-urlencode 'conversationId=<CONVERSATION_ID>'
-```
+## 致谢 & 基于
 
-停止任务示例（`taskId` 从 `meta` 事件中获取）：
+CAgent 基于一个开源 RAG 智能体平台搭建，在其 RAG 检索、Ingestion Pipeline、多模型路由等底层能力之上，我新增了学习中心和面试题库两个模块，并将整套系统改造为服务个人知识管理的工具。
 
-```bash
-curl -X POST 'http://localhost:8080/api/ragent/rag/v3/stop' \
-  -H 'Authorization: <YOUR_TOKEN>' \
-  --data-urlencode 'taskId=<TASK_ID>'
-```
-
-## 扩展点（像框架一样扩）
-
-如果你想把 RAgent 当底座来做二开，下面这些接口是第一批扩展位。
-
-### 1. 扩检索通道
-
-实现：`SearchChannel`
-
-- 文件：`bootstrap/src/main/java/com/nageoffer/ai/ragent/rag/core/retrieve/channel/SearchChannel.java`
-- 场景：关键词检索、ES 检索、BM25、结构化字段检索、图谱检索
-
-### 2. 扩后处理器链
-
-实现：`SearchResultPostProcessor`
-
-- 文件：`bootstrap/src/main/java/com/nageoffer/ai/ragent/rag/core/retrieve/postprocessor/SearchResultPostProcessor.java`
-- 场景：版本过滤、租户过滤、时间衰减、规则重排、去噪
-
-### 3. 扩 MCP 工具
-
-实现：`MCPToolExecutor`
-
-- 文件：`bootstrap/src/main/java/com/nageoffer/ai/ragent/rag/core/mcp/MCPToolExecutor.java`
-- 注册：作为 Spring Bean 自动发现（见 `DefaultMCPToolRegistry`）
-
-### 4. 扩 Ingestion 节点能力
-
-关注目录：`bootstrap/src/main/java/com/nageoffer/ai/ragent/ingestion/node/`
-
-- 可新增节点类型或增强已有节点策略
-- 适合接入 OCR、结构化抽取、实体标注、合规脱敏等流程
-
-### 5. 扩模型提供商
-
-关注 `infra-ai` 层：
-
-- Chat 客户端：`infra-ai/src/main/java/com/nageoffer/ai/ragent/infra/chat/`
-- Embedding 客户端：`infra-ai/src/main/java/com/nageoffer/ai/ragent/infra/embedding/`
-- Rerank 客户端：`infra-ai/src/main/java/com/nageoffer/ai/ragent/infra/rerank/`
-
-## 开发建议与注意事项
-
-- 当前仓库未内置建表 SQL，请按实体建表或导入已有库结构。
-- `mcp-server` 模块当前更偏扩展位，不是主运行链路入口。
-- 默认配置更偏本地开发，请在生产环境替换数据库密码、对象存储密钥、模型 API Key。
-- 向量维度需与 Embedding 模型配置保持一致（当前默认示例是 `4096`）。
-
-常见核心表（示例）：
-
-- `t_user`
-- `t_conversation`
-- `t_message`
-- `t_conversation_summary`
-- `t_intent_node`
-- `t_knowledge_base`
-- `t_knowledge_document`
-- `t_knowledge_chunk`
-- `t_ingestion_pipeline`
-- `t_ingestion_pipeline_node`
-
-## Roadmap Ideas
-
-以下是从当前架构自然延伸出来的方向（适合开源协作）：
-
-- 更多检索通道（ES/BM25/Hybrid Search）
-- 多租户隔离与权限级检索过滤
-- SQL schema / migration（Flyway/Liquibase）内置化
-- 更完整的 MCP 工具生态与权限治理
-- 离线评测集与自动化回归评测（RAG eval）
-- Prometheus / OpenTelemetry 接入
-
-## Contributing
-
-欢迎以 Issue / PR 方式参与改进。
-
-建议的本地检查流程：
-
-```bash
-# 后端
-./mvnw test
-
-# 前端
-cd frontend
-npm run lint
-npm run build
-```
-
-提交 PR 时建议附上：
-
-- 改动动机（解决什么问题）
-- 核心实现思路（为什么这样做）
-- 接口或行为变化说明
-- 关键截图 / 日志 / Trace（如涉及前端或链路变化）
-
-## License
-
-Apache License 2.0. See `LICENSE`.
+原始项目遵循 Apache License 2.0，本项目同样开源，协议不变。

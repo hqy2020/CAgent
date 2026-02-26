@@ -1,0 +1,156 @@
+# ==========================================================
+# RAgent 全栈基础设施 Docker Compose
+# 包含: MySQL 8 + Redis 7 + Milvus 2.6 + RustFS + etcd + Attu
+# ==========================================================
+#
+# 启动: docker compose -f ragent-infra.compose.yaml up -d
+# 停止: docker compose -f ragent-infra.compose.yaml down
+# 清理: docker compose -f ragent-infra.compose.yaml down -v
+#
+
+name: ragent-infra
+
+services:
+
+  # ==================== MySQL ====================
+  mysql:
+    container_name: ragent-mysql
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ragent
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ../database:/sql-scripts:ro
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-authentication-plugin=mysql_native_password
+      - --max-connections=200
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ==================== Redis ====================
+  redis:
+    container_name: ragent-redis
+    image: redis:7-alpine
+    command: redis-server --requirepass 123456 --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "123456", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==================== RustFS (S3 兼容对象存储) ====================
+  rustfs:
+    container_name: ragent-rustfs
+    image: rustfs/rustfs:1.0.0-alpha.72
+    command:
+      - "--address"
+      - ":9000"
+      - "--console-enable"
+      - "--access-key"
+      - "rustfsadmin"
+      - "--secret-key"
+      - "rustfsadmin"
+      - "/data"
+    environment:
+      - RUSTFS_ACCESS_KEY=rustfsadmin
+      - RUSTFS_SECRET_KEY=rustfsadmin
+      - RUSTFS_CONSOLE_ENABLE=true
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - rustfs-data:/data
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://localhost:9000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ==================== etcd (Milvus 元数据) ====================
+  etcd:
+    container_name: ragent-etcd
+    image: quay.io/coreos/etcd:v3.5.18
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    command: >
+      etcd
+      -advertise-client-urls=http://etcd:2379
+      -listen-client-urls http://0.0.0.0:2379
+      --data-dir /etcd
+    volumes:
+      - etcd-data:/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # ==================== Milvus (向量数据库) ====================
+  milvus:
+    container_name: ragent-milvus
+    image: milvusdb/milvus:v2.6.6
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: rustfs:9000
+      MINIO_ACCESS_KEY_ID: rustfsadmin
+      MINIO_SECRET_ACCESS_KEY: rustfsadmin
+    volumes:
+      - milvus-data:/var/lib/milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      etcd:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+
+  # ==================== Attu (Milvus 管理 UI) ====================
+  attu:
+    container_name: ragent-attu
+    image: zilliz/attu:v2.6.3
+    environment:
+      MILVUS_URL: ragent-milvus:19530
+    ports:
+      - "8000:3000"
+    depends_on:
+      milvus:
+        condition: service_healthy
+
+volumes:
+  mysql-data:
+  redis-data:
+  rustfs-data:
+  etcd-data:
+  milvus-data:
+
+networks:
+  default:
+    name: ragent-net
