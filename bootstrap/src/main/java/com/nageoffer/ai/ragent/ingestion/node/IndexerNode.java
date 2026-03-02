@@ -27,6 +27,7 @@ import com.google.gson.JsonObject;
 import com.nageoffer.ai.ragent.rag.config.RAGDefaultProperties;
 import com.nageoffer.ai.ragent.core.chunk.VectorChunk;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
+import com.nageoffer.ai.ragent.infra.embedding.EmbeddingService;
 import com.nageoffer.ai.ragent.ingestion.domain.context.DocumentSource;
 import com.nageoffer.ai.ragent.ingestion.domain.context.IngestionContext;
 import com.nageoffer.ai.ragent.ingestion.domain.enums.IngestionNodeType;
@@ -40,6 +41,7 @@ import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.service.vector.request.InsertReq;
 import io.milvus.v2.service.vector.response.InsertResp;
 import lombok.extern.slf4j.Slf4j;
+import cn.hutool.core.util.StrUtil;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -62,15 +64,18 @@ public class IndexerNode implements IngestionNode {
     private final VectorStoreAdmin vectorStoreAdmin;
     private final MilvusClientV2 milvusClient;
     private final RAGDefaultProperties ragDefaultProperties;
+    private final EmbeddingService embeddingService;
 
     public IndexerNode(ObjectMapper objectMapper,
                        VectorStoreAdmin vectorStoreAdmin,
                        MilvusClientV2 milvusClient,
-                       RAGDefaultProperties ragDefaultProperties) {
+                       RAGDefaultProperties ragDefaultProperties,
+                       EmbeddingService embeddingService) {
         this.objectMapper = objectMapper;
         this.vectorStoreAdmin = vectorStoreAdmin;
         this.milvusClient = milvusClient;
         this.ragDefaultProperties = ragDefaultProperties;
+        this.embeddingService = embeddingService;
     }
 
     @Override
@@ -91,6 +96,10 @@ public class IndexerNode implements IngestionNode {
         }
 
         int expectedDim = resolveDimension(chunks);
+        attachEmbeddings(chunks, settings.getEmbeddingModel());
+        if (expectedDim <= 0) {
+            expectedDim = resolveDimension(chunks);
+        }
         if (expectedDim <= 0) {
             return NodeResult.fail(new ClientException("未配置向量维度"));
         }
@@ -161,6 +170,32 @@ public class IndexerNode implements IngestionNode {
             }
         }
         return 0;
+    }
+
+    private void attachEmbeddings(List<VectorChunk> chunks, String embeddingModel) {
+        boolean allHaveEmbedding = chunks.stream()
+                .allMatch(c -> c.getEmbedding() != null && c.getEmbedding().length > 0);
+        if (allHaveEmbedding) {
+            return;
+        }
+        List<String> texts = chunks.stream().map(VectorChunk::getContent).toList();
+        List<List<Float>> vectors = StrUtil.isBlank(embeddingModel)
+                ? embeddingService.embedBatch(texts)
+                : embeddingService.embedBatch(texts, embeddingModel);
+        if (vectors == null || vectors.size() != chunks.size()) {
+            throw new ClientException("向量结果数量不匹配");
+        }
+        for (int i = 0; i < chunks.size(); i++) {
+            chunks.get(i).setEmbedding(toArray(vectors.get(i)));
+        }
+    }
+
+    private static float[] toArray(List<Float> list) {
+        float[] arr = new float[list.size()];
+        for (int i = 0; i < list.size(); i++) {
+            arr[i] = list.get(i);
+        }
+        return arr;
     }
 
     private float[][] toArrayFromChunks(List<VectorChunk> chunks, int expectedDim) {
