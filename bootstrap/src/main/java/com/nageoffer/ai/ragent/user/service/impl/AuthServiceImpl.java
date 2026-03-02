@@ -35,6 +35,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
+    private static final String ADMIN_USERNAME = "admin";
     private static final String DEFAULT_AVATAR_URL = "https://raw.githubusercontent.com/hqy2020/CAgent/main/logo.png";
     private static final Set<String> LEGACY_DEFAULT_AVATAR_URLS = Set.of(
             "https://avatars.githubusercontent.com/u/583231?v=4",
@@ -59,7 +60,7 @@ public class AuthServiceImpl implements AuthService {
         }
         String loginId = user.getId().toString();
         StpUtil.login(loginId);
-        String avatar = resolveAvatar(user.getAvatar());
+        String avatar = resolveAvatar(user.getUsername(), user.getAvatar());
         return new LoginVO(loginId, user.getRole(), StpUtil.getTokenValue(), avatar);
     }
 
@@ -86,7 +87,10 @@ public class AuthServiceImpl implements AuthService {
         return stored.equals(input);
     }
 
-    private String resolveAvatar(String avatar) {
+    private String resolveAvatar(String username, String avatar) {
+        if (StrUtil.equalsIgnoreCase(ADMIN_USERNAME, StrUtil.trimToEmpty(username))) {
+            return DEFAULT_AVATAR_URL;
+        }
         String normalized = StrUtil.trimToNull(avatar);
         if (normalized == null || LEGACY_DEFAULT_AVATAR_URLS.contains(normalized)) {
             return DEFAULT_AVATAR_URL;

@@ -430,7 +430,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   className="flex items-center"
                 >
                   <PlayCircle className="mr-2 h-4 w-4" />
-                  哔哩哔哩
+                  个人网站
                 </a>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => logout()} className="text-rose-600 focus:text-rose-600">

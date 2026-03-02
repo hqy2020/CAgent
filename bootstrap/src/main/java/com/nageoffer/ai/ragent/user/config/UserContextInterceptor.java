@@ -56,6 +56,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class UserContextInterceptor implements HandlerInterceptor {
 
+    private static final String ADMIN_USERNAME = "admin";
     private static final String DEFAULT_AVATAR_URL = "https://raw.githubusercontent.com/hqy2020/CAgent/main/logo.png";
     private static final Set<String> LEGACY_DEFAULT_AVATAR_URLS = Set.of(
             "https://avatars.githubusercontent.com/u/583231?v=4",
@@ -83,7 +84,7 @@ public class UserContextInterceptor implements HandlerInterceptor {
                         .userId(user.getId().toString())
                         .username(user.getUsername())
                         .role(user.getRole())
-                        .avatar(resolveAvatar(user.getAvatar()))
+                        .avatar(resolveAvatar(user.getUsername(), user.getAvatar()))
                         .build()
         );
         return true;
@@ -94,7 +95,10 @@ public class UserContextInterceptor implements HandlerInterceptor {
         UserContext.clear();
     }
 
-    private String resolveAvatar(String avatar) {
+    private String resolveAvatar(String username, String avatar) {
+        if (StrUtil.equalsIgnoreCase(ADMIN_USERNAME, StrUtil.trimToEmpty(username))) {
+            return DEFAULT_AVATAR_URL;
+        }
         String normalized = StrUtil.trimToNull(avatar);
         if (normalized == null || LEGACY_DEFAULT_AVATAR_URLS.contains(normalized)) {
             return DEFAULT_AVATAR_URL;
