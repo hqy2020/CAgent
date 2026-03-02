@@ -121,7 +121,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     setAvatarFailed(false);
   }, [user?.avatar, user?.userId]);
 
-  const avatarUrl = user?.avatar?.trim();
+  const isDefaultAdmin = user?.username?.trim().toLowerCase() === "admin";
+  const avatarUrl = isDefaultAdmin ? "/logo.png" : user?.avatar?.trim();
   const showAvatar = Boolean(avatarUrl) && !avatarFailed;
   const avatarFallback = (user?.username || user?.userId || "用户").slice(0, 1).toUpperCase();
   const sessionTitleFont =

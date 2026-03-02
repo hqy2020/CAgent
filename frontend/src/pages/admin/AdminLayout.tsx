@@ -307,7 +307,8 @@ export function AdminLayout() {
     return items;
   }, [location.pathname, location.search]);
 
-  const avatarUrl = user?.avatar?.trim();
+  const isDefaultAdmin = user?.username?.trim().toLowerCase() === "admin";
+  const avatarUrl = isDefaultAdmin ? "/logo.png" : user?.avatar?.trim();
   const showAvatar = Boolean(avatarUrl);
   const roleLabel = user?.role === "admin" ? "管理员" : "成员";
   const starLabel = useMemo(() => {

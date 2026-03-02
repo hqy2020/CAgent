@@ -201,13 +201,17 @@ export function UserListPage() {
                 {users.map((user) => {
                   const isProtected = isProtectedAdmin(user);
                   const roleLabel = user.role === "admin" ? "管理员" : "成员";
+                  const avatarSrc =
+                    user.username?.trim().toLowerCase() === "admin"
+                      ? "/logo.png"
+                      : user.avatar?.trim() || undefined;
                   return (
                     <TableRow key={user.id}>
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <Avatar
                             name={user.username || "用户"}
-                            src={user.avatar?.trim() || undefined}
+                            src={avatarSrc}
                             className="h-9 w-9 border-slate-200 bg-indigo-50 text-xs font-semibold text-indigo-600"
                           />
                           <div>
