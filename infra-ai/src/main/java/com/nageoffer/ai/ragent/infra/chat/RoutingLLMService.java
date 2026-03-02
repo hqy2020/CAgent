@@ -18,7 +18,7 @@
 package com.nageoffer.ai.ragent.infra.chat;
 
 import cn.hutool.core.collection.CollUtil;
-import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
+import com.nageoffer.ai.ragent.infra.convention.ChatRequest;
 import com.nageoffer.ai.ragent.framework.errorcode.BaseErrorCode;
 import com.nageoffer.ai.ragent.framework.exception.RemoteException;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
@@ -52,7 +52,7 @@ import java.util.stream.Collectors;
 @Primary
 public class RoutingLLMService implements LLMService {
 
-    private static final int FIRST_PACKET_TIMEOUT_SECONDS = 20;
+    private static final int FIRST_PACKET_TIMEOUT_SECONDS = 60;
     private static final String STREAM_INTERRUPTED_MESSAGE = "流式请求被中断";
     private static final String STREAM_NO_PROVIDER_MESSAGE = "无可用大模型提供者";
     private static final String STREAM_START_FAILED_MESSAGE = "流式请求启动失败";
@@ -102,6 +102,10 @@ public class RoutingLLMService implements LLMService {
         for (ModelTarget target : targets) {
             ChatClient client = resolveClient(target, label);
             if (client == null) {
+                continue;
+            }
+
+            if (!healthStore.allowCall(target.id())) {
                 continue;
             }
 
