@@ -29,11 +29,17 @@ import com.nageoffer.ai.ragent.user.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.Set;
+
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
     private static final String DEFAULT_AVATAR_URL = "https://raw.githubusercontent.com/hqy2020/CAgent/main/logo.png";
+    private static final Set<String> LEGACY_DEFAULT_AVATAR_URLS = Set.of(
+            "https://avatars.githubusercontent.com/u/583231?v=4",
+            "https://static.deepseek.com/user-avatar/G_6cuD8GbD53VwGRwisvCsZ6"
+    );
 
     private final UserMapper userMapper;
 
@@ -53,7 +59,7 @@ public class AuthServiceImpl implements AuthService {
         }
         String loginId = user.getId().toString();
         StpUtil.login(loginId);
-        String avatar = StrUtil.isBlank(user.getAvatar()) ? DEFAULT_AVATAR_URL : user.getAvatar();
+        String avatar = resolveAvatar(user.getAvatar());
         return new LoginVO(loginId, user.getRole(), StpUtil.getTokenValue(), avatar);
     }
 
@@ -78,5 +84,13 @@ public class AuthServiceImpl implements AuthService {
             return input == null;
         }
         return stored.equals(input);
+    }
+
+    private String resolveAvatar(String avatar) {
+        String normalized = StrUtil.trimToNull(avatar);
+        if (normalized == null || LEGACY_DEFAULT_AVATAR_URLS.contains(normalized)) {
+            return DEFAULT_AVATAR_URL;
+        }
+        return normalized;
     }
 }

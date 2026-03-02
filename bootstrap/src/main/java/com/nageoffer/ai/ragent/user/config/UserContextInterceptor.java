@@ -31,6 +31,8 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+import java.util.Set;
+
 /**
  * 用户上下文拦截器
  *
@@ -55,6 +57,10 @@ import org.springframework.web.servlet.HandlerInterceptor;
 public class UserContextInterceptor implements HandlerInterceptor {
 
     private static final String DEFAULT_AVATAR_URL = "https://raw.githubusercontent.com/hqy2020/CAgent/main/logo.png";
+    private static final Set<String> LEGACY_DEFAULT_AVATAR_URLS = Set.of(
+            "https://avatars.githubusercontent.com/u/583231?v=4",
+            "https://static.deepseek.com/user-avatar/G_6cuD8GbD53VwGRwisvCsZ6"
+    );
 
     private final UserMapper userMapper;
 
@@ -77,7 +83,7 @@ public class UserContextInterceptor implements HandlerInterceptor {
                         .userId(user.getId().toString())
                         .username(user.getUsername())
                         .role(user.getRole())
-                        .avatar(StrUtil.isBlank(user.getAvatar()) ? DEFAULT_AVATAR_URL : user.getAvatar())
+                        .avatar(resolveAvatar(user.getAvatar()))
                         .build()
         );
         return true;
@@ -86,5 +92,13 @@ public class UserContextInterceptor implements HandlerInterceptor {
     @Override
     public void afterCompletion(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull Object handler, Exception ex) {
         UserContext.clear();
+    }
+
+    private String resolveAvatar(String avatar) {
+        String normalized = StrUtil.trimToNull(avatar);
+        if (normalized == null || LEGACY_DEFAULT_AVATAR_URLS.contains(normalized)) {
+            return DEFAULT_AVATAR_URL;
+        }
+        return normalized;
     }
 }
