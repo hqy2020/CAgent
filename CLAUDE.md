@@ -1,173 +1,191 @@
 # CLAUDE.md
-
+每次回复叫我启云
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
+## Project Positioning
 
-CAgent 是一个企业级 RAG（Retrieval-Augmented Generation）智能体平台，采用 Monorepo 结构。后端基于 Spring Boot 3.5 + Java 17，前端基于 React 18 + Vite + TypeScript。核心能力包括：多通道知识库检索、MCP 工具调用、会话记忆、流式 SSE 输出、链路追踪、文档 Ingestion Pipeline。
+- 本仓库的工程基线是 **Ragent 企业级 RAG 系统**，采用 Monorepo：后端 Maven 多模块 + 前端 React。
+- 当前仓库在文档和部分界面仍保留 `CAgent` 命名；技术事实以代码为准（`com.nageoffer.ai.ragent`）。
+- 技术栈（以 `pom.xml`/`frontend/package.json` 为准）：Java 17、Spring Boot 3.5.7、MyBatis-Plus、React 18、Vite、TypeScript、Milvus 2.6.6、Redis、MySQL、S3 兼容存储。
+- 本文件是执行规范，不是宣传文档。新增内容必须可在仓库中被命令、配置、类名或路径验证。
 
-## Build & Run Commands
 
-### Backend (Maven multi-module)
 
-```bash
-# 全量编译（跳过测试）
-./mvnw clean package -DskipTests
+## RAG Core Flow
 
-# 仅编译（触发 Spotless 格式化）
-./mvnw compile
+RAG v3 对话链路（`GET /rag/v3/chat`）：
 
-# 启动后端（仅 bootstrap 模块）
-./mvnw -pl bootstrap spring-boot:run
+1. `RAGChatController#chat` 创建 `SseEmitter`，进入 `RAGChatServiceImpl#streamChat`。
+2. `ChatRateLimitAspect` + `ChatQueueLimiter` 执行全局排队与并发控制（Redis + Redisson）。
+3. 会话初始化与历史加载：`ConversationService` + `ConversationMemoryService#loadAndAppend`。
+4. Query 重写与拆分：`QueryRewriteService#rewriteWithSplit`。
+5. 意图识别：`IntentResolver#resolve`，歧义引导：`IntentGuidanceService#detectAmbiguity`。
+6. 检索聚合：`RetrievalEngine#retrieve`
+   - KB：`MultiChannelRetrievalEngine`（并行 `SearchChannel`）
+   - MCP：参数抽取 + `MCPService` 批量执行 + 结果聚合
+7. Prompt 组装：`RAGPromptService#buildStructuredMessages`。
+8. 模型路由与流式输出：`LLMService` 默认由 `RoutingLLMService` 实现，含首包探测和失败切换。
+9. 流式事件回传：`StreamCallbackFactory` / `StreamChatEventHandler`。
+10. 结束后持久化消息、会话元数据与 trace 记录。
 
-# 运行所有测试
-./mvnw test
+## Document Ingestion Pipeline
 
-# 运行单个测试类
-./mvnw -pl bootstrap test -Dtest=SomeTestClass
+- 引擎入口：`ingestion.engine.IngestionEngine`
+- 节点接口：`ingestion.node.IngestionNode`
+- 节点类型（`IngestionNodeType`）：`fetcher -> parser -> enhancer -> chunker -> enricher -> indexer`
+- 节点实现位置：`bootstrap/src/main/java/com/nageoffer/ai/ragent/ingestion/node/`
+- 常见数据源抓取器：`ingestion.strategy.fetcher`（`LocalFileFetcher`、`HttpUrlFetcher`、`S3Fetcher`、`FeishuFetcher`）
+- Pipeline/任务编排服务：`ingestion.service.IngestionPipelineService`、`IngestionTaskService`
+- 知识库上传后触发链路：`knowledge.service.impl.KnowledgeDocumentServiceImpl` -> `IngestionEngine`
 
-# 运行单个测试方法
-./mvnw -pl bootstrap test -Dtest=SomeTestClass#someMethod
-```
+## Production-Grade Features
 
-### Frontend (React + Vite)
-
-```bash
-cd frontend
-npm install
-npm run dev          # 开发服务器 (localhost:5173)
-npm run build        # TypeScript编译 + Vite构建
-npm run lint         # ESLint检查
-npm run format       # Prettier格式化
-```
-
-### Infrastructure
-
-```bash
-# 完整环境（etcd + minio + milvus），ARM Mac 推荐
-cd resources/docker/milvus
-docker compose -f milvus-full.compose.yaml up -d
-
-# 精简环境（etcd + milvus，无独立对象存储）
-docker compose -f milvus-mini.compose.yaml up -d
-```
-
-容器名与端口：`ragent-etcd` (2379)、`ragent-minio` (19000)、`ragent-milvus` (19530)、`ragent-redis` (16379)
-
-## Code Formatting
-
-- **后端**: Spotless Maven Plugin 在 `compile` 阶段自动执行。每个 Java 文件必须包含 Apache 2.0 License Header（模板在 `resources/format/copyright.txt`）。新增 Java 文件如果缺少 license header，`mvnw compile` 会自动添加。
-- **前端**: Prettier + ESLint。
-- **Lombok**: 项目全局使用 Lombok，配置在根目录 `lombok.config`。`@EqualsAndHashCode` 默认 `callSuper = skip`。
-
-## Architecture (Module Dependency)
-
-```
-frontend (React)  -->  bootstrap (Spring Boot 入口 + 业务实现)
-                           ├── framework   (通用基础: Result/Exception/Context/Trace/Idempotent/SnowflakeId)
-                           ├── infra-ai    (AI 基础设施: Chat/Embedding/Rerank 客户端 + 模型路由)
-                           └── mcp-server  (MCP 扩展位，当前为空)
-```
-
-Base package: `com.nageoffer.ai.ragent`
-
-### bootstrap 模块 — 核心业务包
-
-| 包路径 | 职责 |
-|--------|------|
-| `rag.service.impl` | RAG v3 主编排（RAGChatServiceImpl） |
-| `rag.core.retrieve` | 检索内核：MultiChannelRetrievalEngine（多通道并行 → 后处理器链） |
-| `rag.core.mcp` | MCP 工具调用链（MCPToolExecutor / MCPToolRegistry） |
-| `rag.core.intent` | 意图识别（IntentResolver / IntentClassifier） |
-| `rag.core.memory` | 会话记忆与摘要（DefaultConversationMemoryService） |
-| `rag.aop` | RagTraceAspect（链路追踪）、ChatQueueLimiter（队列限流） |
-| `ingestion.engine` | Ingestion Pipeline 执行引擎（IngestionEngine） |
-| `ingestion.node` | Pipeline 节点：Fetcher → Parser → Enhancer → Chunker → Enricher → Indexer |
-| `knowledge` | 知识库 CRUD + 向量集合管理 |
-| `user` | 用户认证（SA-Token） |
-
-### infra-ai 模块 — AI 路由核心
-
-- `RoutingLLMService` / `RoutingEmbeddingService` / `RoutingRerankService`：按优先级选择候选模型，失败自动切换，支持三态熔断（CLOSED → OPEN → HALF_OPEN）。
-- `ChatClient` 实现：OllamaChatClient / BaiLianChatClient / SiliconFlowChatClient / MiniMaxChatClient。
-- `FirstPacketAwaiter`：流式首包探测（CountDownLatch + AtomicBoolean），避免失败模型的半截输出污染前端。
-- `ModelSelector` + `ModelHealthStore`：模型健康状态与动态选择。
-
-### framework 模块 — 通用基础
-
-- `Result<T>` + `BaseErrorCode` + `GlobalExceptionHandler`：统一返回值与异常处理。
-- `UserContext`（ThreadLocal）+ `LoginUser`：请求级用户上下文传递。
-- `RagTraceContext`（TransmittableThreadLocal）：RAG 链路追踪，支持 push/pop 嵌套节点。
-
-## Key Data Flow (RAG v3 Chat)
-
-```
-GET /rag/v3/chat (SSE)
-  → 会话初始化 (conversationId / taskId)
-  → 记忆加载 (history + summary 并行)
-  → Query Rewrite + 多问句拆分
-  → 意图识别 → 歧义引导判定
-  → RetrievalEngine
-      ├── KB: MultiChannelRetrievalEngine (多通道并行 → 后处理器链)
-      └── MCP: 参数抽取 → 工具执行 → 结果聚合
-  → RAGPromptService (组装 system/context/history/user)
-  → RoutingLLMService (模型选择/流式首包探测/失败切换)
-  → SSE 推送 (meta/message/finish/done)
-  → 消息落库 / 标题生成 / trace 记录
-```
+- **多模型路由与容错**：`RoutingLLMService`、`RoutingEmbeddingService`、`RoutingRerankService`
+  - 优先级候选模型选择：`ModelSelector`
+  - 三态熔断：`ModelHealthStore`（`CLOSED -> OPEN -> HALF_OPEN`）
+  - 首包探测缓冲：`FirstPacketAwaiter` + `ProbeBufferingCallback`
+- **多路检索 + 后处理流水线**：
+  - 通道接口：`SearchChannel`
+  - 后处理接口：`SearchResultPostProcessor`
+  - 当前后处理器链（按 order 执行）：`DeduplicationPostProcessor`(1) → `RRFPostProcessor`(5) → `RerankPostProcessor`(10) → `QualityFilterPostProcessor`(20)
+- **队列式并发限流**：
+  - 注解切面：`@ChatRateLimit` + `ChatRateLimitAspect`
+  - 排队器：`ChatQueueLimiter`（ZSET 队列、信号量、Pub/Sub 通知）
+- **可观测性**：
+  - 根追踪：`@RagTraceRoot`
+  - 节点追踪：`@RagTraceNode`
+  - AOP 记录：`RagTraceAspect`、`RagTraceRecordService`
+- **会话记忆治理**：
+  - 滑窗 + 摘要 + TTL：`DefaultConversationMemoryService` 与 `MemoryProperties`
+- **认证鉴权**：
+  - Sa-Token（`sa-token` 配置 + `user/config`）
+  - token header 使用 `Authorization`
+- **线程池隔离与上下文透传**：
+  - `ThreadPoolExecutorConfig` 定义多个独立 Executor
+  - 全量由 `TtlExecutors` 包装，透传 `TransmittableThreadLocal`
 
 ## Extension Points
 
-| 扩展点 | 接口 | 位置 |
-|--------|------|------|
-| 新增检索通道 | `SearchChannel` | `rag.core.retrieve.channel` |
-| 新增后处理器 | `SearchResultPostProcessor` | `rag.core.retrieve.postprocessor` |
-| 新增 MCP 工具 | `MCPToolExecutor`（Spring Bean 自动发现） | `rag.core.mcp.executor` |
-| 新增 Ingestion 节点 | `IngestionNode` | `ingestion.node` |
-| 新增模型提供商 | `ChatClient` / `EmbeddingClient` / `RerankClient` | `infra-ai` 对应包 |
-| 新增分块策略 | 继承 `AbstractEmbeddingChunker` | `core.chunk.strategy` |
+| 扩展目标 | 接口/抽象 | 位置 |
+|---|---|---|
+| 新增检索通道 | `SearchChannel` | `rag/core/retrieve/channel` |
+| 新增检索后处理器 | `SearchResultPostProcessor` | `rag/core/retrieve/postprocessor` |
+| 新增 MCP 工具 | `MCPToolExecutor`（Spring Bean 自动发现） | `rag/core/mcp/executor` |
+| 新增入库节点 | `IngestionNode` | `ingestion/node` |
+| 新增模型供应商 | `ChatClient` / `EmbeddingClient` / `RerankClient` | `infra-ai/src/main/java/.../chat|embedding|rerank` |
+| 新增分块策略 | 继承 `AbstractEmbeddingChunker` | `core/chunk/strategy` |
 
-## Frontend Architecture
+## Design Patterns
 
-- **路由**: React Router 6，认证路由守卫在 `router.tsx`
-- **状态管理**: Zustand stores（`authStore` / `chatStore` / `themeStore`）
-- **UI 组件**: Radix UI 原语 + Tailwind CSS，封装在 `components/ui/`
-- **API 层**: Axios 实例在 `services/api.ts`，各领域 service 文件独立
-- **SSE 流式**: `hooks/useStreamResponse.ts` 处理流式对话
-- **路径别名**: `@` → `./src`（在 `vite.config.ts` 和 `tsconfig.app.json` 中配置）
-- **管理后台**: `/admin/*` 路由，需要 admin 角色
+项目中落地的 7 种经典设计模式。每条均可通过类名在仓库中 `grep -r "class ClassName"` 验证。
 
-## Key Configuration (application.yaml)
+### 策略模式（Strategy）
 
-- 服务端口: `8080`，上下文路径: `/api/ragent`
-- 数据库: MySQL 8+（`ragent` 库），建表脚本: `resources/database/schema_table.sql`
-- 初始数据: `resources/database/init_data.sql`（默认管理员 admin/admin）
-- 认证: SA-Token，token 通过 `satoken` header 传递，存 Redis
-- 向量库: Milvus 2.6（默认 `localhost:19530`）
-- 文件存储: MinIO/RustFS（S3 兼容，默认 `localhost:19000`）
-- AI 模型配置在 `ai.providers.*` 下，支持 Ollama / Bailian / SiliconFlow / MiniMax
-- 模型路由容错: `ai.selection.failure-threshold` + `ai.selection.open-duration-ms`
-- `application-local.yaml` profile：用于本地 Docker 环境（MySQL 13306 / Redis 16379），通过 `--spring.profiles.active=local` 激活
+通过接口抽象可替换算法，运行时由 Spring DI `List<Interface>` 注入所有实现，Routing 层按优先级 + 熔断状态选择。
 
-## SSE Event Protocol (v3)
+| 策略接口 | 实现类 | 位置 |
+|---|---|---|
+| `ChatClient` | `BaiLianChatClient`、`SiliconFlowChatClient`、`MiniMaxChatClient`、`OllamaChatClient` | `infra-ai/.../chat` |
+| `EmbeddingClient` | `OllamaEmbeddingClient`、`SiliconFlowEmbeddingClient` | `infra-ai/.../embedding` |
+| `RerankClient` | `BaiLianRerankClient`、`SiliconFlowRerankClient`、`NoopRerankClient` | `infra-ai/.../rerank` |
+| `SearchChannel` | `VectorGlobalSearchChannel`、`IntentDirectedSearchChannel` | `rag/core/retrieve/channel` |
+| `ChunkingStrategy` | `FixedSizeTextChunker`、`SentenceChunker`、`ParagraphChunker`、`StructureAwareTextChunker` | `core/chunk/strategy` |
+| `DocumentFetcher` | `LocalFileFetcher`、`HttpUrlFetcher`、`S3Fetcher`、`FeishuFetcher` | `ingestion/strategy/fetcher` |
 
-事件类型: `meta` → `message`(delta) → `finish`/`cancel`/`reject` → `done`
+路由选择器：`ModelSelector`（优先级）+ `ModelHealthStore`（三态熔断）。
 
-`message.type`: `"response"` 或 `"think"`（深度思考）
+### 工厂模式（Factory）
 
-## Conventions
+| 工厂类 | 创建产品 | 注册机制 |
+|---|---|---|
+| `ChunkingStrategyFactory` | `ChunkingStrategy` 实例 | `Map<ChunkingMethod, ChunkingStrategy>` 注册 |
+| `StreamCallbackFactory` | `StreamCallback` 实例 | 按场景创建不同回调组合 |
+| `IntentTreeFactory` | 意图树结构 | 从持久化数据构建内存树 |
 
-- DAO 层使用 MyBatis-Plus，实体类后缀 `DO`，Mapper 接口后缀 `Mapper`
-- 请求对象后缀 `Request`，响应 VO 后缀 `VO`
-- 数据库表名前缀 `t_`（如 `t_conversation`、`t_message`、`t_knowledge_base`）
-- MyBatis-Plus 自动填充 `createTime` / `updateTime` 字段（`MyMetaObjectHandler`）
-- 分布式 ID 使用 Snowflake 算法（`CustomIdentifierGenerator`）
-- 线程池统一配置在 `ThreadPoolExecutorConfig`，所有 Executor Bean 经 `TtlExecutors` 包装以支持 TransmittableThreadLocal 上下文传播
-- 前端 Vite 代理 `/api` → `http://localhost:8080`
+位置：`core/chunk/ChunkingStrategyFactory`、`rag/service/handler/StreamCallbackFactory`、`rag/core/intent/IntentTreeFactory`。
 
-## Known Issues & Gotchas
+### 观察者模式（Observer）
 
-- **Milvus 版本**: SDK v2.6.6 使用 `MilvusClientV2`，要求 Milvus Server ≥ v2.4。`milvus-full.compose.yaml` 中需确保镜像版本为 `milvusdb/milvus:v2.6.6`，使用旧版镜像（如 v2.3.0）会导致 gRPC `DEADLINE_EXCEEDED`。
-- **macOS 大小写**: macOS APFS 默认 case-insensitive，Java package 目录名大小写不一致时会导致 `NoClassDefFoundError`（JVM 按路径查找但 class 声明不匹配）。新建测试文件时注意目录和 `package` 声明大小写一致。
-- **Mockito surefire 配置**: pom.xml 中 surefire plugin 的 `argLine` 使用 `-javaagent:${org.mockito:mockito-core:jar}` 解析 Mockito agent 路径，依赖 `maven-dependency-plugin:properties` goal。不要添加 `@{argLine}` 前缀（除非有 JaCoCo 等插件设置该属性）。
-- **Spotless 格式化**: 新建 Java 文件后首次 `./mvnw compile` 会自动添加 license header 并可能重新格式化代码，这是正常行为。
+- **流式回调**：`StreamCallback` 接口定义 `onToken`/`onComplete`/`onError` 事件钩子，`StreamChatEventHandler` 和 `ProbeBufferingCallback` 作为观察者响应 LLM 输出。
+- **分布式 Pub/Sub**：`StreamTaskManager` 通过 Redis `RTopic` 发布停止信号，订阅者收到后中断流式生成。
+
+接口位置：`infra-ai/.../chat/StreamCallback`。
+实现位置：`rag/service/handler/StreamChatEventHandler`、`RoutingLLMService$ProbeBufferingCallback`（内部类）。
+
+### 装饰器模式（Decorator）
+
+在不修改原始对象接口的前提下透明增强功能：
+
+- **`ProbeBufferingCallback`**：包装 `StreamCallback`，缓冲首批 token 用于探测模型连通性，探测成功后将缓冲内容回放给被装饰的回调。位于 `RoutingLLMService` 内部类。
+- **`TtlExecutors`**：包装 `ThreadPoolExecutor`（项目中 9 个独立线程池全部包装），透明添加 `TransmittableThreadLocal` 上下文透传能力。配置在 `ThreadPoolExecutorConfig`。
+- **AOP 切面**：`ChatRateLimitAspect`（透明添加限流）、`RagTraceAspect`（透明添加链路追踪），对业务方法无侵入增强。
+
+### 模板方法模式（Template Method）
+
+在抽象基类中定义算法骨架（final 方法），将可变步骤延迟到子类实现。
+
+| 抽象基类 | 模板方法 | 抽象钩子 | 子类 |
+|---|---|---|---|
+| `AbstractEmbeddingChunker` | `chunk`（final） | `doChunk` | `FixedSizeTextChunker`、`SentenceChunker`、`ParagraphChunker`、`StructureAwareTextChunker` |
+| `AbstractParallelRetriever<T>` | `retrieve`（final） | `createRetrievalTask`、`getTargetIdentifier`、`getStatisticsName` | `CollectionParallelRetriever`、`IntentParallelRetriever` |
+
+位置：`core/chunk/AbstractEmbeddingChunker`、`rag/core/retrieve/channel/AbstractParallelRetriever`。
+
+### 责任链模式（Chain of Responsibility）
+
+请求沿链传递，每个处理器决定处理后继续传递。
+
+- **检索后处理器链**：`SearchResultPostProcessor` 接口声明 `getOrder()` 确定执行顺序，`MultiChannelRetrievalEngine` 按 order 排序后依次执行。当前链路：`DeduplicationPostProcessor`(1) → `RRFPostProcessor`(5) → `RerankPostProcessor`(10) → `QualityFilterPostProcessor`(20)。位于 `rag/core/retrieve/postprocessor`。
+- **入库流水线**：`IngestionNode` 各节点通过 `nextNodeId` 字段链式串联，`IngestionEngine` 按链路顺序执行 `fetcher → parser → enhancer → chunker → enricher → indexer`。位于 `ingestion/node`。
+
+### 外观模式（Facade）
+
+对外提供统一入口，内部编排多个子系统协作，屏蔽复杂性。
+
+| 门面类 | 聚合的子系统 |
+|---|---|
+| `RAGChatServiceImpl` | `ConversationService`、`ConversationMemoryService`、`QueryRewriteService`、`IntentResolver`、`RetrievalEngine`、`RAGPromptService`、`LLMService`、`StreamCallbackFactory`、`ChatQueueLimiter` 等 11 个依赖 |
+| `MultiChannelRetrievalEngine` | `SearchChannel`(多通道)、`SearchResultPostProcessor`(后处理器链)、`QueryTermMappingService` |
+| `RetrievalEngine` | `MultiChannelRetrievalEngine`(KB 检索)、`MCPService`(MCP 工具调用)、`LLMMCPParameterExtractor`(参数抽取) |
+
+## SSE Protocol
+
+后端入口：`RAGChatController#chat` (`GET /rag/v3/chat`, `text/event-stream`)
+
+标准事件顺序：
+
+1. `meta`
+2. `message`（delta，`type` 为 `response` 或 `think`）
+3. `finish` / `cancel` / `reject`
+4. `done`
+
+补充事件：
+
+- `error`（定义在 `SSEEventType`，异常路径使用）
+
+任务终止接口：
+
+- `POST /rag/v3/stop?taskId=...`
+
+## Code Conventions
+
+- DAO 命名：实体后缀 `DO`，Mapper 后缀 `Mapper`（MyBatis-Plus）。
+- API DTO 命名：请求后缀 `Request`，响应后缀 `VO`。
+- 表命名：`t_` 前缀（例如 `t_conversation`、`t_message`、`t_knowledge_base`）。
+- ID 生成：Snowflake（`CustomIdentifierGenerator`）。
+- 统一返回与异常：`Result<T>` + `BaseErrorCode` + `GlobalExceptionHandler`。
+- 上下文约定：
+  - 用户上下文：`UserContext`
+  - Trace 上下文：`RagTraceContext`（TTL 透传）
+- 格式化约定：
+  - Java：Spotless 在 `compile` 阶段自动执行，license 模板在 `resources/format/copyright.txt`
+  - Frontend：`eslint` + `prettier`
+
+## Known Gotchas
+
+- **Milvus 版本必须匹配**：SDK 为 `2.6.6`，compose 镜像也应使用 `milvusdb/milvus:v2.6.6`；混用老版本易导致调用异常。
+- **Spotless 会修改代码**：首次 `./mvnw compile` 可能自动补 license header 并重排格式，属于预期行为。
+- **Surefire Mockito agent 不要随意改**：`pom.xml` 中 `maven-surefire-plugin` 依赖 `-javaagent:${org.mockito:mockito-core:jar}`。
+- **macOS 大小写陷阱**：包路径目录名与 `package` 声明大小写不一致会触发类加载问题。
+- **限流参数默认偏保守**：`rag.rate-limit.global.max-concurrent=1`，并发压测前先评估并调参。
+
