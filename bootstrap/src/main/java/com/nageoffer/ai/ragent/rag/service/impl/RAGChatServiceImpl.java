@@ -17,8 +17,10 @@
 
 package com.nageoffer.ai.ragent.rag.service.impl;
 
+import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
+import com.nageoffer.ai.ragent.framework.context.LoginUser;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
@@ -109,6 +111,16 @@ public class RAGChatServiceImpl implements RAGChatService {
         }
 
         RetrievalContext ctx = retrievalEngine.retrieve(subIntents, DEFAULT_TOP_K);
+        log.info("RetrievalContext isEmpty={}, hasKb={}, hasMcp={}, kbLen={}, mcpLen={}",
+                ctx.isEmpty(), ctx.hasKb(), ctx.hasMcp(),
+                ctx.getKbContext() != null ? ctx.getKbContext().length() : -1,
+                ctx.getMcpContext() != null ? ctx.getMcpContext().length() : -1);
+        if (ctx.hasKb()) {
+            String preview = ctx.getKbContext().length() > 500
+                    ? ctx.getKbContext().substring(0, 500) + "..."
+                    : ctx.getKbContext();
+            log.info("kbContext preview:\n{}", preview);
+        }
         if (ctx.isEmpty()) {
             String emptyReply = "未检索到与问题相关的文档内容。";
             callback.onContent(emptyReply);

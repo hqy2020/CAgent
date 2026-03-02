@@ -164,7 +164,9 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             }
         }
 
-        StoredFileDTO stored = resolveStoredFile(kbDO.getCollectionName(), sourceType, sourceLocation, file);
+        // S3 桶名不允许下划线，需要转换为连字符
+        String bucketName = kbDO.getCollectionName().replace('_', '-');
+        StoredFileDTO stored = resolveStoredFile(bucketName, sourceType, sourceLocation, file);
 
         ProcessMode processMode = normalizeProcessMode(request == null ? null : request.getProcessMode());
         ChunkingMode chunkingMode = null;

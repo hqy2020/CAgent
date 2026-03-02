@@ -88,7 +88,8 @@ public class KnowledgeBaseServiceImpl implements KnowledgeBaseService {
 
         knowledgeBaseMapper.insert(kbDO);
 
-        String bucketName = requestParam.getCollectionName();
+        // S3 桶名不允许下划线，Milvus 集合名不允许连字符，需要分别处理
+        String bucketName = requestParam.getCollectionName().replace('_', '-');
         try {
             s3Client.createBucket(builder -> builder.bucket(bucketName));
             log.info("成功创建RestFS存储桶，Bucket名称: {}", bucketName);

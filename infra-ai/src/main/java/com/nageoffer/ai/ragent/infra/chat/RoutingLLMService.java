@@ -52,7 +52,7 @@ import java.util.stream.Collectors;
 @Primary
 public class RoutingLLMService implements LLMService {
 
-    private static final int FIRST_PACKET_TIMEOUT_SECONDS = 60;
+    private static final int FIRST_PACKET_TIMEOUT_SECONDS = 20;
     private static final String STREAM_INTERRUPTED_MESSAGE = "流式请求被中断";
     private static final String STREAM_NO_PROVIDER_MESSAGE = "无可用大模型提供者";
     private static final String STREAM_START_FAILED_MESSAGE = "流式请求启动失败";

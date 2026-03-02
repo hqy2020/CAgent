@@ -24,6 +24,8 @@ import com.nageoffer.ai.ragent.infra.model.ModelSelector;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
+import lombok.extern.slf4j.Slf4j;
+
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -35,6 +37,7 @@ import java.util.stream.Collectors;
  * 该服务通过模型路由机制动态选择合适的重排客户端，并支持失败降级策略
  * 作为主要的重排服务实现，用于对检索到的文档块进行相关性重新排序
  */
+@Slf4j
 @Service
 @Primary
 public class RoutingRerankService implements RerankService {
@@ -48,6 +51,7 @@ public class RoutingRerankService implements RerankService {
         this.executor = executor;
         this.clientsByProvider = clients.stream()
                 .collect(Collectors.toMap(RerankClient::provider, Function.identity()));
+        log.info("RoutingRerankService 初始化完成, 注册的 RerankClient providers: {}", clientsByProvider.keySet());
     }
 
     @Override

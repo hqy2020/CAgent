@@ -22,6 +22,7 @@ import io.milvus.v2.client.MilvusClientV2;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 
 /**
  * Milvus 客户端配置类
@@ -54,6 +55,7 @@ public class MilvusConfig {
      * @param token 访问 Milvus 的鉴权 Token，可为空；为空时不启用 Token 认证
      * @return 配置完成的 {@link MilvusClientV2} 客户端实例
      */
+    @Lazy
     @Bean(destroyMethod = "close")
     public MilvusClientV2 milvusClient(@Value("${milvus.uri}") String uri,
                                        @Value("${milvus.token:}") String token) {

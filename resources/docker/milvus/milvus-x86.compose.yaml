@@ -1,0 +1,54 @@
+name: milvus-x86
+
+services:
+  etcd:
+    container_name: ragent-etcd
+    image: quay.io/coreos/etcd:v3.5.18
+    platform: linux/amd64
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    command: >
+      etcd
+      -advertise-client-urls=http://127.0.0.1:2379
+      -listen-client-urls http://0.0.0.0:2379
+      --data-dir /etcd
+    ports:
+      - "2379:2379"
+    volumes:
+      - ragent-etcd-data:/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  standalone:
+    image: milvusdb/milvus:v2.6.6
+    container_name: ragent-milvus
+    platform: linux/amd64
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: ragent-etcd:2379
+      MINIO_ADDRESS: minio:9000
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    volumes:
+      - ragent-milvus-data:/var/lib/milvus
+    depends_on:
+      - etcd
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 5
+
+volumes:
+  ragent-etcd-data:
+  ragent-milvus-data:

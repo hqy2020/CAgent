@@ -1,6 +1,6 @@
 <svg width="1400" height="900" viewBox="0 0 1400 900" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
-  <title id="title">RAgent architecture overview</title>
-  <desc id="desc">Runtime topology and core modules for RAgent including frontend, Spring Boot services, RAG core, ingestion engine, AI infra and storage dependencies.</desc>
+  <title id="title">CAgent architecture overview</title>
+  <desc id="desc">Runtime topology and core modules for CAgent including frontend, Spring Boot services, RAG core, ingestion engine, AI infra and storage dependencies.</desc>
 
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1400" y2="900" gradientUnits="userSpaceOnUse">
@@ -33,7 +33,7 @@
   <rect width="1400" height="900" fill="url(#bg)"/>
   <rect width="1400" height="900" fill="url(#grid)" opacity="0.55"/>
 
-  <text x="60" y="72" fill="#E6F1FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="34" font-weight="700">RAgent :: Runtime Architecture</text>
+  <text x="60" y="72" fill="#E6F1FF" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="34" font-weight="700">CAgent :: Runtime Architecture</text>
   <text x="60" y="106" fill="#8EA0B8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">RAG + MCP + Ingestion Pipeline + Model Routing (Monorepo)</text>
 
   <!-- Edge -->

@@ -413,7 +413,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             <DropdownMenuContent align="start" side="top" sideOffset={8} className="w-48">
               <DropdownMenuItem asChild>
                 <a
-                  href="https://nageoffer.com/ragent"
+                  href="https://github.com/hqy2020/CAgent"
                   target="_blank"
                   rel="noreferrer"
                   className="flex items-center"
@@ -424,7 +424,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <a
-                  href="https://space.bilibili.com/352177376"
+                  href="https://blog.oc.slgneon.cn/"
                   target="_blank"
                   rel="noreferrer"
                   className="flex items-center"

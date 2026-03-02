@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.Intent;
+package com.nageoffer.ai.ragent.rag.intent;
 
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONUtil;

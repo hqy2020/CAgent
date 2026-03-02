@@ -46,7 +46,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
  *   <li>跳过异步调度请求（如 SSE 完成回调），避免 SaToken 上下文丢失问题</li>
  * </ul>
  *
- * @author nageoffer
+ * @author openingClouds
  * @see UserContext
  * @see LoginUser
  */
@@ -54,7 +54,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
 @RequiredArgsConstructor
 public class UserContextInterceptor implements HandlerInterceptor {
 
-    private static final String DEFAULT_AVATAR_URL = "https://avatars.githubusercontent.com/u/583231?v=4";
+    private static final String DEFAULT_AVATAR_URL = "https://raw.githubusercontent.com/hqy2020/CAgent/main/logo.png";
 
     private final UserMapper userMapper;
 

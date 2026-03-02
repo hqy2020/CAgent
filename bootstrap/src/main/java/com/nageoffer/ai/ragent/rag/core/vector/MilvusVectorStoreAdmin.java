@@ -63,6 +63,15 @@ public class MilvusVectorStoreAdmin implements VectorStoreAdmin {
                         .build()
         );
 
+        // 添加独立的 kb_id 和 doc_id 字段用于过滤查询 (Milvus 2.6 JSON 查询兼容性问题)
+        fieldSchemaList.add(
+                CreateCollectionReq.FieldSchema.builder()
+                        .name("kb_id")
+                        .dataType(DataType.VarChar)
+                        .maxLength(36)
+                        .build()
+        );
+
         fieldSchemaList.add(
                 CreateCollectionReq.FieldSchema.builder()
                         .name("content")

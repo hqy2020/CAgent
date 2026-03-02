@@ -28,8 +28,8 @@ spring:
   data:
     redis:
       host: 127.0.0.1
-      port: 6379
-      password: 123456
+      port: 16379
+      password: ragent123
 
 milvus:
   uri: http://localhost:19530
@@ -100,6 +100,12 @@ ai:
       endpoints:
         chat: /v1/chat/completions
         embedding: /v1/embeddings
+        rerank: /v1/rerank
+    minimax:
+      url: https://api.minimaxi.com
+      api-key: ${MINIMAX_API_KEY:}
+      endpoints:
+        chat: /v1/text/chatcompletion_v2
 
   selection:
     failure-threshold: 2
@@ -109,27 +115,35 @@ ai:
     message-chunk-size: 1
 
   chat:
-    default-model: qwen3-max
-    deep-thinking-model: qwen3-max
+    default-model: minimax-m2.5
+    deep-thinking-model: minimax-m2.5
     candidates:
-      - id: qwen-plus
-        provider: bailian
-        model: qwen-plus-latest
-        priority: 1
-      - id: qwen3-max
-        provider: bailian
-        model: qwen3-max
+      - id: minimax-m2.5
+        provider: minimax
+        model: abab6.5s-chat
         supports-thinking: true
-        priority: 3
+        priority: 1
       - id: glm-4.7
         provider: siliconflow
         model: Pro/zai-org/GLM-4.7
         supports-thinking: true
-        priority: 0
+        priority: 2
+      - id: qwen-plus
+        provider: bailian
+        model: qwen-plus-latest
+        enabled: false
+        priority: 3
+      - id: qwen3-max
+        provider: bailian
+        model: qwen3-max
+        supports-thinking: true
+        enabled: false
+        priority: 4
       - id: qwen3-local
         provider: ollama
         model: qwen3:8b-fp16
-        priority: 2
+        enabled: false
+        priority: 5
 
   embedding:
     default-model: qwen-emb-8b
@@ -143,24 +157,34 @@ ai:
         provider: ollama
         model: qwen3-embedding:8b-fp16
         dimension: 4096
+        enabled: false
         priority: 2
 
   rerank:
-    default-model: qwen3-rerank
+    default-model: sf-rerank
     candidates:
+      - id: sf-rerank
+        provider: siliconflow
+        model: BAAI/bge-reranker-v2-m3
+        priority: 1
+      - id: sf-rerank-qwen
+        provider: siliconflow
+        model: Qwen/Qwen3-Reranker-8B
+        priority: 2
       - id: qwen3-rerank
         provider: bailian
         model: qwen3-rerank
-        priority: 1
+        enabled: false
+        priority: 3
       - id: rerank-noop
         provider: noop
         model: noop
         priority: 100
 
 rustfs:
-  url: http://localhost:9000
-  access-key-id: rustfsadmin
-  secret-access-key: rustfsadmin
+  url: http://localhost:19000
+  access-key-id: minioadmin
+  secret-access-key: minioadmin
 
 sa-token:
   token-name: Authorization

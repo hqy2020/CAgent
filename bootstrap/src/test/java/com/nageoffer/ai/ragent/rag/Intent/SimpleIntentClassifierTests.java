@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.Intent;
+package com.nageoffer.ai.ragent.rag.intent;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
-  BookOpen,
   ChevronDown,
   ChevronRight,
   ChevronsLeft,
@@ -10,7 +9,6 @@ import {
   Database,
   GitBranch,
   Github,
-  GraduationCap,
   Layers,
   LayoutDashboard,
   Lightbulb,
@@ -146,21 +144,6 @@ const menuGroups: MenuGroup[] = [
         icon: Settings
       },
     ]
-  },
-  {
-    title: "学习",
-    items: [
-      {
-        path: "/admin/study",
-        label: "学习中心",
-        icon: BookOpen
-      },
-      {
-        path: "/admin/interview",
-        label: "面试题库",
-        icon: GraduationCap
-      },
-    ]
   }
 ];
 
@@ -173,9 +156,7 @@ const breadcrumbMap: Record<string, string> = {
   traces: "链路追踪",
   "sample-questions": "示例问题",
   settings: "系统设置",
-  users: "用户管理",
-  study: "学习中心",
-  interview: "面试题库"
+  users: "用户管理"
 };
 
 export function AdminLayout() {
@@ -208,7 +189,7 @@ export function AdminLayout() {
 
   useEffect(() => {
     let active = true;
-    fetch("https://api.github.com/repos/nageoffer/ragent")
+    fetch("https://api.github.com/repos/hqy2020/CAgent")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!active) return;
@@ -450,10 +431,10 @@ export function AdminLayout() {
       <aside className={cn("admin-sidebar", collapsed && "admin-sidebar--collapsed")}>
         <div className="admin-sidebar__brand">
           <div className={cn("flex items-center gap-3", collapsed && "justify-center")}>
-            <div className="admin-sidebar__logo">R</div>
+            <div className="admin-sidebar__logo">C</div>
             {!collapsed && (
               <div className="min-w-0">
-                <h1 className="admin-sidebar__title">Ragent 管理后台</h1>
+                <h1 className="admin-sidebar__title">CAgent 管理后台</h1>
                 <p className="admin-sidebar__subtitle">Knowledge Console</p>
               </div>
             )}
@@ -702,7 +683,7 @@ export function AdminLayout() {
                 返回聊天
               </Button>
               <a
-                href="https://github.com/nageoffer/ragent"
+                href="https://github.com/hqy2020/CAgent"
                 target="_blank"
                 rel="noreferrer"
                 className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"

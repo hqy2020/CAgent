@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Check, FileUp, FolderOpen, PlayCircle, RefreshCw, Trash2, Pencil, FileBarChart } from "lucide-react";
+import { Check, FileUp, FolderOpen, PlayCircle, RefreshCw, Trash2, Pencil, FileBarChart, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -36,6 +36,7 @@ const PAGE_SIZE = 10;
 
 const STATUS_OPTIONS = [
   { value: "pending", label: "pending" },
+  { value: "pending_manual", label: "pending_manual" },
   { value: "running", label: "running" },
   { value: "failed", label: "failed" },
   { value: "success", label: "success" }
@@ -148,6 +149,7 @@ export function KnowledgeDocumentsPage() {
   const [logTarget, setLogTarget] = useState<KnowledgeDocument | null>(null);
   const [logData, setLogData] = useState<PageResult<KnowledgeDocumentChunkLog> | null>(null);
   const [logLoading, setLogLoading] = useState(false);
+  const [batchChunking, setBatchChunking] = useState(false);
 
   const documents = pageData?.records || [];
 
@@ -222,6 +224,56 @@ export function KnowledgeDocumentsPage() {
   const handleRefresh = () => {
     setPageNo(1);
     loadDocuments(1, statusFilter, keyword);
+  };
+
+  const handleStartPending = async () => {
+    if (!kbId || batchChunking) return;
+    setBatchChunking(true);
+    try {
+      const pendingDocs: KnowledgeDocument[] = [];
+      let current = 1;
+      let pages = 1;
+      do {
+        const page = await getDocumentsPage(kbId, {
+          pageNo: current,
+          pageSize: 100,
+          status: "pending"
+        });
+        pendingDocs.push(...(page.records || []));
+        pages = page.pages || 1;
+        current += 1;
+      } while (current <= pages);
+
+      if (pendingDocs.length === 0) {
+        toast.info("当前没有 pending 文档");
+        return;
+      }
+
+      let successCount = 0;
+      let failedCount = 0;
+      for (const doc of pendingDocs) {
+        try {
+          await startDocumentChunk(String(doc.id));
+          successCount += 1;
+        } catch (error) {
+          failedCount += 1;
+          console.error("触发分块失败", doc.id, error);
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`已触发 ${successCount} 个文档开始分块`);
+      }
+      if (failedCount > 0) {
+        toast.error(`${failedCount} 个文档触发失败，请稍后重试`);
+      }
+      await loadDocuments(pageNo, statusFilter, keyword);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "批量触发 pending 失败"));
+      console.error(error);
+    } finally {
+      setBatchChunking(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -396,6 +448,14 @@ export function KnowledgeDocumentsPage() {
                 <RefreshCw className="mr-2 h-4 w-4" />
                 刷新
               </Button>
+              <Button variant="outline" onClick={handleStartPending} disabled={batchChunking}>
+                {batchChunking ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <PlayCircle className="mr-2 h-4 w-4" />
+                )}
+                处理 Pending
+              </Button>
             </div>
           </div>
         </CardHeader>
@@ -560,8 +620,14 @@ export function KnowledgeDocumentsPage() {
         onOpenChange={setUploadOpen}
         onSubmit={async (payload) => {
           if (!kbId) return;
-          await uploadDocument(kbId, payload);
-          toast.success("上传成功");
+          const uploaded = await uploadDocument(kbId, payload);
+          try {
+            await startDocumentChunk(String(uploaded.id));
+            toast.success("上传成功，已自动开始分块");
+          } catch (error) {
+            toast.warning(getErrorMessage(error, "上传成功，但自动分块启动失败，请手动点击分块"));
+            console.error("自动触发分块失败", uploaded.id, error);
+          }
           setUploadOpen(false);
           setPageNo(1);
           await loadDocuments(1, statusFilter, keyword);

@@ -4,7 +4,7 @@
 
 set -e
 
-echo ">>> [RAgent] 开始初始化数据库..."
+echo ">>> [CAgent] 开始初始化数据库..."
 
 echo ">>> [1/3] 创建表结构..."
 mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" < /sql-scripts/schema_table.sql
@@ -15,4 +15,4 @@ mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" < /sql-scripts/init_dat
 echo ">>> [3/3] 插入学习中心与面试题库数据..."
 mysql -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" < /sql-scripts/init_study_data.sql
 
-echo ">>> [RAgent] 数据库初始化完成!"
+echo ">>> [CAgent] 数据库初始化完成!"

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-RAgent 是一个企业级 RAG（Retrieval-Augmented Generation）智能体平台，采用 Monorepo 结构。后端基于 Spring Boot 3.5 + Java 17，前端基于 React 18 + Vite + TypeScript。核心能力包括：多通道知识库检索、MCP 工具调用、会话记忆、流式 SSE 输出、链路追踪、文档 Ingestion Pipeline。
+CAgent 是一个企业级 RAG（Retrieval-Augmented Generation）智能体平台，采用 Monorepo 结构。后端基于 Spring Boot 3.5 + Java 17，前端基于 React 18 + Vite + TypeScript。核心能力包括：多通道知识库检索、MCP 工具调用、会话记忆、流式 SSE 输出、链路追踪、文档 Ingestion Pipeline。
 
 ## Build & Run Commands
 
@@ -44,10 +44,15 @@ npm run format       # Prettier格式化
 ### Infrastructure
 
 ```bash
-# 启动 Milvus + RustFS + etcd + Attu
+# 完整环境（etcd + minio + milvus），ARM Mac 推荐
 cd resources/docker/milvus
-docker compose -f milvus-stack-2.6.6.compose.yaml up -d
+docker compose -f milvus-full.compose.yaml up -d
+
+# 精简环境（etcd + milvus，无独立对象存储）
+docker compose -f milvus-mini.compose.yaml up -d
 ```
+
+容器名与端口：`ragent-etcd` (2379)、`ragent-minio` (19000)、`ragent-milvus` (19530)、`ragent-redis` (16379)
 
 ## Code Formatting
 
@@ -70,49 +75,36 @@ Base package: `com.nageoffer.ai.ragent`
 
 | 包路径 | 职责 |
 |--------|------|
-| `rag.controller` | RAG 对话入口，SSE 流式 |
 | `rag.service.impl` | RAG v3 主编排（RAGChatServiceImpl） |
-| `rag.core.retrieve` | 检索内核：RetrievalEngine + MultiChannelRetrievalEngine |
-| `rag.core.retrieve.channel.strategy` | 检索通道：VectorGlobalSearchChannel、IntentDirectedSearchChannel |
-| `rag.core.retrieve.postprocessor.impl` | 后处理器：DeduplicationPostProcessor、RerankPostProcessor |
-| `rag.core.prompt` | Prompt 编排（RAGPromptService） |
-| `rag.core.mcp` | MCP 工具调用链（MCPToolExecutor / MCPToolRegistry / MCPParameterExtractor） |
-| `rag.core.rewrite` | Query Rewrite + 多问句拆分 |
-| `rag.core.intent` | 意图识别 |
-| `rag.core.memory` | 会话记忆与摘要 |
-| `rag.core.guidance` | 歧义引导 |
-| `rag.aop` | RagTraceAspect（链路追踪）、ChatRateLimitAspect（限流） |
-| `ingestion.engine` | Ingestion Pipeline 执行引擎 |
+| `rag.core.retrieve` | 检索内核：MultiChannelRetrievalEngine（多通道并行 → 后处理器链） |
+| `rag.core.mcp` | MCP 工具调用链（MCPToolExecutor / MCPToolRegistry） |
+| `rag.core.intent` | 意图识别（IntentResolver / IntentClassifier） |
+| `rag.core.memory` | 会话记忆与摘要（DefaultConversationMemoryService） |
+| `rag.aop` | RagTraceAspect（链路追踪）、ChatQueueLimiter（队列限流） |
+| `ingestion.engine` | Ingestion Pipeline 执行引擎（IngestionEngine） |
 | `ingestion.node` | Pipeline 节点：Fetcher → Parser → Enhancer → Chunker → Enricher → Indexer |
-| `ingestion.strategy.fetcher` | 抓取策略：LocalFile / HttpUrl / S3 / Feishu |
 | `knowledge` | 知识库 CRUD + 向量集合管理 |
-| `admin` | 管理后台 Dashboard |
 | `user` | 用户认证（SA-Token） |
-| `core.chunk.strategy` | 分块策略：FixedSize / Paragraph / Sentence / StructureAware |
-| `core.parser` | 文档解析：Tika（PDF/DOC/DOCX）+ Markdown |
 
 ### infra-ai 模块 — AI 路由核心
 
-- `RoutingLLMService` / `RoutingEmbeddingService` / `RoutingRerankService`：按优先级选择候选模型，失败自动切换，支持熔断恢复。
-- `ChatClient` 实现：OllamaChatClient / BaiLianChatClient / SiliconFlowChatClient。
-- `FirstPacketAwaiter`：流式首包探测，避免失败模型的半截输出污染前端。
+- `RoutingLLMService` / `RoutingEmbeddingService` / `RoutingRerankService`：按优先级选择候选模型，失败自动切换，支持三态熔断（CLOSED → OPEN → HALF_OPEN）。
+- `ChatClient` 实现：OllamaChatClient / BaiLianChatClient / SiliconFlowChatClient / MiniMaxChatClient。
+- `FirstPacketAwaiter`：流式首包探测（CountDownLatch + AtomicBoolean），避免失败模型的半截输出污染前端。
 - `ModelSelector` + `ModelHealthStore`：模型健康状态与动态选择。
 
 ### framework 模块 — 通用基础
 
 - `Result<T>` + `BaseErrorCode` + `GlobalExceptionHandler`：统一返回值与异常处理。
 - `UserContext`（ThreadLocal）+ `LoginUser`：请求级用户上下文传递。
-- `@IdempotentSubmit` / `@IdempotentConsume`：基于 AOP + SpEL 的幂等控制。
-- `RagTraceContext` / `RagTraceNode`：RAG 链路追踪数据结构。
-- `SseEmitterSender`：SSE 发送封装。
-- `SnowflakeIdInitializer`：分布式 ID 生成。
+- `RagTraceContext`（TransmittableThreadLocal）：RAG 链路追踪，支持 push/pop 嵌套节点。
 
 ## Key Data Flow (RAG v3 Chat)
 
 ```
 GET /rag/v3/chat (SSE)
   → 会话初始化 (conversationId / taskId)
-  → 记忆加载 (history)
+  → 记忆加载 (history + summary 并行)
   → Query Rewrite + 多问句拆分
   → 意图识别 → 歧义引导判定
   → RetrievalEngine
@@ -133,9 +125,7 @@ GET /rag/v3/chat (SSE)
 | 新增 MCP 工具 | `MCPToolExecutor`（Spring Bean 自动发现） | `rag.core.mcp.executor` |
 | 新增 Ingestion 节点 | `IngestionNode` | `ingestion.node` |
 | 新增模型提供商 | `ChatClient` / `EmbeddingClient` / `RerankClient` | `infra-ai` 对应包 |
-| 新增文档解析器 | `DocumentParser` | `core.parser` |
 | 新增分块策略 | 继承 `AbstractEmbeddingChunker` | `core.chunk.strategy` |
-| 新增抓取策略 | `DocumentFetcher` | `ingestion.strategy.fetcher` |
 
 ## Frontend Architecture
 
@@ -152,11 +142,12 @@ GET /rag/v3/chat (SSE)
 - 服务端口: `8080`，上下文路径: `/api/ragent`
 - 数据库: MySQL 8+（`ragent` 库），建表脚本: `resources/database/schema_table.sql`
 - 初始数据: `resources/database/init_data.sql`（默认管理员 admin/admin）
-- 认证: SA-Token，token 存 Redis
+- 认证: SA-Token，token 通过 `satoken` header 传递，存 Redis
 - 向量库: Milvus 2.6（默认 `localhost:19530`）
-- 文件存储: RustFS（S3 兼容，默认 `localhost:9000`）
-- AI 模型配置在 `ai.providers.*` 下，支持 Ollama / Bailian / SiliconFlow
+- 文件存储: MinIO/RustFS（S3 兼容，默认 `localhost:19000`）
+- AI 模型配置在 `ai.providers.*` 下，支持 Ollama / Bailian / SiliconFlow / MiniMax
 - 模型路由容错: `ai.selection.failure-threshold` + `ai.selection.open-duration-ms`
+- `application-local.yaml` profile：用于本地 Docker 环境（MySQL 13306 / Redis 16379），通过 `--spring.profiles.active=local` 激活
 
 ## SSE Event Protocol (v3)
 
@@ -171,4 +162,12 @@ GET /rag/v3/chat (SSE)
 - 数据库表名前缀 `t_`（如 `t_conversation`、`t_message`、`t_knowledge_base`）
 - MyBatis-Plus 自动填充 `createTime` / `updateTime` 字段（`MyMetaObjectHandler`）
 - 分布式 ID 使用 Snowflake 算法（`CustomIdentifierGenerator`）
+- 线程池统一配置在 `ThreadPoolExecutorConfig`，所有 Executor Bean 经 `TtlExecutors` 包装以支持 TransmittableThreadLocal 上下文传播
 - 前端 Vite 代理 `/api` → `http://localhost:8080`
+
+## Known Issues & Gotchas
+
+- **Milvus 版本**: SDK v2.6.6 使用 `MilvusClientV2`，要求 Milvus Server ≥ v2.4。`milvus-full.compose.yaml` 中需确保镜像版本为 `milvusdb/milvus:v2.6.6`，使用旧版镜像（如 v2.3.0）会导致 gRPC `DEADLINE_EXCEEDED`。
+- **macOS 大小写**: macOS APFS 默认 case-insensitive，Java package 目录名大小写不一致时会导致 `NoClassDefFoundError`（JVM 按路径查找但 class 声明不匹配）。新建测试文件时注意目录和 `package` 声明大小写一致。
+- **Mockito surefire 配置**: pom.xml 中 surefire plugin 的 `argLine` 使用 `-javaagent:${org.mockito:mockito-core:jar}` 解析 Mockito agent 路径，依赖 `maven-dependency-plugin:properties` goal。不要添加 `@{argLine}` 前缀（除非有 JaCoCo 等插件设置该属性）。
+- **Spotless 格式化**: 新建 Java 文件后首次 `./mvnw compile` 会自动添加 license header 并可能重新格式化代码，这是正常行为。

@@ -17,9 +17,6 @@ import { RagTraceDetailPage } from "@/pages/admin/traces/RagTraceDetailPage";
 import { SystemSettingsPage } from "@/pages/admin/settings/SystemSettingsPage";
 import { SampleQuestionPage } from "@/pages/admin/sample-questions/SampleQuestionPage";
 import { UserListPage } from "@/pages/admin/users/UserListPage";
-import { StudyCenterPage } from "@/pages/admin/study/StudyCenterPage";
-import { InterviewPage } from "@/pages/admin/interview/InterviewPage";
-import { InterviewQuestionDetail } from "@/pages/admin/interview/InterviewQuestionDetail";
 import { useAuthStore } from "@/stores/authStore";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -151,18 +148,6 @@ export const router = createBrowserRouter([
         path: "users",
         element: <UserListPage />
       },
-      {
-        path: "study",
-        element: <StudyCenterPage />
-      },
-      {
-        path: "interview",
-        element: <InterviewPage />
-      },
-      {
-        path: "interview/:questionId",
-        element: <InterviewQuestionDetail />
-      }
     ]
   },
   {

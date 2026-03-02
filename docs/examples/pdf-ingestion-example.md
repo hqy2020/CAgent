@@ -284,4 +284,4 @@ curl -X POST "http://localhost:8080/api/ragent/ingestion/pipelines" \
 
 **创建时间**: 2026-01-22
 **更新时间**: 2026-01-22
-**维护者**: RAGent Team
+**维护者**: openingClouds

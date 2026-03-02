@@ -28,9 +28,11 @@ import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.service.vector.request.DeleteReq;
 import io.milvus.v2.service.vector.request.InsertReq;
+import io.milvus.v2.service.vector.request.QueryReq;
 import io.milvus.v2.service.vector.request.UpsertReq;
 import io.milvus.v2.service.vector.response.DeleteResp;
 import io.milvus.v2.service.vector.response.InsertResp;
+import io.milvus.v2.service.vector.response.QueryResp;
 import io.milvus.v2.service.vector.response.UpsertResp;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -74,6 +76,7 @@ public class MilvusVectorStoreService implements VectorStoreService {
 
             JsonObject row = new JsonObject();
             row.addProperty("doc_id", chunk.getChunkId());
+            row.addProperty("kb_id", kbId);  // 添加独立字段用于过滤查询
             row.addProperty("content", content);
             row.add("metadata", metadata);
             row.add("embedding", toJsonArray(vectors.get(i)));
@@ -116,6 +119,7 @@ public class MilvusVectorStoreService implements VectorStoreService {
 
         JsonObject row = new JsonObject();
         row.addProperty("doc_id", chunkPk);
+        row.addProperty("kb_id", kbId);  // 添加独立字段用于过滤查询
         row.addProperty("content", content);
         row.add("metadata", metadata);
         row.add("embedding", toJsonArray(vector));
@@ -163,18 +167,55 @@ public class MilvusVectorStoreService implements VectorStoreService {
 
         String collection = kbDO.getCollectionName();
 
-        // 按 JSON 过滤：删除该 kbId 下、该文档ID 的所有 chunk
-        String filter = "metadata[\"kb_id\"] == \"" + kbId + "\" && " +
-                "metadata[\"doc_id\"] == \"" + docId + "\"";
+        // 尝试使用主键直接删除（docId 就是 chunk 的主键）
+        // 这是最简单且兼容新旧 schema 的方式
+        try {
+            DeleteReq deleteReq = DeleteReq.builder()
+                    .collectionName(collection)
+                    .filter("doc_id == \"" + docId + "\"")
+                    .build();
+            DeleteResp deleteResp = milvusClient.delete(deleteReq);
+            log.info("Milvus 删除文档向量索引成功, collection={}, kbId={}, docId={}, deleteCnt={}",
+                    collection, kbId, docId, deleteResp.getDeleteCnt());
+        } catch (Exception e) {
+            // 如果主键删除失败，尝试查询后删除（兼容旧 schema）
+            log.warn("主键删除失败，尝试查询删除: {}", e.getMessage());
+            try {
+                // 尝试使用 metadata 中的 kb_id 查询（旧 schema）
+                QueryReq queryReq = QueryReq.builder()
+                        .collectionName(collection)
+                        .filter("metadata[\"doc_id\"] == \"" + docId + "\"")
+                        .outputFields(List.of("doc_id"))
+                        .build();
 
-        DeleteReq deleteReq = DeleteReq.builder()
-                .collectionName(collection)
-                .filter(filter)
-                .build();
+                QueryResp queryResp = milvusClient.query(queryReq);
+                List<QueryResp.QueryResult> results = queryResp.getQueryResults();
 
-        DeleteResp resp = milvusClient.delete(deleteReq);
-        log.info("Milvus 删除指定文档的所有 chunk 向量索引成功, collection={}, kbId={}, docId={}, deleteCnt={}",
-                collection, kbId, docId, resp.getDeleteCnt());
+                if (results == null || results.isEmpty()) {
+                    log.info("Milvus 中没有找到需要删除的 chunk, collection={}, kbId={}, docId={}",
+                            collection, kbId, docId);
+                    return;
+                }
+
+                // 逐个通过主键删除
+                int deleteCnt = 0;
+                for (QueryResp.QueryResult result : results) {
+                    String pk = (String) result.getEntity().get("doc_id");
+                    DeleteReq deleteReq = DeleteReq.builder()
+                            .collectionName(collection)
+                            .filter("doc_id == \"" + pk + "\"")
+                            .build();
+                    DeleteResp deleteResp = milvusClient.delete(deleteReq);
+                    deleteCnt += deleteResp.getDeleteCnt();
+                }
+
+                log.info("Milvus 删除指定文档的所有 chunk 向量索引成功(旧schema), collection={}, kbId={}, docId={}, deleteCnt={}",
+                        collection, kbId, docId, deleteCnt);
+            } catch (Exception ex) {
+                log.error("删除向量数据失败, collection={}, docId={}", collection, docId, ex);
+                throw new ClientException("删除向量数据失败: " + ex.getMessage());
+            }
+        }
     }
 
 
@@ -185,17 +226,35 @@ public class MilvusVectorStoreService implements VectorStoreService {
 
         String collection = kbDO.getCollectionName();
 
-        // chunkId 就是 Milvus 中的 doc_id（主键），直接通过主键删除
-        String filter = "doc_id == \"" + chunkId + "\"";
+        // Milvus 2.6 主键删除需要使用 pk 关键字
+        String filter = "pk == \"" + chunkId + "\"";
 
-        DeleteReq deleteReq = DeleteReq.builder()
-                .collectionName(collection)
-                .filter(filter)
-                .build();
+        try {
+            DeleteReq deleteReq = DeleteReq.builder()
+                    .collectionName(collection)
+                    .filter(filter)
+                    .build();
 
-        DeleteResp resp = milvusClient.delete(deleteReq);
-        log.info("Milvus 删除指定 chunk 向量索引成功, collection={}, kbId={}, chunkId={}, deleteCnt={}",
-                collection, kbId, chunkId, resp.getDeleteCnt());
+            DeleteResp resp = milvusClient.delete(deleteReq);
+            log.info("Milvus 删除指定 chunk 向量索引成功, collection={}, kbId={}, chunkId={}, deleteCnt={}",
+                    collection, kbId, chunkId, resp.getDeleteCnt());
+        } catch (Exception e) {
+            log.error("删除 chunk 向量失败: {}", e.getMessage());
+            // 如果失败，尝试使用主键字段名
+            try {
+                String fallbackFilter = "doc_id == \"" + chunkId + "\"";
+                DeleteReq deleteReq = DeleteReq.builder()
+                        .collectionName(collection)
+                        .filter(fallbackFilter)
+                        .build();
+                DeleteResp resp = milvusClient.delete(deleteReq);
+                log.info("Milvus 删除指定 chunk 向量索引成功(备用), collection={}, chunkId={}, deleteCnt={}",
+                        collection, chunkId, resp.getDeleteCnt());
+            } catch (Exception ex) {
+                log.error("备用删除也失败: {}", ex.getMessage());
+                throw new ClientException("删除向量数据失败: " + ex.getMessage());
+            }
+        }
     }
 
     private JsonArray toJsonArray(float[] v) {

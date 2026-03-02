@@ -23,7 +23,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
- * Ragent 核心应用启动类
+ * CAgent 核心应用启动类
  */
 @SpringBootApplication
 @EnableScheduling

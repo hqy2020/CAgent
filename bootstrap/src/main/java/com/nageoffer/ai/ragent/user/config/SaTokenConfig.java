@@ -50,16 +50,28 @@ public class SaTokenConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         // 注册 SaToken 登录拦截器
         registry.addInterceptor(new SaInterceptor(handler -> {
-                    // 异步调度请求跳过登录检查（SSE 完成回调会触发 asyncDispatch，此时 SaToken 上下文已丢失）
                     ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
                     if (attrs != null) {
                         HttpServletRequest request = attrs.getRequest();
-                        // 判断是否为异步调度请求，如果是则跳过登录检查
+                        String uri = request.getRequestURI();
+
+                        // 排除登录路径
+                        if (uri.contains("/auth/login") || uri.contains("/user/auth")) {
+                            return;
+                        }
+
+                        // 预检请求直接放行
+                        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+                            return;
+                        }
+
+                        // 异步请求直接放行（SSE完成回调等）
                         if (request.getDispatcherType() == DispatcherType.ASYNC) {
                             return;
                         }
-                        // 预检请求直接放行，避免 CORS 被拦截
-                        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+
+                        // SSE 流式请求排除登录检查（在Controller层手动处理）
+                        if (uri.contains("/rag/v3/chat")) {
                             return;
                         }
                     }
@@ -68,14 +80,14 @@ public class SaTokenConfig implements WebMvcConfigurer {
                 }))
                 // 拦截所有路径
                 .addPathPatterns("/**")
-                // 排除认证相关路径和错误页面
-                .excludePathPatterns("/auth/**", "/error");
+                // 排除认证相关路径
+                .excludePathPatterns("/auth/**", "/user/auth/**", "/rag/v3/chat");
 
         // 注册用户上下文拦截器
         registry.addInterceptor(userContextInterceptor)
                 // 拦截所有路径
                 .addPathPatterns("/**")
-                // 排除认证相关路径和错误页面
-                .excludePathPatterns("/auth/**", "/error");
+                // 排除认证相关路径
+                .excludePathPatterns("/auth/**", "/user/auth/**", "/rag/v3/chat");
     }
 }

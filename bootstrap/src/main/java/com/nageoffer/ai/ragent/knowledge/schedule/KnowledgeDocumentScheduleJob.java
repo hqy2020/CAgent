@@ -208,8 +208,10 @@ public class KnowledgeDocumentScheduleJob {
                 throw new ClientException("知识库不存在");
             }
 
+            // S3 桶名不允许下划线，需要转换为连字符
+            String bucketName = kbDO.getCollectionName().replace('_', '-');
             StoredFileDTO stored = fileStorageService.upload(
-                    kbDO.getCollectionName(),
+                    bucketName,
                     fetchResult.body(),
                     fetchResult.fileName(),
                     fetchResult.contentType()
