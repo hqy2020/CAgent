@@ -33,6 +33,8 @@ spring:
 
 milvus:
   uri: http://localhost:19530
+  connect-timeout-ms: 3000
+  rpc-deadline-ms: 8000
 
 rag:
   default:
@@ -62,6 +64,8 @@ rag:
     title-max-length: 30
 
   knowledge:
+    chunk:
+      running-stale-minutes: 10
     schedule:
       scan-delay-ms: 10000
       lock-seconds: 900
@@ -72,10 +76,24 @@ rag:
     channels:
       vector-global:
         confidence-threshold: 0.6
-        top-k-multiplier: 3
+        top-k-multiplier: 2
       intent-directed:
         min-intent-score: 0.4
         top-k-multiplier: 2
+    post-processor:
+      rrf-fusion:
+        enabled: true
+        k: 60
+      quality-filter:
+        enabled: true
+        score-threshold: 0.3
+        min-content-length: 10
+
+  intent:
+    bootstrap:
+      enabled: true
+      strategy: from-existing-kb
+      include-system: true
 
   trace:
     enabled: true
@@ -112,7 +130,7 @@ ai:
     open-duration-ms: 30000
 
   stream:
-    message-chunk-size: 1
+    message-chunk-size: 12
 
   chat:
     default-model: minimax-m2.5

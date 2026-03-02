@@ -34,6 +34,11 @@ public class SearchChannelProperties {
      */
     private Channels channels = new Channels();
 
+    /**
+     * 后处理器配置
+     */
+    private PostProcessor postProcessor = new PostProcessor();
+
     @Data
     public static class Channels {
 
@@ -66,7 +71,7 @@ public class SearchChannelProperties {
          * TopK 倍数
          * 全局检索时召回更多候选，后续通过 Rerank 筛选
          */
-        private int topKMultiplier = 3;
+        private int topKMultiplier = 2;
     }
 
     @Data
@@ -87,5 +92,54 @@ public class SearchChannelProperties {
          * TopK 倍数
          */
         private int topKMultiplier = 2;
+    }
+
+    @Data
+    public static class PostProcessor {
+
+        /**
+         * RRF 融合配置
+         */
+        private RrfFusion rrfFusion = new RrfFusion();
+
+        /**
+         * 质量过滤配置
+         */
+        private QualityFilter qualityFilter = new QualityFilter();
+    }
+
+    @Data
+    public static class RrfFusion {
+
+        /**
+         * 是否启用 RRF 融合
+         */
+        private boolean enabled = true;
+
+        /**
+         * RRF 平滑参数 k
+         * 公式：RRF_score(d) = Σ 1/(k + rank_i)
+         * 推荐值 60（来自 Cormack et al. 论文）
+         */
+        private int k = 60;
+    }
+
+    @Data
+    public static class QualityFilter {
+
+        /**
+         * 是否启用质量过滤
+         */
+        private boolean enabled = true;
+
+        /**
+         * Rerank 分数阈值，低于此值视为相关性不足
+         */
+        private float scoreThreshold = 0.3f;
+
+        /**
+         * 最小内容长度（字符），低于此值视为信息量不足
+         */
+        private int minContentLength = 10;
     }
 }
