@@ -37,11 +37,18 @@ import com.nageoffer.ai.ragent.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.Set;
+
 @Service
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
 
     private static final String DEFAULT_ADMIN_USERNAME = "admin";
+    private static final String DEFAULT_AVATAR_URL = "https://raw.githubusercontent.com/hqy2020/CAgent/main/logo.png";
+    private static final Set<String> LEGACY_DEFAULT_AVATAR_URLS = Set.of(
+            "https://avatars.githubusercontent.com/u/583231?v=4",
+            "https://static.deepseek.com/user-avatar/G_6cuD8GbD53VwGRwisvCsZ6"
+    );
 
     private final UserMapper userMapper;
 
@@ -217,9 +224,20 @@ public class UserServiceImpl implements UserService {
                 .id(String.valueOf(record.getId()))
                 .username(record.getUsername())
                 .role(record.getRole())
-                .avatar(record.getAvatar())
+                .avatar(resolveAvatar(record.getUsername(), record.getAvatar()))
                 .createTime(record.getCreateTime())
                 .updateTime(record.getUpdateTime())
                 .build();
+    }
+
+    private String resolveAvatar(String username, String avatar) {
+        if (StrUtil.equalsIgnoreCase(DEFAULT_ADMIN_USERNAME, StrUtil.trimToEmpty(username))) {
+            return DEFAULT_AVATAR_URL;
+        }
+        String normalized = StrUtil.trimToNull(avatar);
+        if (normalized == null || LEGACY_DEFAULT_AVATAR_URLS.contains(normalized)) {
+            return DEFAULT_AVATAR_URL;
+        }
+        return normalized;
     }
 }
