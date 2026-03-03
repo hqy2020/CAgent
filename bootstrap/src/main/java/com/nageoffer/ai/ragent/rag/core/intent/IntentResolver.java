@@ -23,9 +23,12 @@ import com.nageoffer.ai.ragent.rag.dto.IntentCandidate;
 import com.nageoffer.ai.ragent.rag.dto.IntentGroup;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import com.nageoffer.ai.ragent.rag.enums.IntentKind;
+import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
+import com.nageoffer.ai.ragent.rag.exception.TaskCancelledException;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
@@ -33,13 +36,18 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
+import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.INTENT_CLASSIFY_TIMEOUT_SECONDS;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.INTENT_MIN_SCORE;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MAX_INTENT_COUNT;
 import static com.nageoffer.ai.ragent.rag.enums.IntentKind.SYSTEM;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class IntentResolver {
@@ -51,18 +59,47 @@ public class IntentResolver {
 
     @RagTraceNode(name = "intent-resolve", type = "INTENT")
     public List<SubQuestionIntent> resolve(RewriteResult rewriteResult) {
+        return resolve(rewriteResult, CancellationToken.NONE);
+    }
+
+    public List<SubQuestionIntent> resolve(RewriteResult rewriteResult, CancellationToken token) {
         List<String> subQuestions = CollUtil.isNotEmpty(rewriteResult.subQuestions())
                 ? rewriteResult.subQuestions()
                 : List.of(rewriteResult.rewrittenQuestion());
+
+        token.throwIfCancelled();
+
         List<CompletableFuture<SubQuestionIntent>> tasks = subQuestions.stream()
                 .map(q -> CompletableFuture.supplyAsync(
-                        () -> new SubQuestionIntent(q, classifyIntents(q)),
-                        intentClassifyExecutor
-                ))
+                                () -> {
+                                    token.throwIfCancelled();
+                                    return new SubQuestionIntent(q, classifyIntents(q));
+                                },
+                                intentClassifyExecutor
+                        ).orTimeout(INTENT_CLASSIFY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                )
                 .toList();
-        List<SubQuestionIntent> subIntents = tasks.stream()
-                .map(CompletableFuture::join)
-                .toList();
+        List<SubQuestionIntent> subIntents = new ArrayList<>();
+        for (int i = 0; i < tasks.size(); i++) {
+            token.throwIfCancelled();
+            try {
+                subIntents.add(tasks.get(i).join());
+            } catch (CompletionException e) {
+                Throwable cause = e.getCause();
+                if (cause instanceof TaskCancelledException) {
+                    throw (TaskCancelledException) cause;
+                }
+                if (cause instanceof TimeoutException) {
+                    log.warn("意图分类超时（{}s），降级为空结果 - question={}", INTENT_CLASSIFY_TIMEOUT_SECONDS, subQuestions.get(i));
+                } else {
+                    log.warn("意图分类异常，降级为空结果 - question={}", subQuestions.get(i), e);
+                }
+                subIntents.add(new SubQuestionIntent(subQuestions.get(i), List.of()));
+            } catch (Exception e) {
+                log.warn("意图分类异常，降级为空结果 - question={}", subQuestions.get(i), e);
+                subIntents.add(new SubQuestionIntent(subQuestions.get(i), List.of()));
+            }
+        }
         return capTotalIntents(subIntents);
     }
 
@@ -77,9 +114,11 @@ public class IntentResolver {
     }
 
     public boolean isSystemOnly(List<NodeScore> nodeScores) {
-        return nodeScores.size() == 1
-                && nodeScores.get(0).getNode() != null
-                && nodeScores.get(0).getNode().getKind() == SYSTEM;
+        if (nodeScores.isEmpty()) {
+            return false;
+        }
+        return nodeScores.stream()
+                .allMatch(ns -> ns.getNode() != null && ns.getNode().getKind() == SYSTEM);
     }
 
     private List<NodeScore> classifyIntents(String question) {

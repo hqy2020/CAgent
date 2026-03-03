@@ -17,6 +17,8 @@
 
 package com.nageoffer.ai.ragent.rag.core.mcp;
 
+import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
+import com.nageoffer.ai.ragent.rag.exception.TaskCancelledException;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
@@ -107,6 +110,42 @@ public class MCPServiceOrchestrator implements MCPService {
         return futures.stream()
                 .map(CompletableFuture::join)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @RagTraceNode(name = "mcp-execute-batch-cancellable", type = "MCP")
+    public List<MCPResponse> executeBatch(List<MCPRequest> requests, CancellationToken token) {
+        if (requests == null || requests.isEmpty()) {
+            return List.of();
+        }
+
+        token.throwIfCancelled();
+
+        if (requests.size() > 1) {
+            log.info("MCP 工具批量执行开始（可取消），共 {} 个工具", requests.size());
+        }
+
+        List<CompletableFuture<MCPResponse>> futures = requests.stream()
+                .map(request -> CompletableFuture.supplyAsync(() -> {
+                    token.throwIfCancelled();
+                    return execute(request);
+                }, mcpBatchThreadPoolExecutor))
+                .toList();
+
+        List<MCPResponse> results = new ArrayList<>(futures.size());
+        for (CompletableFuture<MCPResponse> future : futures) {
+            token.throwIfCancelled();
+            try {
+                results.add(future.join());
+            } catch (CompletionException e) {
+                if (e.getCause() instanceof TaskCancelledException) {
+                    throw (TaskCancelledException) e.getCause();
+                }
+                log.error("MCP 工具执行失败", e);
+                throw e;
+            }
+        }
+        return results;
     }
 
     @Override

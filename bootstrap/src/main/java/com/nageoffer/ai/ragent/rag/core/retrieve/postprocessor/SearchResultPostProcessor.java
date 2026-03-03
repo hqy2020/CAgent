@@ -17,7 +17,7 @@
 
 package com.nageoffer.ai.ragent.rag.core.retrieve.postprocessor;
 
-import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchChannelResult;
 import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchContext;
 

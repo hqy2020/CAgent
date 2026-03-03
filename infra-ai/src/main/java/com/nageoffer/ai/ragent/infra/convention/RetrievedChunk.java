@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.framework.convention;
+package com.nageoffer.ai.ragent.infra.convention;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

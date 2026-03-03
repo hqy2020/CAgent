@@ -3,6 +3,8 @@ import { toast } from "sonner";
 
 import type { CompletionPayload, FeedbackValue, Message, MessageDeltaPayload, Session } from "@/types";
 import {
+  type ConversationMessageVO,
+  type ConversationVO,
   listMessages,
   listSessions,
   deleteSession as deleteSessionRequest,
@@ -48,6 +50,25 @@ function mapVoteToFeedback(vote?: number | null): FeedbackValue {
   return null;
 }
 
+function unwrapArray<T>(value: T[] | { data?: T[] } | null | undefined): T[] {
+  if (Array.isArray(value)) return value;
+  if (value && Array.isArray(value.data)) return value.data;
+  return [];
+}
+
+function mapConversationMessages(
+  data: ConversationMessageVO[] | { data?: ConversationMessageVO[] } | null | undefined
+): Message[] {
+  return unwrapArray(data).map((item) => ({
+    id: String(item.id),
+    role: item.role === "assistant" ? "assistant" : "user",
+    content: item.content,
+    createdAt: item.createTime,
+    feedback: mapVoteToFeedback(item.vote),
+    status: "done"
+  }));
+}
+
 function upsertSession(sessions: Session[], next: Session) {
   const index = sessions.findIndex((session) => session.id === next.id);
   const updated = [...sessions];
@@ -90,7 +111,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ isLoading: true });
     try {
       const data = await listSessions();
-      const sessions = data
+      const sessions = unwrapArray<ConversationVO>(data)
         .map((item) => ({
         id: item.conversationId,
         title: item.title || "新对话",
@@ -182,15 +203,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (get().currentSessionId !== sessionId) {
         return;
       }
-      const mapped: Message[] = data.map((item) => ({
-        id: String(item.id),
-        role: item.role === "assistant" ? "assistant" : "user",
-        content: item.content,
-        createdAt: item.createTime,
-        feedback: mapVoteToFeedback(item.vote),
-        status: "done"
-      }));
-      set({ messages: mapped });
+      set({ messages: mapConversationMessages(data) });
     } catch (error) {
       toast.error((error as Error).message || "加载消息失败");
     } finally {
@@ -382,14 +395,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
       },
       onDone: () => {
         if (get().streamingMessageId !== assistantId) return;
-        set({
+        set((state) => ({
           isStreaming: false,
           thinkingStartAt: null,
           streamTaskId: null,
           streamAbort: null,
           streamingMessageId: null,
-          cancelRequested: false
-        });
+          cancelRequested: false,
+          messages: state.messages.map((message) =>
+            message.id === state.streamingMessageId &&
+            message.status === "streaming"
+              ? {
+                  ...message,
+                  status: "done",
+                  isThinking: false,
+                  thinkingDuration:
+                    message.thinkingDuration ?? computeThinkingDuration(state.thinkingStartAt)
+                }
+              : message
+          )
+        }));
       },
       onTitle: (payload: { title: string }) => {
         if (get().streamingMessageId !== assistantId) return;
@@ -399,25 +424,74 @@ export const useChatStore = create<ChatState>((set, get) => ({
       },
       onError: (error: Error) => {
         if (get().streamingMessageId !== assistantId) return;
-        set((state) => ({
+        const state = get();
+        const currentSessionId = state.currentSessionId;
+        const snapshotMessages = state.messages;
+        const snapshotLength = snapshotMessages.length;
+        const snapshotAssistant = snapshotMessages.find((message) => message.id === assistantId);
+        const snapshotAssistantLength = snapshotAssistant?.content.length ?? 0;
+
+        set((currentState) => ({
           isStreaming: false,
           thinkingStartAt: null,
           streamTaskId: null,
           streamAbort: null,
           cancelRequested: false,
-          messages: state.messages.map((message) =>
-            message.id === state.streamingMessageId
+          messages: currentState.messages.map((message) =>
+            message.id === currentState.streamingMessageId
               ? {
                   ...message,
                   status: "error",
                   isThinking: false,
                   thinkingDuration:
-                    message.thinkingDuration ?? computeThinkingDuration(state.thinkingStartAt)
+                    message.thinkingDuration ?? computeThinkingDuration(currentState.thinkingStartAt)
                 }
               : message
           )
         }));
-        toast.error(error.message || "生成失败");
+
+        if (!currentSessionId) {
+          toast.error(error.message || "生成失败");
+          return;
+        }
+
+        void (async () => {
+          let recovered = false;
+          try {
+            const remote = await listMessages(currentSessionId);
+            const remoteMessages = mapConversationMessages(remote);
+            const remoteLast = remoteMessages.at(-1);
+            const hasRecoveredAnswer =
+              remoteMessages.length >= snapshotLength &&
+              remoteLast?.role === "assistant" &&
+              remoteLast.content.length >= snapshotAssistantLength;
+            if (hasRecoveredAnswer) {
+              set((currentState) => {
+                if (currentState.currentSessionId !== currentSessionId) {
+                  return {};
+                }
+                if (currentState.messages.length > snapshotLength) {
+                  return {};
+                }
+                return {
+                  messages: remoteMessages,
+                  isStreaming: false,
+                  thinkingStartAt: null,
+                  streamTaskId: null,
+                  streamAbort: null,
+                  streamingMessageId: null,
+                  cancelRequested: false
+                };
+              });
+              recovered = true;
+            }
+          } catch {
+            recovered = false;
+          }
+          if (!recovered) {
+            toast.error(error.message || "生成失败");
+          }
+        })();
       }
     };
 

@@ -22,13 +22,14 @@ import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.context.LoginUser;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
-import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
-import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
+import com.nageoffer.ai.ragent.infra.convention.ChatMessage;
+import com.nageoffer.ai.ragent.infra.convention.ChatRequest;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceContext;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.infra.chat.StreamCallback;
 import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
 import com.nageoffer.ai.ragent.rag.aop.ChatRateLimit;
+import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
 import com.nageoffer.ai.ragent.rag.core.guidance.GuidanceDecision;
 import com.nageoffer.ai.ragent.rag.core.guidance.IntentGuidanceService;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentResolver;
@@ -42,6 +43,9 @@ import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
 import com.nageoffer.ai.ragent.rag.dto.IntentGroup;
 import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
+import com.nageoffer.ai.ragent.rag.exception.TaskCancelledException;
+import com.nageoffer.ai.ragent.rag.controller.request.ConversationCreateRequest;
+import com.nageoffer.ai.ragent.rag.service.ConversationService;
 import com.nageoffer.ai.ragent.rag.service.RAGChatService;
 import com.nageoffer.ai.ragent.rag.service.handler.StreamCallbackFactory;
 import com.nageoffer.ai.ragent.rag.service.handler.StreamTaskManager;
@@ -66,6 +70,8 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.DEFAULT_TOP_K;
 @RequiredArgsConstructor
 public class RAGChatServiceImpl implements RAGChatService {
 
+    private static final int CHAT_MAX_TOKENS = 1600;
+
     private final LLMService llmService;
     private final RAGPromptService promptBuilder;
     private final PromptTemplateLoader promptTemplateLoader;
@@ -76,11 +82,13 @@ public class RAGChatServiceImpl implements RAGChatService {
     private final QueryRewriteService queryRewriteService;
     private final IntentResolver intentResolver;
     private final RetrievalEngine retrievalEngine;
+    private final ConversationService conversationService;
 
     @Override
     @ChatRateLimit
     public void streamChat(String question, String conversationId, Boolean deepThinking, SseEmitter emitter) {
-        String actualConversationId = StrUtil.isBlank(conversationId) ? IdUtil.getSnowflakeNextIdStr() : conversationId;
+        boolean isNewConversation = StrUtil.isBlank(conversationId);
+        String actualConversationId = isNewConversation ? IdUtil.getSnowflakeNextIdStr() : conversationId;
         String taskId = StrUtil.isBlank(RagTraceContext.getTaskId())
                 ? IdUtil.getSnowflakeNextIdStr()
                 : RagTraceContext.getTaskId();
@@ -88,58 +96,94 @@ public class RAGChatServiceImpl implements RAGChatService {
         boolean thinkingEnabled = Boolean.TRUE.equals(deepThinking);
 
         StreamCallback callback = callbackFactory.createChatEventHandler(emitter, actualConversationId, taskId);
+        CancellationToken token = taskManager.createToken(taskId);
 
-        String userId = UserContext.getUserId();
-        List<ChatMessage> history = memoryService.loadAndAppend(actualConversationId, userId, ChatMessage.user(question));
+        try {
+            String userId = UserContext.getUserId();
 
-        RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(question, history);
-        List<SubQuestionIntent> subIntents = intentResolver.resolve(rewriteResult);
+            // 首次对话时创建会话（会触发标题生成）
+            if (isNewConversation) {
+                conversationService.createOrUpdate(ConversationCreateRequest.builder()
+                        .conversationId(actualConversationId)
+                        .userId(userId)
+                        .question(question)
+                        .lastTime(new java.util.Date())
+                        .build());
+            }
 
-        GuidanceDecision guidanceDecision = guidanceService.detectAmbiguity(rewriteResult.rewrittenQuestion(), subIntents);
-        if (guidanceDecision.isPrompt()) {
-            callback.onContent(guidanceDecision.getPrompt());
-            callback.onComplete();
-            return;
-        }
+            List<ChatMessage> history = memoryService.loadAndAppend(actualConversationId, userId, ChatMessage.user(question));
 
-        boolean allSystemOnly = subIntents.stream()
-                .allMatch(si -> intentResolver.isSystemOnly(si.nodeScores()));
-        if (allSystemOnly) {
-            StreamCancellationHandle handle = streamSystemResponse(rewriteResult.rewrittenQuestion(), callback);
+            token.throwIfCancelled();
+            RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(question, history);
+
+            token.throwIfCancelled();
+            List<SubQuestionIntent> subIntents = intentResolver.resolve(rewriteResult, token);
+
+            token.throwIfCancelled();
+            GuidanceDecision guidanceDecision = guidanceService.detectAmbiguity(rewriteResult.rewrittenQuestion(), subIntents);
+            if (guidanceDecision.isPrompt()) {
+                callback.onContent(guidanceDecision.getPrompt());
+                callback.onComplete();
+                return;
+            }
+
+            boolean allSystemOnly = subIntents.stream()
+                    .allMatch(si -> intentResolver.isSystemOnly(si.nodeScores()));
+            if (allSystemOnly) {
+                StreamCancellationHandle handle = streamSystemResponse(rewriteResult.rewrittenQuestion(), callback);
+                taskManager.bindHandle(taskId, handle);
+                return;
+            }
+
+            token.throwIfCancelled();
+            RetrievalContext ctx;
+            try {
+                ctx = retrievalEngine.retrieve(subIntents, DEFAULT_TOP_K, token);
+            } catch (TaskCancelledException e) {
+                throw e;
+            } catch (Exception e) {
+                log.error("知识库检索失败，降级为系统回答。conversationId={}, taskId={}", actualConversationId, taskId, e);
+                callback.onContent("知识库检索服务暂时不可用，以下回答将基于通用模型能力。\n\n");
+                StreamCancellationHandle handle = streamSystemResponse(rewriteResult.rewrittenQuestion(), callback);
+                taskManager.bindHandle(taskId, handle);
+                return;
+            }
+            log.info("RetrievalContext isEmpty={}, hasKb={}, hasMcp={}, kbLen={}, mcpLen={}",
+                    ctx.isEmpty(), ctx.hasKb(), ctx.hasMcp(),
+                    ctx.getKbContext() != null ? ctx.getKbContext().length() : -1,
+                    ctx.getMcpContext() != null ? ctx.getMcpContext().length() : -1);
+            if (ctx.hasKb()) {
+                String preview = ctx.getKbContext().length() > 500
+                        ? ctx.getKbContext().substring(0, 500) + "..."
+                        : ctx.getKbContext();
+                log.info("kbContext preview:\n{}", preview);
+            }
+            if (ctx.isEmpty()) {
+                String emptyReply = "未检索到与问题相关的文档内容。";
+                callback.onContent(emptyReply);
+                callback.onComplete();
+                return;
+            }
+
+            // 聚合所有意图用于 prompt 规划
+            IntentGroup mergedGroup = intentResolver.mergeIntentGroup(subIntents);
+
+            token.throwIfCancelled();
+            StreamCancellationHandle handle = streamLLMResponse(
+                    rewriteResult,
+                    ctx,
+                    mergedGroup,
+                    history,
+                    thinkingEnabled,
+                    callback
+            );
             taskManager.bindHandle(taskId, handle);
-            return;
+        } catch (TaskCancelledException e) {
+            log.info("任务被取消，提前退出。conversationId={}, taskId={}", actualConversationId, taskId);
+        } catch (Exception e) {
+            log.error("流式对话启动失败。conversationId={}, taskId={}", actualConversationId, taskId, e);
+            callback.onError(e);
         }
-
-        RetrievalContext ctx = retrievalEngine.retrieve(subIntents, DEFAULT_TOP_K);
-        log.info("RetrievalContext isEmpty={}, hasKb={}, hasMcp={}, kbLen={}, mcpLen={}",
-                ctx.isEmpty(), ctx.hasKb(), ctx.hasMcp(),
-                ctx.getKbContext() != null ? ctx.getKbContext().length() : -1,
-                ctx.getMcpContext() != null ? ctx.getMcpContext().length() : -1);
-        if (ctx.hasKb()) {
-            String preview = ctx.getKbContext().length() > 500
-                    ? ctx.getKbContext().substring(0, 500) + "..."
-                    : ctx.getKbContext();
-            log.info("kbContext preview:\n{}", preview);
-        }
-        if (ctx.isEmpty()) {
-            String emptyReply = "未检索到与问题相关的文档内容。";
-            callback.onContent(emptyReply);
-            callback.onComplete();
-            return;
-        }
-
-        // 聚合所有意图用于 prompt 规划
-        IntentGroup mergedGroup = intentResolver.mergeIntentGroup(subIntents);
-
-        StreamCancellationHandle handle = streamLLMResponse(
-                rewriteResult,
-                ctx,
-                mergedGroup,
-                history,
-                thinkingEnabled,
-                callback
-        );
-        taskManager.bindHandle(taskId, handle);
     }
 
     @Override
@@ -158,6 +202,7 @@ public class RAGChatServiceImpl implements RAGChatService {
                 ))
                 .temperature(0.7D)
                 .topP(0.8D)
+                .maxTokens(CHAT_MAX_TOKENS)
                 .thinking(false)
                 .build();
         return llmService.streamChat(req, callback);
@@ -186,6 +231,7 @@ public class RAGChatServiceImpl implements RAGChatService {
                 .thinking(deepThinking)
                 .temperature(ctx.hasMcp() ? 0.3D : 0D)  // MCP 场景稍微放宽温度
                 .topP(ctx.hasMcp() ? 0.8D : 1D)
+                .maxTokens(CHAT_MAX_TOKENS)
                 .build();
 
         return llmService.streamChat(chatRequest, callback);

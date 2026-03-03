@@ -58,11 +58,15 @@ public class MilvusConfig {
     @Lazy
     @Bean(destroyMethod = "close")
     public MilvusClientV2 milvusClient(@Value("${milvus.uri}") String uri,
-                                       @Value("${milvus.token:}") String token) {
+                                       @Value("${milvus.token:}") String token,
+                                       @Value("${milvus.connect-timeout-ms:3000}") long connectTimeoutMs,
+                                       @Value("${milvus.rpc-deadline-ms:8000}") long rpcDeadlineMs) {
 
         // 使用构建器模式创建 Milvus 连接配置
         ConnectConfig.ConnectConfigBuilder builder = ConnectConfig.builder()
-                .uri(uri);
+                .uri(uri)
+                .connectTimeoutMs(connectTimeoutMs)
+                .rpcDeadlineMs(rpcDeadlineMs);
 
         // 如果配置了 token，则启用 Token 鉴权
         if (token != null && !token.isEmpty()) {

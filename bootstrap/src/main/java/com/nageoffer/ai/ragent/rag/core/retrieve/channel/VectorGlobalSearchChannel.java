@@ -19,7 +19,7 @@ package com.nageoffer.ai.ragent.rag.core.retrieve.channel;
 
 import cn.hutool.core.collection.CollUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeBaseDO;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeBaseMapper;
 import com.nageoffer.ai.ragent.rag.config.SearchChannelProperties;
@@ -76,24 +76,25 @@ public class VectorGlobalSearchChannel implements SearchChannel {
             return false;
         }
 
-        // 条件1：没有识别出任何意图
-        List<NodeScore> allScores = context.getIntents().stream()
+        // 条件1：没有识别出任何 KB 意图（MCP/SYSTEM 意图不影响全局检索判断）
+        List<NodeScore> kbScores = context.getIntents().stream()
                 .flatMap(si -> si.nodeScores().stream())
+                .filter(ns -> ns.getNode() != null && ns.getNode().isKB())
                 .toList();
-        if (CollUtil.isEmpty(allScores)) {
-            log.info("未识别出任何意图，启用全局检索");
+        if (CollUtil.isEmpty(kbScores)) {
+            log.info("未识别出任何 KB 意图，启用全局检索");
             return true;
         }
 
-        // 条件2：意图置信度都很低
-        double maxScore = allScores.stream()
+        // 条件2：KB 意图置信度都很低
+        double maxScore = kbScores.stream()
                 .mapToDouble(NodeScore::getScore)
                 .max()
                 .orElse(0.0);
 
         double threshold = properties.getChannels().getVectorGlobal().getConfidenceThreshold();
         if (maxScore < threshold) {
-            log.info("意图置信度过低（{}），启用全局检索", maxScore);
+            log.info("KB 意图置信度过低（{}），启用全局检索", maxScore);
             return true;
         }
 

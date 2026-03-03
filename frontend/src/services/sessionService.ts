@@ -15,18 +15,18 @@ export interface ConversationMessageVO {
   createTime?: string;
 }
 
-export async function listSessions() {
+export async function listSessions(): Promise<ConversationVO[]> {
   return api.get<ConversationVO[]>("/conversations");
 }
 
-export async function deleteSession(conversationId: string) {
+export async function deleteSession(conversationId: string): Promise<void> {
   return api.delete<void>(`/conversations/${conversationId}`);
 }
 
-export async function renameSession(conversationId: string, title: string) {
+export async function renameSession(conversationId: string, title: string): Promise<void> {
   return api.put<void>(`/conversations/${conversationId}`, { title });
 }
 
-export async function listMessages(conversationId: string) {
+export async function listMessages(conversationId: string): Promise<ConversationMessageVO[]> {
   return api.get<ConversationMessageVO[]>(`/conversations/${conversationId}/messages`);
 }

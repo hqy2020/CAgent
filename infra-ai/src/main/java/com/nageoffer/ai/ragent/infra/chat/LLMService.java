@@ -17,8 +17,8 @@
 
 package com.nageoffer.ai.ragent.infra.chat;
 
-import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
-import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
+import com.nageoffer.ai.ragent.infra.convention.ChatMessage;
+import com.nageoffer.ai.ragent.infra.convention.ChatRequest;
 
 import java.util.List;
 

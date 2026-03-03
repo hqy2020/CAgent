@@ -1,17 +1,29 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { Pencil, Save, X, Download } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { SystemSettings } from "@/services/settingsService";
-import { getSystemSettings } from "@/services/settingsService";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import type { ConfigGroup, ConfigItem } from "@/services/settingsService";
+import { getEditableConfigs, updateConfigGroup, initConfigFromYaml } from "@/services/settingsService";
 import { getErrorMessage } from "@/utils/error";
 
-const BoolBadge = ({ value }: { value: boolean }) => (
-  <Badge variant={value ? "default" : "outline"}>{value ? "启用" : "禁用"}</Badge>
-);
+// ─── 分组元数据 ───
+
+const GROUP_META: Record<string, { title: string; description: string }> = {
+  "rag.default": { title: "RAG 默认配置", description: "向量空间与检索基础参数" },
+  "rag.query-rewrite": { title: "查询改写", description: "历史上下文压缩与改写策略" },
+  "rag.rate-limit": { title: "全局限流", description: "并发与租约控制" },
+  "rag.memory": { title: "记忆管理", description: "摘要与上下文保留策略" },
+  "ai.selection": { title: "模型选择策略", description: "熔断与选择阈值" },
+  "ai.stream": { title: "流式响应", description: "输出分片大小" },
+};
+
+// ─── InfoItem ───
 
 function InfoItem({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -22,26 +34,167 @@ function InfoItem({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
+const BoolBadge = ({ value }: { value: string }) => {
+  const isTrue = value === "true" || value === "1";
+  return <Badge variant={isTrue ? "default" : "outline"}>{isTrue ? "启用" : "禁用"}</Badge>;
+};
+
+// ─── EditableCard ───
+
+function EditableCard({
+  group,
+  items,
+  onSave,
+}: {
+  group: string;
+  items: ConfigItem[];
+  onSave: (group: string, values: Record<string, string>) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [formValues, setFormValues] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const meta = GROUP_META[group] || { title: group, description: "" };
+
+  const startEdit = () => {
+    const values: Record<string, string> = {};
+    items.forEach((item) => {
+      values[item.key] = item.value ?? "";
+    });
+    setFormValues(values);
+    setEditing(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(group, formValues);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>{meta.title}</CardTitle>
+            <CardDescription>{meta.description}</CardDescription>
+          </div>
+          <div className="flex gap-2">
+            {editing ? (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setEditing(false)} disabled={saving}>
+                  <X className="mr-1 h-3.5 w-3.5" /> 取消
+                </Button>
+                <Button size="sm" onClick={handleSave} disabled={saving}>
+                  <Save className="mr-1 h-3.5 w-3.5" /> {saving ? "保存中..." : "保存"}
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" size="sm" onClick={startEdit}>
+                <Pencil className="mr-1 h-3.5 w-3.5" /> 编辑
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-4 md:grid-cols-3">
+        {items.map((item) => {
+          if (editing) {
+            const isBool = item.valueType === "BOOLEAN";
+            if (isBool) {
+              const checked = formValues[item.key] === "true" || formValues[item.key] === "1";
+              return (
+                <div key={item.key} className="flex flex-col gap-1 rounded-lg border border-indigo-200 bg-indigo-50/30 px-4 py-3">
+                  <span className="text-xs text-slate-500">{item.description || item.key}</span>
+                  <div className="flex items-center gap-2 pt-1">
+                    <Checkbox
+                      id={`${group}-${item.key}`}
+                      checked={checked}
+                      onCheckedChange={(v) =>
+                        setFormValues((prev) => ({ ...prev, [item.key]: v ? "true" : "false" }))
+                      }
+                    />
+                    <label htmlFor={`${group}-${item.key}`} className="text-sm">
+                      {checked ? "启用" : "禁用"}
+                    </label>
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div key={item.key} className="flex flex-col gap-1 rounded-lg border border-indigo-200 bg-indigo-50/30 px-4 py-3">
+                <span className="text-xs text-slate-500">{item.description || item.key}</span>
+                <Input
+                  className="mt-1 h-8 text-sm"
+                  type={item.valueType === "INTEGER" || item.valueType === "LONG" ? "number" : "text"}
+                  value={formValues[item.key] ?? ""}
+                  onChange={(e) =>
+                    setFormValues((prev) => ({ ...prev, [item.key]: e.target.value }))
+                  }
+                />
+              </div>
+            );
+          }
+
+          // 只读模式
+          const displayValue =
+            item.valueType === "BOOLEAN" ? (
+              <BoolBadge value={item.value} />
+            ) : (
+              item.value || "-"
+            );
+          return <InfoItem key={item.key} label={item.description || item.key} value={displayValue} />;
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── 主页面 ───
+
 export function SystemSettingsPage() {
-  const [settings, setSettings] = useState<SystemSettings | null>(null);
+  const [groups, setGroups] = useState<ConfigGroup[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadSettings = async () => {
+  const loadConfigs = async () => {
     try {
       setLoading(true);
-      const data = await getSystemSettings();
-      setSettings(data);
+      const data = await getEditableConfigs();
+      setGroups(data);
     } catch (error) {
       toast.error(getErrorMessage(error, "加载系统配置失败"));
-      console.error(error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadSettings();
+    loadConfigs();
   }, []);
+
+  const handleSave = async (group: string, values: Record<string, string>) => {
+    try {
+      await updateConfigGroup(group, values);
+      toast.success("配置已保存，运行时已生效");
+      await loadConfigs();
+    } catch (error) {
+      toast.error(getErrorMessage(error, "保存失败"));
+      throw error;
+    }
+  };
+
+  const handleInitFromYaml = async () => {
+    try {
+      await initConfigFromYaml();
+      toast.success("初始化完成");
+      await loadConfigs();
+    } catch (error) {
+      toast.error(getErrorMessage(error, "初始化失败"));
+    }
+  };
 
   if (loading) {
     return (
@@ -51,237 +204,23 @@ export function SystemSettingsPage() {
     );
   }
 
-  if (!settings) {
-    return (
-      <div className="admin-page">
-        <div className="text-sm text-muted-foreground">暂无可展示的配置</div>
-      </div>
-    );
-  }
-
-  const { rag, ai } = settings;
-  const providers = Object.entries(ai.providers || {});
-
   return (
     <div className="admin-page">
       <div className="admin-page-header">
         <div>
           <h1 className="admin-page-title">系统配置</h1>
-          <p className="admin-page-subtitle">只读展示当前 application 配置</p>
+          <p className="admin-page-subtitle">点击"编辑"修改配置，保存后运行时立即生效</p>
+        </div>
+        <div className="admin-page-actions">
+          <Button variant="outline" onClick={handleInitFromYaml}>
+            <Download className="mr-2 h-4 w-4" /> 从 YAML 初始化
+          </Button>
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>RAG 默认配置</CardTitle>
-          <CardDescription>向量空间与检索基础参数</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-3">
-          <InfoItem label="Collection" value={rag.default.collectionName} />
-          <InfoItem label="Dimension" value={rag.default.dimension} />
-          <InfoItem label="Metric Type" value={rag.default.metricType} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>查询改写</CardTitle>
-          <CardDescription>历史上下文压缩与改写策略</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-3">
-          <InfoItem label="Enabled" value={<BoolBadge value={rag.queryRewrite.enabled} />} />
-          <InfoItem label="Max History Messages" value={rag.queryRewrite.maxHistoryMessages} />
-          <InfoItem label="Max History Chars" value={rag.queryRewrite.maxHistoryChars} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>全局限流</CardTitle>
-          <CardDescription>并发与租约控制</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-3">
-          <InfoItem label="Enabled" value={<BoolBadge value={rag.rateLimit.global.enabled} />} />
-          <InfoItem label="Max Concurrent" value={rag.rateLimit.global.maxConcurrent} />
-          <InfoItem label="Max Wait Seconds" value={rag.rateLimit.global.maxWaitSeconds} />
-          <InfoItem label="Lease Seconds" value={rag.rateLimit.global.leaseSeconds} />
-          <InfoItem label="Poll Interval (ms)" value={rag.rateLimit.global.pollIntervalMs} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>记忆管理</CardTitle>
-          <CardDescription>摘要与上下文保留策略</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-3">
-          <InfoItem label="History Keep Turns" value={rag.memory.historyKeepTurns} />
-          <InfoItem label="Summary Start Turns" value={rag.memory.summaryStartTurns} />
-          <InfoItem label="Summary Enabled" value={<BoolBadge value={rag.memory.summaryEnabled} />} />
-          <InfoItem label="TTL Minutes" value={rag.memory.ttlMinutes} />
-          <InfoItem label="Summary Max Chars" value={rag.memory.summaryMaxChars} />
-          <InfoItem label="Title Max Length" value={rag.memory.titleMaxLength} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>模型服务提供方</CardTitle>
-          <CardDescription>接入地址与端点配置</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table className="min-w-[760px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[140px]">Provider</TableHead>
-                <TableHead className="w-[240px]">URL</TableHead>
-                <TableHead className="w-[200px]">API Key</TableHead>
-                <TableHead>Endpoints</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {providers.map(([name, provider]) => (
-                <TableRow key={name}>
-                  <TableCell className="font-medium">{name}</TableCell>
-                  <TableCell>{provider.url}</TableCell>
-                  <TableCell>{provider.apiKey ? provider.apiKey : "-"}</TableCell>
-                  <TableCell>
-                    <div className="space-y-1 text-xs text-muted-foreground">
-                      {Object.entries(provider.endpoints).map(([key, value]) => (
-                        <div key={key}>
-                          {key}: {value}
-                        </div>
-                      ))}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>模型选择策略</CardTitle>
-          <CardDescription>熔断与选择阈值</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <InfoItem label="Failure Threshold" value={ai.selection.failureThreshold} />
-          <InfoItem label="Open Duration (ms)" value={ai.selection.openDurationMs} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>流式响应</CardTitle>
-          <CardDescription>输出分片大小</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <InfoItem label="Message Chunk Size" value={ai.stream.messageChunkSize} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Chat 模型配置</CardTitle>
-          <CardDescription>默认模型与候选列表</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <InfoItem label="Default Model" value={ai.chat.defaultModel} />
-            <InfoItem label="Deep Thinking Model" value={ai.chat.deepThinkingModel} />
-          </div>
-          <Table className="min-w-[720px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[220px]">ID</TableHead>
-                <TableHead className="w-[120px]">Provider</TableHead>
-                <TableHead className="w-[200px]">Model</TableHead>
-                <TableHead className="w-[100px]">Thinking</TableHead>
-                <TableHead className="w-[90px]">Priority</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {ai.chat.candidates.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.id}</TableCell>
-                  <TableCell>{item.provider}</TableCell>
-                  <TableCell>{item.model}</TableCell>
-                  <TableCell>{item.supportsThinking ? "支持" : "-"}</TableCell>
-                  <TableCell>{item.priority}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Embedding 模型配置</CardTitle>
-          <CardDescription>向量化模型列表</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <InfoItem label="Default Model" value={ai.embedding.defaultModel} />
-          </div>
-          <Table className="min-w-[720px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[220px]">ID</TableHead>
-                <TableHead className="w-[120px]">Provider</TableHead>
-                <TableHead className="w-[200px]">Model</TableHead>
-                <TableHead className="w-[110px]">Dimension</TableHead>
-                <TableHead className="w-[90px]">Priority</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {ai.embedding.candidates.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.id}</TableCell>
-                  <TableCell>{item.provider}</TableCell>
-                  <TableCell>{item.model}</TableCell>
-                  <TableCell>{item.dimension}</TableCell>
-                  <TableCell>{item.priority}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Rerank 模型配置</CardTitle>
-          <CardDescription>重排模型列表</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <InfoItem label="Default Model" value={ai.rerank.defaultModel} />
-          </div>
-          <Table className="min-w-[640px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[220px]">ID</TableHead>
-                <TableHead className="w-[120px]">Provider</TableHead>
-                <TableHead className="w-[200px]">Model</TableHead>
-                <TableHead className="w-[90px]">Priority</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {ai.rerank.candidates.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.id}</TableCell>
-                  <TableCell>{item.provider}</TableCell>
-                  <TableCell>{item.model}</TableCell>
-                  <TableCell>{item.priority}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      {groups.map((g) => (
+        <EditableCard key={g.group} group={g.group} items={g.items} onSave={handleSave} />
+      ))}
     </div>
   );
 }

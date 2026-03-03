@@ -30,6 +30,20 @@ function parseData(raw: string): unknown {
   }
 }
 
+function isTerminalEvent(eventName: string) {
+  return (
+    eventName === "finish" ||
+    eventName === "done" ||
+    eventName === "cancel" ||
+    eventName === "reject" ||
+    eventName === "error"
+  );
+}
+
+function extractDataValue(line: string) {
+  return line.startsWith("data: ") ? line.slice(6) : line.slice(5);
+}
+
 async function readSseStream(response: Response, handlers: StreamHandlers, signal?: AbortSignal) {
   if (!response.body) {
     throw new Error("流式响应为空");
@@ -40,10 +54,13 @@ async function readSseStream(response: Response, handlers: StreamHandlers, signa
   let buffer = "";
   let eventName = "message";
   let dataLines: string[] = [];
+  let hasTerminalEvent = false;
 
-  const dispatchEvent = () => {
-    if (dataLines.length === 0) {
+  const dispatchEvent = (force = false) => {
+    const shouldDispatch = dataLines.length > 0 || (force && isTerminalEvent(eventName));
+    if (!shouldDispatch) {
       eventName = "message";
+      dataLines = [];
       return;
     }
     const raw = dataLines.join("\n");
@@ -64,21 +81,26 @@ async function readSseStream(response: Response, handlers: StreamHandlers, signa
         }
         break;
       case "finish":
+        hasTerminalEvent = true;
         handlers.onFinish?.(payload as CompletionPayload);
         break;
       case "done":
+        hasTerminalEvent = true;
         handlers.onDone?.();
         break;
       case "cancel":
+        hasTerminalEvent = true;
         handlers.onCancel?.(payload as CompletionPayload);
         break;
       case "reject":
+        hasTerminalEvent = true;
         handlers.onReject?.(payload as MessageDeltaPayload);
         break;
       case "title":
         handlers.onTitle?.(payload as { title: string });
         break;
       case "error":
+        hasTerminalEvent = true;
         handlers.onError?.(new Error(String((payload as { error?: string })?.error || payload)));
         break;
       default:
@@ -89,6 +111,24 @@ async function readSseStream(response: Response, handlers: StreamHandlers, signa
     dataLines = [];
   };
 
+  const processLine = (line: string) => {
+    if (!line) {
+      dispatchEvent();
+      return;
+    }
+    if (line.startsWith(":")) {
+      return;
+    }
+    if (line.startsWith("event:")) {
+      const nextEventName = line.slice(6).trim();
+      eventName = nextEventName || "message";
+      return;
+    }
+    if (line.startsWith("data:")) {
+      dataLines.push(extractDataValue(line));
+    }
+  };
+
   while (true) {
     if (signal?.aborted) {
       reader.cancel();
@@ -96,28 +136,27 @@ async function readSseStream(response: Response, handlers: StreamHandlers, signa
     }
     const { value, done } = await reader.read();
     if (done) {
-      dispatchEvent();
+      buffer += decoder.decode();
+      if (buffer) {
+        const trailingLines = buffer.split(/\r?\n/);
+        buffer = "";
+        for (const line of trailingLines) {
+          processLine(line);
+        }
+      }
+      dispatchEvent(true);
       break;
     }
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split(/\r?\n/);
     buffer = lines.pop() ?? "";
     for (const line of lines) {
-      if (!line) {
-        dispatchEvent();
-        continue;
-      }
-      if (line.startsWith(":")) {
-        continue;
-      }
-      if (line.startsWith("event:")) {
-        eventName = line.slice(6).trim();
-        continue;
-      }
-      if (line.startsWith("data:")) {
-        dataLines.push(line.slice(5).trim());
-      }
+      processLine(line);
     }
+  }
+
+  if (!signal?.aborted && !hasTerminalEvent) {
+    handlers.onError?.(new Error("流式连接异常结束"));
   }
 }
 

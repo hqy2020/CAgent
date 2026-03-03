@@ -67,8 +67,8 @@ public class UserContextInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull Object handler) {
-        // 异步调度请求跳过（SSE 完成回调会触发 asyncDispatch，此时 SaToken 上下文已丢失）
-        if (request.getDispatcherType() == DispatcherType.ASYNC) {
+        // 仅在初始 REQUEST 派发阶段读取登录态，避免 SSE 的 ASYNC/ERROR 派发触发 SaToken 上下文缺失
+        if (request.getDispatcherType() != DispatcherType.REQUEST) {
             return true;
         }
         // 预检请求放行，避免 CORS 阻断

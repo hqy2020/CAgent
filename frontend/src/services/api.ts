@@ -1,14 +1,35 @@
-import axios from "axios";
+import axios, { type AxiosInstance, type AxiosRequestConfig } from "axios";
 import { toast } from "sonner";
 
 import { storage } from "@/utils/storage";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 
-export const api = axios.create({
+type DataAxiosInstance = Omit<AxiosInstance, "get" | "delete" | "post" | "put" | "patch"> & {
+  get<T = unknown, R = T, D = unknown>(url: string, config?: AxiosRequestConfig<D>): Promise<R>;
+  delete<T = unknown, R = T, D = unknown>(url: string, config?: AxiosRequestConfig<D>): Promise<R>;
+  post<T = unknown, R = T, D = unknown>(
+    url: string,
+    data?: D,
+    config?: AxiosRequestConfig<D>
+  ): Promise<R>;
+  put<T = unknown, R = T, D = unknown>(
+    url: string,
+    data?: D,
+    config?: AxiosRequestConfig<D>
+  ): Promise<R>;
+  patch<T = unknown, R = T, D = unknown>(
+    url: string,
+    data?: D,
+    config?: AxiosRequestConfig<D>
+  ): Promise<R>;
+};
+
+const rawApi = axios.create({
   baseURL: API_BASE_URL,
   timeout: 60000
 });
+export const api = rawApi as DataAxiosInstance;
 
 export function setAuthToken(token: string | null) {
   if (token) {

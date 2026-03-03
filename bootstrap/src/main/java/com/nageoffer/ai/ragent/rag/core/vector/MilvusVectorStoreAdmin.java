@@ -18,7 +18,7 @@
 package com.nageoffer.ai.ragent.rag.core.vector;
 
 import com.nageoffer.ai.ragent.rag.config.RAGDefaultProperties;
-import com.nageoffer.ai.ragent.framework.exception.kb.VectorCollectionAlreadyExistsException;
+import com.nageoffer.ai.ragent.rag.exception.VectorCollectionAlreadyExistsException;
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.common.ConsistencyLevel;
 import io.milvus.v2.common.DataType;

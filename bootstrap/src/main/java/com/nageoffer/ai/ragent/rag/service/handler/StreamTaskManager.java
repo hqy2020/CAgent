@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.rag.service.handler;
 import cn.hutool.core.util.StrUtil;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
 import com.nageoffer.ai.ragent.rag.enums.SSEEventType;
 import com.nageoffer.ai.ragent.rag.dto.CompletionPayload;
 import com.nageoffer.ai.ragent.framework.web.SseEmitterSender;
@@ -95,9 +96,27 @@ public class StreamTaskManager {
         }
     }
 
+    /**
+     * 创建与指定任务关联的取消令牌
+     * <p>
+     * 令牌与 StreamTaskInfo.cancelled 共享同一个 AtomicBoolean 实例，
+     * 当 cancelLocal() 触发 CAS 后，所有持有该 token 的异步阶段立刻感知取消信号。
+     */
+    public CancellationToken createToken(String taskId) {
+        StreamTaskInfo taskInfo = getOrCreate(taskId);
+        return new CancellationToken(taskInfo.cancelled);
+    }
+
     public boolean isCancelled(String taskId) {
         StreamTaskInfo info = tasks.getIfPresent(taskId);
-        return info != null && info.cancelled.get();
+        if (info == null) {
+            return false;
+        }
+        if (info.cancelled.get()) {
+            return true;
+        }
+        // 本地未取消时，回查 Redis 防止 Pub/Sub 丢消息
+        return isTaskCancelledInRedis(taskId, info);
     }
 
     public void cancel(String taskId) {

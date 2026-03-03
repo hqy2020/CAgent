@@ -36,8 +36,12 @@ build/
 .vscode/
 scripts/logs/
 
+### Secrets ###
+.env
+.env.local
+bootstrap/src/main/resources/application-local.yaml
+
 ### Frontend ###
 node_modules/
 dist/
 .vite/
-.env.local

@@ -15,16 +15,13 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.framework.exception.kb;
-
-import com.nageoffer.ai.ragent.framework.exception.ServiceException;
+package com.nageoffer.ai.ragent.rag.dto;
 
 /**
- * 向量表重复创建异常
+ * 排队状态 SSE 推送载荷
+ *
+ * @param position 当前排队位置（从 1 开始）
+ * @param total    当前队列总长度
  */
-public class VectorCollectionAlreadyExistsException extends ServiceException {
-
-    public VectorCollectionAlreadyExistsException(String collectionName) {
-        super("向量集合已存在，禁止重复创建：" + collectionName);
-    }
+public record QueueStatusPayload(int position, int total) {
 }

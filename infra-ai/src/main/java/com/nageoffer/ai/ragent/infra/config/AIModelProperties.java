@@ -188,6 +188,6 @@ public class AIModelProperties {
         /**
          * 消息分块大小
          */
-        private Integer messageChunkSize = 5;
+        private Integer messageChunkSize = 12;
     }
 }

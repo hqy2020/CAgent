@@ -25,8 +25,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.nageoffer.ai.ragent.infra.util.LLMResponseCleaner;
 import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
-import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
-import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
+import com.nageoffer.ai.ragent.infra.convention.ChatMessage;
+import com.nageoffer.ai.ragent.infra.convention.ChatRequest;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
@@ -37,6 +37,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.QUERY_REWRITE_AND_SPLIT_PROMPT_PATH;
@@ -135,14 +136,32 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
             messages.add(ChatMessage.system(systemPrompt));
         }
 
-        // 只保留最近 1-2 轮的 User 和 Assistant 消息
-        // 过滤掉 System 摘要，避免 Token 浪费
+        // 只保留最近几轮的 User 和 Assistant 消息，过滤掉 System 摘要避免 Token 浪费
         if (CollUtil.isNotEmpty(history)) {
-            List<ChatMessage> recentHistory = history.stream()
+            int maxMessages = ragConfigProperties.getQueryRewriteMaxHistoryMessages();
+            int maxChars = ragConfigProperties.getQueryRewriteMaxHistoryChars();
+
+            List<ChatMessage> filtered = history.stream()
                     .filter(msg -> msg.getRole() == ChatMessage.Role.USER
                             || msg.getRole() == ChatMessage.Role.ASSISTANT)
-                    .skip(Math.max(0, history.size() - 4))  // 最多保留最近 4 条消息（2 轮对话）
                     .toList();
+            List<ChatMessage> recentHistory = filtered.subList(
+                    Math.max(0, filtered.size() - maxMessages), filtered.size());
+
+            // 字符数上限检查：从尾部向头部累计，超过 maxChars 则从头部截断
+            if (maxChars > 0) {
+                int totalChars = 0;
+                int startIndex = recentHistory.size();
+                for (int i = recentHistory.size() - 1; i >= 0; i--) {
+                    totalChars += recentHistory.get(i).getContent().length();
+                    if (totalChars > maxChars) {
+                        break;
+                    }
+                    startIndex = i;
+                }
+                recentHistory = recentHistory.subList(startIndex, recentHistory.size());
+            }
+
             messages.addAll(recentHistory);
         }
 
@@ -168,6 +187,17 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
             }
             JsonObject obj = root.getAsJsonObject();
             String rewrite = obj.has("rewrite") ? obj.get("rewrite").getAsString().trim() : "";
+            if (StrUtil.isBlank(rewrite)) {
+                return null;
+            }
+
+            // 尊重 LLM 的 should_split 决策
+            boolean shouldSplit = obj.has("should_split")
+                    && obj.get("should_split").getAsBoolean();
+            if (!shouldSplit) {
+                return new RewriteResult(rewrite, List.of(rewrite));
+            }
+
             List<String> subs = new ArrayList<>();
             if (obj.has("sub_questions") && obj.get("sub_questions").isJsonArray()) {
                 JsonArray arr = obj.getAsJsonArray("sub_questions");
@@ -180,9 +210,6 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
                     }
                 }
             }
-            if (StrUtil.isBlank(rewrite)) {
-                return null;
-            }
             if (CollUtil.isEmpty(subs)) {
                 subs = List.of(rewrite);
             }
@@ -192,6 +219,9 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
             return null;
         }
     }
+
+    private static final Pattern QUESTION_PATTERN = Pattern.compile(
+            ".*(什么|怎么|如何|为什么|为何|哪|吗|呢|几|多少|是否|能否|可否|有没有|是不是).*");
 
     private List<String> ruleBasedSplit(String question) {
         // 兜底：按常见分隔符拆分
@@ -204,7 +234,15 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
             return List.of(question);
         }
         return parts.stream()
-                .map(s -> s.endsWith("？") || s.endsWith("?") ? s : s + "？")
+                .map(s -> {
+                    if (s.endsWith("？") || s.endsWith("?")) {
+                        return s;
+                    }
+                    if (QUESTION_PATTERN.matcher(s).matches()) {
+                        return s + "？";
+                    }
+                    return s;
+                })
                 .toList();
     }
 }

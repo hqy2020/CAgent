@@ -25,8 +25,9 @@ import com.nageoffer.ai.ragent.rag.config.RAGRateLimitProperties;
 import com.nageoffer.ai.ragent.rag.dto.CompletionPayload;
 import com.nageoffer.ai.ragent.rag.dto.MessageDelta;
 import com.nageoffer.ai.ragent.rag.dto.MetaPayload;
+import com.nageoffer.ai.ragent.rag.dto.QueueStatusPayload;
 import com.nageoffer.ai.ragent.rag.enums.SSEEventType;
-import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
+import com.nageoffer.ai.ragent.infra.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.web.SseEmitterSender;
 import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryService;
@@ -156,6 +157,8 @@ public class ChatQueueLimiter {
         PollNotifier notifier = pollNotifier;
         ScheduledFuture<?>[] futureRef = new ScheduledFuture<?>[1];
 
+        SseEmitterSender queueSender = new SseEmitterSender(emitter);
+
         Runnable poller = () -> {
             if (cancelled.get()) {
                 if (notifier != null) {
@@ -177,6 +180,8 @@ public class ChatQueueLimiter {
                 }
                 return;
             }
+            // 推送排队状态给客户端
+            sendQueueStatus(queue, requestId, queueSender);
             if (tryAcquireIfReady(queue, requestId, permitRef, cancelled, onAcquire)) {
                 if (notifier != null) {
                     notifier.unregister(requestId);
@@ -306,6 +311,20 @@ public class ChatQueueLimiter {
 
     private void publishQueueNotify() {
         redissonClient.getTopic(NOTIFY_TOPIC).publish("permit_released");
+    }
+
+    private void sendQueueStatus(RScoredSortedSet<String> queue, String requestId, SseEmitterSender sender) {
+        try {
+            Integer rank = queue.rank(requestId);
+            if (rank == null) {
+                return;
+            }
+            int position = rank + 1;
+            int total = queue.size();
+            sender.sendEvent(SSEEventType.QUEUE.value(), new QueueStatusPayload(position, total));
+        } catch (Exception ex) {
+            log.debug("推送排队状态失败: {}", ex.getMessage());
+        }
     }
 
     private RejectedContext recordRejectedConversation(String question, String conversationId, String userId) {

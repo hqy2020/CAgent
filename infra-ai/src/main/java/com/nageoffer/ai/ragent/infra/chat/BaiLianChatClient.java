@@ -21,7 +21,7 @@ import cn.hutool.core.collection.CollUtil;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
+import com.nageoffer.ai.ragent.infra.convention.ChatRequest;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.enums.ModelProvider;
@@ -194,9 +194,9 @@ public class BaiLianChatClient implements ChatClient {
     private JsonArray buildMessages(ChatRequest request) {
         JsonArray arr = new JsonArray();
 
-        List<com.nageoffer.ai.ragent.framework.convention.ChatMessage> messages = request.getMessages();
+        List<com.nageoffer.ai.ragent.infra.convention.ChatMessage> messages = request.getMessages();
         if (CollUtil.isNotEmpty(messages)) {
-            for (com.nageoffer.ai.ragent.framework.convention.ChatMessage m : messages) {
+            for (com.nageoffer.ai.ragent.infra.convention.ChatMessage m : messages) {
                 JsonObject msg = new JsonObject();
                 msg.addProperty("role", toOpenAiRole(m.getRole()));
                 msg.addProperty("content", m.getContent());
@@ -207,7 +207,7 @@ public class BaiLianChatClient implements ChatClient {
         return arr;
     }
 
-    private String toOpenAiRole(com.nageoffer.ai.ragent.framework.convention.ChatMessage.Role role) {
+    private String toOpenAiRole(com.nageoffer.ai.ragent.infra.convention.ChatMessage.Role role) {
         return switch (role) {
             case SYSTEM -> "system";
             case USER -> "user";

@@ -18,13 +18,15 @@
 package com.nageoffer.ai.ragent.rag.core.retrieve;
 
 import cn.hutool.core.collection.CollUtil;
-import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
+import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
 import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchChannel;
 import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchChannelResult;
 import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchContext;
 import com.nageoffer.ai.ragent.rag.core.retrieve.postprocessor.SearchResultPostProcessor;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
+import com.nageoffer.ai.ragent.rag.exception.TaskCancelledException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -34,6 +36,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
@@ -64,14 +67,31 @@ public class MultiChannelRetrievalEngine {
      */
     @RagTraceNode(name = "multi-channel-retrieval", type = "RETRIEVE_CHANNEL")
     public List<RetrievedChunk> retrieveKnowledgeChannels(List<SubQuestionIntent> subIntents, int topK) {
+        return retrieveKnowledgeChannels(subIntents, topK, CancellationToken.NONE);
+    }
+
+    /**
+     * 执行多通道检索（支持取消令牌）
+     *
+     * @param subIntents 子问题意图列表
+     * @param topK       期望返回的结果数量
+     * @param token      取消令牌
+     * @return 检索到的 Chunk 列表
+     */
+    public List<RetrievedChunk> retrieveKnowledgeChannels(List<SubQuestionIntent> subIntents, int topK,
+                                                           CancellationToken token) {
+        token.throwIfCancelled();
+
         // 构建检索上下文
         SearchContext context = buildSearchContext(subIntents, topK);
 
         // 【阶段1：多通道并行检索】
-        List<SearchChannelResult> channelResults = executeSearchChannels(context);
+        List<SearchChannelResult> channelResults = executeSearchChannels(context, token);
         if (CollUtil.isEmpty(channelResults)) {
             return List.of();
         }
+
+        token.throwIfCancelled();
 
         // 【阶段2：后置处理器链】
         return executePostProcessors(channelResults, context);
@@ -80,7 +100,7 @@ public class MultiChannelRetrievalEngine {
     /**
      * 执行所有启用的检索通道
      */
-    private List<SearchChannelResult> executeSearchChannels(SearchContext context) {
+    private List<SearchChannelResult> executeSearchChannels(SearchContext context, CancellationToken token) {
         // 过滤启用的通道
         List<SearchChannel> enabledChannels = searchChannels.stream()
                 .filter(channel -> channel.isEnabled(context))
@@ -94,14 +114,20 @@ public class MultiChannelRetrievalEngine {
         log.info("启用的检索通道：{}",
                 enabledChannels.stream().map(SearchChannel::getName).toList());
 
+        token.throwIfCancelled();
+
         // 并行执行所有通道
         List<CompletableFuture<SearchChannelResult>> futures = enabledChannels.stream()
                 .map(channel -> CompletableFuture.supplyAsync(
                         () -> {
+                            token.throwIfCancelled();
                             try {
                                 log.info("执行检索通道：{}", channel.getName());
                                 return channel.search(context);
                             } catch (Exception e) {
+                                if (e instanceof TaskCancelledException) {
+                                    throw e;
+                                }
                                 log.error("检索通道 {} 执行失败", channel.getName(), e);
                                 return SearchChannelResult.builder()
                                         .channelType(channel.getType())
@@ -120,17 +146,21 @@ public class MultiChannelRetrievalEngine {
         int failureCount = 0;
         int totalChunks = 0;
 
-        List<SearchChannelResult> results = futures.stream()
-                .map(future -> {
-                    try {
-                        return future.join();
-                    } catch (Exception e) {
-                        log.error("获取通道检索结果失败", e);
-                        return null;
-                    }
-                })
-                .filter(Objects::nonNull)
-                .toList();
+        List<SearchChannelResult> results = new java.util.ArrayList<>();
+        for (CompletableFuture<SearchChannelResult> future : futures) {
+            token.throwIfCancelled();
+            try {
+                SearchChannelResult result = future.join();
+                if (result != null) {
+                    results.add(result);
+                }
+            } catch (CompletionException e) {
+                if (e.getCause() instanceof TaskCancelledException) {
+                    throw (TaskCancelledException) e.getCause();
+                }
+                log.error("获取通道检索结果失败", e);
+            }
+        }
 
         // 打印详细统计信息
         for (SearchChannelResult result : results) {

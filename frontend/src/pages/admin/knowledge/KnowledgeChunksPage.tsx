@@ -339,14 +339,24 @@ export function KnowledgeChunksPage() {
                     <TableCell>{chunk.charCount ?? "-"}</TableCell>
                     <TableCell>{chunk.tokenCount ?? "-"}</TableCell>
                     <TableCell>{formatDate(chunk.updateTime)}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
+                    <TableCell className="text-left">
+                      <div className="flex justify-start gap-2">
                         <Button size="sm" variant="outline" onClick={() => setEditDialog({ open: true, chunk })}>
                           <PenSquare className="mr-0.1 h-4 w-4" />
                           编辑
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => handleToggleEnabled(chunk)}>
-                          {chunk.enabled === 1 ? "禁用" : "启用"}
+                          {chunk.enabled === 1 ? (
+                            <>
+                              <ShieldX className="mr-1 h-4 w-4" />
+                              禁用
+                            </>
+                          ) : (
+                            <>
+                              <ShieldCheck className="mr-1 h-4 w-4" />
+                              启用
+                            </>
+                          )}
                         </Button>
                         <Button
                           size="sm"

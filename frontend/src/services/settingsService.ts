@@ -72,3 +72,30 @@ export interface ModelCandidate {
 export async function getSystemSettings(): Promise<SystemSettings> {
   return api.get<SystemSettings, SystemSettings>("/rag/settings");
 }
+
+// ─── 可编辑配置 API ───
+
+export interface ConfigItem {
+  key: string;
+  value: string;
+  valueType: string;
+  description: string;
+}
+
+export interface ConfigGroup {
+  group: string;
+  groupLabel: string;
+  items: ConfigItem[];
+}
+
+export async function getEditableConfigs(): Promise<ConfigGroup[]> {
+  return api.get<ConfigGroup[], ConfigGroup[]>("/system/configs");
+}
+
+export async function updateConfigGroup(group: string, data: Record<string, string>): Promise<void> {
+  return api.put(`/system/configs/${group}`, data);
+}
+
+export async function initConfigFromYaml(): Promise<void> {
+  return api.post("/system/configs/init-from-yaml");
+}

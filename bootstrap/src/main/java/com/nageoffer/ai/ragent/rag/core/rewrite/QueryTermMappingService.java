@@ -45,9 +45,9 @@ public class QueryTermMappingService {
                 Wrappers.lambdaQuery(QueryTermMappingDO.class)
                         .eq(QueryTermMappingDO::getEnabled, 1)
         );
-        // 建议：优先级高的在前，sourceTerm 更长的在前，避免短词先替换把长词打断
+        // 建议：优先级高的（数值小）在前，sourceTerm 更长的在前，避免短词先替换把长词打断
         dbList.sort(Comparator
-                .comparing(QueryTermMappingDO::getPriority, Comparator.nullsLast(Integer::compareTo)).reversed()
+                .comparing(QueryTermMappingDO::getPriority, Comparator.nullsLast(Integer::compareTo))
                 .thenComparing(m -> m.getSourceTerm() == null ? 0 : m.getSourceTerm().length(), Comparator.reverseOrder())
         );
         cachedMappings = dbList;

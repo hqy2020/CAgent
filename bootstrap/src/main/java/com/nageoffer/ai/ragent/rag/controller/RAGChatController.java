@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.rag.controller;
 
 import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.idempotent.IdempotentSubmit;
+import com.nageoffer.ai.ragent.framework.trace.RagTraceRoot;
 import com.nageoffer.ai.ragent.framework.web.Results;
 import com.nageoffer.ai.ragent.rag.service.RAGChatService;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +46,7 @@ public class RAGChatController {
             key = "T(com.nageoffer.ai.ragent.framework.context.UserContext).getUserId()",
             message = "当前会话处理中，请稍后再发起新的对话"
     )
+    @RagTraceRoot(name = "chat", conversationIdArg = "conversationId", taskIdArg = "?")
     @GetMapping(value = "/rag/v3/chat", produces = "text/event-stream;charset=UTF-8")
     public SseEmitter chat(@RequestParam String question,
                            @RequestParam(required = false) String conversationId,

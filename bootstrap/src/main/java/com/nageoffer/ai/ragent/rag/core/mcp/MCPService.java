@@ -17,6 +17,8 @@
 
 package com.nageoffer.ai.ragent.rag.core.mcp;
 
+import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
+
 import java.util.List;
 
 /**
@@ -44,6 +46,17 @@ public interface MCPService {
      * @return MCP 响应列表（顺序与请求一致）
      */
     List<MCPResponse> executeBatch(List<MCPRequest> requests);
+
+    /**
+     * 批量执行多个工具调用（并行），支持取消令牌
+     *
+     * @param requests MCP 请求列表
+     * @param token    取消令牌，用于在用户取消时提前终止执行
+     * @return MCP 响应列表（顺序与请求一致）
+     */
+    default List<MCPResponse> executeBatch(List<MCPRequest> requests, CancellationToken token) {
+        return executeBatch(requests);
+    }
 
     /**
      * 获取所有可用的工具定义

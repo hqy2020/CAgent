@@ -28,8 +28,8 @@ spring:
   data:
     redis:
       host: 127.0.0.1
-      port: 16379
-      password: ragent123
+      port: 6379
+      password: 123456
 
 milvus:
   uri: http://localhost:19530
@@ -200,9 +200,9 @@ ai:
         priority: 100
 
 rustfs:
-  url: http://localhost:19000
-  access-key-id: minioadmin
-  secret-access-key: minioadmin
+  url: http://localhost:9000
+  access-key-id: rustfsadmin
+  secret-access-key: rustfsadmin
 
 sa-token:
   token-name: Authorization

@@ -26,6 +26,7 @@
         <redisson.version>4.0.0</redisson.version>
         <okhttp.version>4.12.0</okhttp.version>
         <spotless-maven-plugin.version>2.22.1</spotless-maven-plugin.version>
+        <excludeTags>live</excludeTags>
     </properties>
 
     <modules>
@@ -227,6 +228,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <argLine>-javaagent:${org.mockito:mockito-core:jar}</argLine>
+                    <excludedGroups>${excludeTags}</excludedGroups>
                 </configuration>
             </plugin>
 

@@ -17,7 +17,7 @@
 
 package com.nageoffer.ai.ragent.rag.core.retrieve.postprocessor;
 
-import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchChannelResult;
 import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchChannelType;
 import com.nageoffer.ai.ragent.rag.core.retrieve.channel.SearchContext;
@@ -92,9 +92,13 @@ public class DeduplicationPostProcessor implements SearchResultPostProcessor {
      */
     private String generateChunkKey(RetrievedChunk chunk) {
         // 基于 id 或内容哈希生成唯一键
-        return chunk.getId() != null
-                ? chunk.getId()
-                : String.valueOf(chunk.getText().hashCode());
+        if (chunk.getId() != null) {
+            return chunk.getId();
+        }
+        String text = chunk.getText();
+        return text != null
+                ? String.valueOf(text.hashCode())
+                : String.valueOf(System.identityHashCode(chunk));
     }
 
     /**

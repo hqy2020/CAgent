@@ -18,7 +18,7 @@
 package com.nageoffer.ai.ragent.rag.dto;
 
 import cn.hutool.core.util.StrUtil;
-import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
 import lombok.Builder;
 import lombok.Data;
 

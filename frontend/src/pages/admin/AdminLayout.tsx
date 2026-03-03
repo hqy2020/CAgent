@@ -6,6 +6,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   ClipboardList,
+  Cpu,
   Database,
   GitBranch,
   Github,
@@ -139,6 +140,11 @@ const menuGroups: MenuGroup[] = [
         icon: Lightbulb
       },
       {
+        path: "/admin/models",
+        label: "模型管理",
+        icon: Cpu
+      },
+      {
         path: "/admin/settings",
         label: "系统设置",
         icon: Settings
@@ -155,6 +161,7 @@ const breadcrumbMap: Record<string, string> = {
   ingestion: "数据通道",
   traces: "链路追踪",
   "sample-questions": "示例问题",
+  models: "模型管理",
   settings: "系统设置",
   users: "用户管理"
 };

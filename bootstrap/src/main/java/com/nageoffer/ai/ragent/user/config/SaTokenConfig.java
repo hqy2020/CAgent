@@ -70,10 +70,6 @@ public class SaTokenConfig implements WebMvcConfigurer {
                             return;
                         }
 
-                        // SSE 流式请求排除登录检查（在Controller层手动处理）
-                        if (uri.contains("/rag/v3/chat")) {
-                            return;
-                        }
                     }
                     // 执行登录检查
                     StpUtil.checkLogin();
@@ -81,13 +77,13 @@ public class SaTokenConfig implements WebMvcConfigurer {
                 // 拦截所有路径
                 .addPathPatterns("/**")
                 // 排除认证相关路径
-                .excludePathPatterns("/auth/**", "/user/auth/**", "/rag/v3/chat");
+                .excludePathPatterns("/auth/**", "/user/auth/**");
 
         // 注册用户上下文拦截器
         registry.addInterceptor(userContextInterceptor)
                 // 拦截所有路径
                 .addPathPatterns("/**")
                 // 排除认证相关路径
-                .excludePathPatterns("/auth/**", "/user/auth/**", "/rag/v3/chat");
+                .excludePathPatterns("/auth/**", "/user/auth/**");
     }
 }

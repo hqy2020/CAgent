@@ -24,7 +24,7 @@ import com.nageoffer.ai.ragent.rag.dto.MessageDelta;
 import com.nageoffer.ai.ragent.rag.dto.MetaPayload;
 import com.nageoffer.ai.ragent.rag.enums.SSEEventType;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
-import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
+import com.nageoffer.ai.ragent.infra.convention.ChatMessage;
 import com.nageoffer.ai.ragent.framework.web.SseEmitterSender;
 import com.nageoffer.ai.ragent.infra.chat.StreamCallback;
 import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
@@ -32,6 +32,7 @@ import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryService;
 import com.nageoffer.ai.ragent.rag.service.ConversationGroupService;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.Map;
 import java.util.Optional;
 
 public class StreamChatEventHandler implements StreamCallback {
@@ -141,7 +142,7 @@ public class StreamChatEventHandler implements StreamCallback {
         if (taskManager.isCancelled(taskId)) {
             return;
         }
-        Long messageId = memoryService.append(conversationId, UserContext.getUserId(),
+        Long messageId = memoryService.append(conversationId, userId,
                 ChatMessage.assistant(answer.toString()));
         String title = resolveTitleForEvent();
         String messageIdText = messageId == null ? null : String.valueOf(messageId);
@@ -156,8 +157,17 @@ public class StreamChatEventHandler implements StreamCallback {
         if (taskManager.isCancelled(taskId)) {
             return;
         }
+        sender.sendEvent(SSEEventType.ERROR.value(), Map.of("error", buildErrorMessage(t)));
+        sender.sendEvent(SSEEventType.DONE.value(), "[DONE]");
         taskManager.unregister(taskId);
-        sender.fail(t);
+        sender.complete();
+    }
+
+    private String buildErrorMessage(Throwable t) {
+        if (t == null || StrUtil.isBlank(t.getMessage())) {
+            return "生成失败，请稍后再试";
+        }
+        return t.getMessage();
     }
 
     private void sendChunked(String type, String content) {

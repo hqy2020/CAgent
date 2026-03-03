@@ -28,8 +28,8 @@ import com.google.gson.JsonParser;
 import com.nageoffer.ai.ragent.infra.util.LLMResponseCleaner;
 import com.nageoffer.ai.ragent.rag.dao.entity.IntentNodeDO;
 import com.nageoffer.ai.ragent.rag.dao.mapper.IntentNodeMapper;
-import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
-import com.nageoffer.ai.ragent.framework.convention.ChatRequest;
+import com.nageoffer.ai.ragent.infra.convention.ChatMessage;
+import com.nageoffer.ai.ragent.infra.convention.ChatRequest;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import jakarta.annotation.PostConstruct;
@@ -63,6 +63,10 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
     private final PromptTemplateLoader promptTemplateLoader;
     private final IntentTreeCacheManager intentTreeCacheManager;
 
+    private volatile IntentTreeData cachedTreeData;
+    private volatile long cachedTreeDataTimestamp;
+    private static final long LOCAL_CACHE_TTL_MS = 5_000;
+
     @PostConstruct
     public void init() {
         // 初始化时确保Redis缓存存在
@@ -89,6 +93,12 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
      * 每次调用都会重新从Redis读取，确保数据是最新的
      */
     private IntentTreeData loadIntentTreeData() {
+        // 检查本地缓存是否命中
+        IntentTreeData cached = cachedTreeData;
+        if (cached != null && (System.currentTimeMillis() - cachedTreeDataTimestamp) < LOCAL_CACHE_TTL_MS) {
+            return cached;
+        }
+
         // 1. 从Redis读取（如果不存在会自动从数据库加载）
         List<IntentNode> roots = intentTreeCacheManager.getIntentTreeFromCache();
 
@@ -114,7 +124,10 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
 
         log.debug("意图树数据加载完成, 总节点数: {}, 叶子节点数: {}", allNodes.size(), leafNodes.size());
 
-        return new IntentTreeData(allNodes, leafNodes, id2Node);
+        IntentTreeData result = new IntentTreeData(allNodes, leafNodes, id2Node);
+        cachedTreeData = result;
+        cachedTreeDataTimestamp = System.currentTimeMillis();
+        return result;
     }
 
     @Override
@@ -212,15 +225,19 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
             // 降序排序
             scores.sort(Comparator.comparingDouble(NodeScore::getScore).reversed());
 
-            log.info("当前问题：{}\n意图识别树如下所示：{}\n",
-                    question,
-                    JSONUtil.toJsonPrettyStr(
-                            scores.stream().peek(each -> {
-                                IntentNode node = each.getNode();
-                                node.setChildren(null);
-                            }).collect(Collectors.toList())
-                    )
-            );
+            if (log.isInfoEnabled()) {
+                List<Map<String, Object>> logEntries = scores.stream().map(each -> {
+                    IntentNode n = each.getNode();
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("id", n.getId());
+                    m.put("name", n.getName());
+                    m.put("fullPath", n.getFullPath());
+                    m.put("kind", n.getKind());
+                    m.put("score", each.getScore());
+                    return m;
+                }).toList();
+                log.info("当前问题：{}\n意图识别结果：{}\n", question, JSONUtil.toJsonPrettyStr(logEntries));
+            }
             return scores;
         } catch (Exception e) {
             log.warn("解析 LLM 响应失败, 原始内容: {}", raw, e);
@@ -287,6 +304,7 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
         List<IntentNodeDO> intentNodeDOList = intentNodeMapper.selectList(
                 Wrappers.lambdaQuery(IntentNodeDO.class)
                         .eq(IntentNodeDO::getDeleted, 0)
+                        .eq(IntentNodeDO::getEnabled, 1)
         );
 
         if (intentNodeDOList.isEmpty()) {

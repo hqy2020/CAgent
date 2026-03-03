@@ -398,3 +398,58 @@ CREATE TABLE `t_user`
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_user_username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统用户表';
+
+CREATE TABLE `t_ai_model_provider`
+(
+    `id`           bigint(20) NOT NULL COMMENT '主键ID',
+    `provider_key` varchar(64)  NOT NULL COMMENT '提供方标识，如 ollama、siliconflow',
+    `name`         varchar(128) NOT NULL COMMENT '显示名称',
+    `base_url`     varchar(512)          DEFAULT NULL COMMENT '基础URL',
+    `api_key`      varchar(512)          DEFAULT NULL COMMENT 'API密钥',
+    `endpoints`    json                  DEFAULT NULL COMMENT '端点映射JSON，如 {"chat":"/v1/chat"}',
+    `enabled`      tinyint(1) NOT NULL DEFAULT '1' COMMENT '是否启用 1：启用 0：禁用',
+    `sort_order`   int(11) NOT NULL DEFAULT '0' COMMENT '排序',
+    `create_time`  datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time`  datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted`      tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否删除 0：正常 1：删除',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_provider_key` (`provider_key`, `deleted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI模型服务提供方';
+
+CREATE TABLE `t_ai_model_candidate`
+(
+    `id`                bigint(20) NOT NULL COMMENT '主键ID',
+    `model_id`          varchar(128) NOT NULL COMMENT '模型唯一标识，如 minimax-m2.5',
+    `model_type`        varchar(32)  NOT NULL COMMENT '模型类型：chat / embedding / rerank',
+    `provider_key`      varchar(64)  NOT NULL COMMENT '关联提供方标识',
+    `model_name`        varchar(256) NOT NULL COMMENT '模型名称',
+    `custom_url`        varchar(512)          DEFAULT NULL COMMENT '自定义URL（可选）',
+    `dimension`         int(11) DEFAULT NULL COMMENT '向量维度（embedding专用）',
+    `priority`          int(11) NOT NULL DEFAULT '100' COMMENT '优先级，数值越小越高',
+    `enabled`           tinyint(1) NOT NULL DEFAULT '1' COMMENT '是否启用 1：启用 0：禁用',
+    `supports_thinking` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否支持思考链（chat专用）',
+    `is_default`        tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否为默认模型',
+    `is_deep_thinking`  tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否为深度思考默认模型',
+    `create_time`       datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time`       datetime     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted`           tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否删除 0：正常 1：删除',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_model_id` (`model_id`, `deleted`),
+    KEY                 `idx_model_type` (`model_type`),
+    KEY                 `idx_provider_key` (`provider_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI模型候选配置';
+
+CREATE TABLE `t_system_config`
+(
+    `id`           bigint(20) NOT NULL COMMENT '主键ID',
+    `config_group` varchar(64)   NOT NULL COMMENT '配置分组，如 rag.memory',
+    `config_key`   varchar(128)  NOT NULL COMMENT '配置键，如 historyKeepTurns',
+    `config_value` varchar(2048)          DEFAULT NULL COMMENT '配置值',
+    `value_type`   varchar(32)   NOT NULL DEFAULT 'STRING' COMMENT '值类型：STRING/INTEGER/BOOLEAN/LONG',
+    `description`  varchar(512)           DEFAULT NULL COMMENT '配置说明',
+    `create_time`  datetime      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time`  datetime      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted`      tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否删除 0：正常 1：删除',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_group_key` (`config_group`, `config_key`, `deleted`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统配置表';

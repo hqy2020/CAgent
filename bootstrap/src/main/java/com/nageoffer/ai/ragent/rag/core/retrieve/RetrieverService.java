@@ -17,7 +17,7 @@
 
 package com.nageoffer.ai.ragent.rag.core.retrieve;
 
-import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
 
 import java.util.List;
 

@@ -23,6 +23,7 @@ import com.nageoffer.ai.ragent.rag.core.intent.IntentTreeFactory;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -30,6 +31,7 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
+@Profile("live")
 @RequiredArgsConstructor
 public class VectorIntentClassifier {
 
@@ -158,4 +160,3 @@ public class VectorIntentClassifier {
     ) {
     }
 }
-

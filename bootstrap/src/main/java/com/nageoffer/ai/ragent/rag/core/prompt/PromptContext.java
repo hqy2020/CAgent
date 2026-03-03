@@ -18,7 +18,7 @@
 package com.nageoffer.ai.ragent.rag.core.prompt;
 
 import cn.hutool.core.util.StrUtil;
-import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import lombok.Builder;
 import lombok.Data;

@@ -17,7 +17,7 @@
 
 package com.nageoffer.ai.ragent.rag.dto;
 
-import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
 
 import java.util.List;
 import java.util.Map;

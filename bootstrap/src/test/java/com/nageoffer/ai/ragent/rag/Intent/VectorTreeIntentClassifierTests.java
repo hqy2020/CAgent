@@ -20,14 +20,18 @@ package com.nageoffer.ai.ragent.rag.intent;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.util.List;
 
 @Slf4j
+@Tag("live")
 @SpringBootTest
+@ActiveProfiles("live")
 @RequiredArgsConstructor(onConstructor = @__(@Autowired))
 public class VectorTreeIntentClassifierTests {
 
@@ -116,4 +120,3 @@ public class VectorTreeIntentClassifierTests {
         return node.getFullPath() != null ? node.getFullPath() : node.getName();
     }
 }
-

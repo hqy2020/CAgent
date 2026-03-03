@@ -17,7 +17,7 @@
 
 package com.nageoffer.ai.ragent.rag.core.rewrite;
 
-import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
+import com.nageoffer.ai.ragent.infra.convention.ChatMessage;
 
 import java.util.List;
 

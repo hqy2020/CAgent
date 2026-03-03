@@ -127,6 +127,8 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     private int overlapChars;
     @Value("${rag.knowledge.schedule.min-interval-seconds:60}")
     private long scheduleMinIntervalSeconds;
+    @Value("${rag.knowledge.chunk.running-stale-minutes:10}")
+    private long runningStaleMinutes;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -235,7 +237,16 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             txTemplate.executeWithoutResult(status -> {
                 KnowledgeDocumentDO documentDO = docMapper.selectById(docId);
                 Assert.notNull(documentDO, () -> new ClientException("文档不存在"));
-                Assert.isTrue(!DocumentStatus.RUNNING.getCode().equals(documentDO.getStatus()), () -> new ClientException("文档分块进行中"));
+                if (DocumentStatus.RUNNING.getCode().equals(documentDO.getStatus())) {
+                    if (isRunningStale(documentDO)) {
+                        log.warn("检测到陈旧 running 状态，自动重置为 failed 并继续重试分块: docId={}, updateTime={}",
+                                docId, documentDO.getUpdateTime());
+                        markDocumentFailedInPlace(documentDO.getId());
+                        documentDO.setStatus(DocumentStatus.FAILED.getCode());
+                    } else {
+                        throw new ClientException("文档分块进行中");
+                    }
+                }
 
                 // 允许重复分块：如果已经分块过，先删除历史分块记录
                 boolean alreadyChunked = knowledgeChunkService.existsByDocId(docId);
@@ -725,6 +736,25 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         doc.setStatus(DocumentStatus.RUNNING.getCode());
         doc.setUpdatedBy(UserContext.getUsername());
         docMapper.updateById(doc);
+    }
+
+    private boolean isRunningStale(KnowledgeDocumentDO documentDO) {
+        if (documentDO == null || documentDO.getUpdateTime() == null || runningStaleMinutes <= 0) {
+            return false;
+        }
+        long staleMs = TimeUnit.MINUTES.toMillis(runningStaleMinutes);
+        return System.currentTimeMillis() - documentDO.getUpdateTime().getTime() >= staleMs;
+    }
+
+    private void markDocumentFailedInPlace(Long docId) {
+        if (docId == null) {
+            return;
+        }
+        KnowledgeDocumentDO update = new KnowledgeDocumentDO();
+        update.setId(docId);
+        update.setStatus(DocumentStatus.FAILED.getCode());
+        update.setUpdatedBy(UserContext.getUsername());
+        docMapper.updateById(update);
     }
 
     private SourceType normalizeSourceType(String sourceType, MultipartFile file) {

@@ -17,7 +17,7 @@
 
 package com.nageoffer.ai.ragent.infra.rerank;
 
-import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.infra.model.ModelTarget;
 
 import java.util.List;

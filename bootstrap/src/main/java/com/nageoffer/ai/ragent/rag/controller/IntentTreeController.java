@@ -23,6 +23,7 @@ import com.nageoffer.ai.ragent.rag.controller.vo.IntentNodeTreeVO;
 import com.nageoffer.ai.ragent.rag.controller.request.IntentNodeUpdateRequest;
 import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
+import com.nageoffer.ai.ragent.ingestion.service.IntentTreeBootstrapService;
 import com.nageoffer.ai.ragent.ingestion.service.IntentTreeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -44,6 +45,7 @@ import java.util.List;
 public class IntentTreeController {
 
     private final IntentTreeService intentTreeService;
+    private final IntentTreeBootstrapService intentTreeBootstrapService;
 
     /**
      * 获取完整的意图节点树
@@ -59,6 +61,14 @@ public class IntentTreeController {
     @PostMapping("/intent-tree")
     public Result<String> createNode(@RequestBody IntentNodeCreateRequest requestParam) {
         return Results.success(intentTreeService.createNode(requestParam));
+    }
+
+    /**
+     * 手动触发意图树初始化（幂等）
+     */
+    @PostMapping("/intent-tree/init")
+    public Result<Integer> init() {
+        return Results.success(intentTreeBootstrapService.initializeManually());
     }
 
     /**

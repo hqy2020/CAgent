@@ -5,6 +5,7 @@ services:
     container_name: ragent-etcd
     image: quay.io/coreos/etcd:v3.5.18
     platform: linux/amd64
+    restart: unless-stopped
     environment:
       - ETCD_AUTO_COMPACTION_MODE=revision
       - ETCD_AUTO_COMPACTION_RETENTION=1000
@@ -12,7 +13,7 @@ services:
       - ETCD_SNAPSHOT_COUNT=50000
     command: >
       etcd
-      -advertise-client-urls=http://127.0.0.1:2379
+      -advertise-client-urls=http://ragent-etcd:2379
       -listen-client-urls http://0.0.0.0:2379
       --data-dir /etcd
     ports:
@@ -25,16 +26,48 @@ services:
       timeout: 20s
       retries: 3
 
+  rustfs:
+    container_name: ragent-rustfs
+    image: rustfs/rustfs:1.0.0-alpha.72
+    platform: linux/amd64
+    restart: unless-stopped
+    command:
+      - "--address"
+      - ":9000"
+      - "--console-enable"
+      - "--access-key"
+      - "rustfsadmin"
+      - "--secret-key"
+      - "rustfsadmin"
+      - "/data"
+    environment:
+      - RUSTFS_ACCESS_KEY=rustfsadmin
+      - RUSTFS_SECRET_KEY=rustfsadmin
+      - RUSTFS_CONSOLE_ENABLE=true
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ragent-rustfs-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-s", "-o", "/dev/null", "http://localhost:9000/"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
   standalone:
     image: milvusdb/milvus:v2.6.6
     container_name: ragent-milvus
     platform: linux/amd64
+    restart: unless-stopped
     command: ["milvus", "run", "standalone"]
     security_opt:
       - seccomp:unconfined
     environment:
       ETCD_ENDPOINTS: ragent-etcd:2379
-      MINIO_ADDRESS: minio:9000
+      MINIO_ADDRESS: ragent-rustfs:9000
+      MINIO_ACCESS_KEY_ID: rustfsadmin
+      MINIO_SECRET_ACCESS_KEY: rustfsadmin
     ports:
       - "19530:19530"
       - "9091:9091"
@@ -42,6 +75,7 @@ services:
       - ragent-milvus-data:/var/lib/milvus
     depends_on:
       - etcd
+      - rustfs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
       interval: 30s
@@ -52,3 +86,4 @@ services:
 volumes:
   ragent-etcd-data:
   ragent-milvus-data:
+  ragent-rustfs-data:

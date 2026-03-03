@@ -17,7 +17,7 @@
 
 package com.nageoffer.ai.ragent.rag.core.memory;
 
-import com.nageoffer.ai.ragent.framework.convention.ChatMessage;
+import com.nageoffer.ai.ragent.infra.convention.ChatMessage;
 
 public interface ConversationMemorySummaryService {
 

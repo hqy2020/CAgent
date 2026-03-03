@@ -53,6 +53,14 @@ public class RAGConstant {
     public static final int MAX_INTENT_COUNT = 3;
 
     /**
+     * 意图识别超时时间（秒）
+     * <p>
+     * 单个子问题的 LLM 意图分类调用上限，超时后降级为空结果以保护 SSE 连接
+     * </p>
+     */
+    public static final int INTENT_CLASSIFY_TIMEOUT_SECONDS = 30;
+
+    /**
      * Rerank 分数过滤的边际比率（相对于最高分）
      */
     public static final double SCORE_MARGIN_RATIO = 0.75;

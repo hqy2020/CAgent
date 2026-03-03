@@ -230,22 +230,29 @@ export function KnowledgeDocumentsPage() {
     if (!kbId || batchChunking) return;
     setBatchChunking(true);
     try {
-      const pendingDocs: KnowledgeDocument[] = [];
-      let current = 1;
-      let pages = 1;
-      do {
-        const page = await getDocumentsPage(kbId, {
-          pageNo: current,
-          pageSize: 100,
-          status: "pending"
-        });
-        pendingDocs.push(...(page.records || []));
-        pages = page.pages || 1;
-        current += 1;
-      } while (current <= pages);
+      const pendingStatuses = ["pending", "pending_manual"] as const;
+      const pendingDocMap = new Map<string, KnowledgeDocument>();
+
+      for (const status of pendingStatuses) {
+        let current = 1;
+        let pages = 1;
+        do {
+          const page = await getDocumentsPage(kbId, {
+            pageNo: current,
+            pageSize: 100,
+            status
+          });
+          for (const doc of page.records || []) {
+            pendingDocMap.set(String(doc.id), doc);
+          }
+          pages = page.pages || 1;
+          current += 1;
+        } while (current <= pages);
+      }
+      const pendingDocs = Array.from(pendingDocMap.values());
 
       if (pendingDocs.length === 0) {
-        toast.info("当前没有 pending 文档");
+        toast.info("当前没有 pending / pending_manual 文档");
         return;
       }
 
@@ -917,9 +924,9 @@ const uploadSchema = z
   .object({
     sourceType: z.enum(["file", "url"]),
     sourceLocation: z.string().optional(),
-    scheduleEnabled: z.boolean().default(false),
+    scheduleEnabled: z.boolean(),
     scheduleCron: z.string().optional(),
-    processMode: z.enum(["chunk", "pipeline"]).default("chunk"),
+    processMode: z.enum(["chunk", "pipeline"]),
     chunkStrategy: z.enum(["fixed_size", "structure_aware"]).optional(),
     pipelineId: z.string().optional(),
     chunkSize: z.string().optional(),
@@ -1119,11 +1126,11 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
       const payload: KnowledgeDocumentUploadPayload = {
         sourceType: values.sourceType,
         file: values.sourceType === "file" ? file : null,
-        sourceLocation: values.sourceType === "url" ? values.sourceLocation.trim() : null,
+        sourceLocation: values.sourceType === "url" ? (values.sourceLocation ?? "").trim() : null,
         scheduleEnabled: values.sourceType === "url" ? values.scheduleEnabled : false,
         scheduleCron:
           values.sourceType === "url" && values.scheduleEnabled
-            ? values.scheduleCron.trim()
+            ? (values.scheduleCron ?? "").trim()
             : null,
         processMode: values.processMode,
         chunkStrategy: values.processMode === "chunk" ? values.chunkStrategy : undefined,

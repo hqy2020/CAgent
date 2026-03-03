@@ -19,11 +19,12 @@ package com.nageoffer.ai.ragent.rag.core.retrieve;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
+import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
 import com.nageoffer.ai.ragent.rag.dto.KbResult;
 import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import com.nageoffer.ai.ragent.rag.enums.IntentKind;
-import com.nageoffer.ai.ragent.framework.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
@@ -35,6 +36,7 @@ import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPToolExecutor;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPToolRegistry;
 import com.nageoffer.ai.ragent.rag.core.prompt.ContextFormatter;
+import com.nageoffer.ai.ragent.rag.exception.TaskCancelledException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -45,6 +47,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 
@@ -78,6 +81,13 @@ public class RetrievalEngine {
      */
     @RagTraceNode(name = "retrieval-engine", type = "RETRIEVE")
     public RetrievalContext retrieve(List<SubQuestionIntent> subIntents, int topK) {
+        return retrieve(subIntents, topK, CancellationToken.NONE);
+    }
+
+    /**
+     * 检索方法（支持取消令牌）
+     */
+    public RetrievalContext retrieve(List<SubQuestionIntent> subIntents, int topK, CancellationToken token) {
         if (CollUtil.isEmpty(subIntents)) {
             return RetrievalContext.builder()
                     .mcpContext("")
@@ -86,19 +96,35 @@ public class RetrievalEngine {
                     .build();
         }
 
+        token.throwIfCancelled();
+
         int finalTopK = topK > 0 ? topK : DEFAULT_TOP_K;
         List<CompletableFuture<SubQuestionContext>> tasks = subIntents.stream()
                 .map(si -> CompletableFuture.supplyAsync(
-                        () -> buildSubQuestionContext(
-                                si,
-                                resolveSubQuestionTopK(si, finalTopK)
-                        ),
+                        () -> {
+                            token.throwIfCancelled();
+                            return buildSubQuestionContext(
+                                    si,
+                                    resolveSubQuestionTopK(si, finalTopK),
+                                    token
+                            );
+                        },
                         ragContextExecutor
                 ))
                 .toList();
-        List<SubQuestionContext> contexts = tasks.stream()
-                .map(CompletableFuture::join)
-                .toList();
+
+        List<SubQuestionContext> contexts = new java.util.ArrayList<>(tasks.size());
+        for (CompletableFuture<SubQuestionContext> task : tasks) {
+            token.throwIfCancelled();
+            try {
+                contexts.add(task.join());
+            } catch (CompletionException e) {
+                if (e.getCause() instanceof TaskCancelledException) {
+                    throw (TaskCancelledException) e.getCause();
+                }
+                throw e;
+            }
+        }
 
         StringBuilder kbBuilder = new StringBuilder();
         StringBuilder mcpBuilder = new StringBuilder();
@@ -123,14 +149,14 @@ public class RetrievalEngine {
                 .build();
     }
 
-    private SubQuestionContext buildSubQuestionContext(SubQuestionIntent intent, int topK) {
+    private SubQuestionContext buildSubQuestionContext(SubQuestionIntent intent, int topK, CancellationToken token) {
         List<NodeScore> kbIntents = filterKbIntents(intent.nodeScores());
         List<NodeScore> mcpIntents = filterMCPIntents(intent.nodeScores());
 
-        KbResult kbResult = retrieveAndRerank(intent, kbIntents, topK);
+        KbResult kbResult = retrieveAndRerank(intent, kbIntents, topK, token);
 
         String mcpContext = CollUtil.isNotEmpty(mcpIntents)
-                ? executeMcpAndMerge(intent.subQuestion(), mcpIntents)
+                ? executeMcpAndMerge(intent.subQuestion(), mcpIntents, token)
                 : "";
 
         return new SubQuestionContext(intent.subQuestion(), kbResult.groupedContext(), mcpContext, kbResult.intentChunks());
@@ -180,12 +206,12 @@ public class RetrievalEngine {
                 .toList();
     }
 
-    private String executeMcpAndMerge(String question, List<NodeScore> mcpIntents) {
+    private String executeMcpAndMerge(String question, List<NodeScore> mcpIntents, CancellationToken token) {
         if (CollUtil.isEmpty(mcpIntents)) {
             return "";
         }
 
-        List<MCPResponse> responses = executeMcpTools(question, mcpIntents);
+        List<MCPResponse> responses = executeMcpTools(question, mcpIntents, token);
         if (responses.isEmpty() || responses.stream().noneMatch(MCPResponse::isSuccess)) {
             return "";
         }
@@ -193,10 +219,11 @@ public class RetrievalEngine {
         return contextFormatter.formatMcpContext(responses, mcpIntents);
     }
 
-    private KbResult retrieveAndRerank(SubQuestionIntent intent, List<NodeScore> kbIntents, int topK) {
+    private KbResult retrieveAndRerank(SubQuestionIntent intent, List<NodeScore> kbIntents, int topK,
+                                        CancellationToken token) {
         // 使用多通道检索引擎（是否启用全局检索由置信度阈值决定）
         List<SubQuestionIntent> subIntents = List.of(intent);
-        List<RetrievedChunk> chunks = multiChannelRetrievalEngine.retrieveKnowledgeChannels(subIntents, topK);
+        List<RetrievedChunk> chunks = multiChannelRetrievalEngine.retrieveKnowledgeChannels(subIntents, topK, token);
 
         if (CollUtil.isEmpty(chunks)) {
             return KbResult.empty();
@@ -222,13 +249,14 @@ public class RetrievalEngine {
         return new KbResult(groupedContext, intentChunks);
     }
 
-    private List<MCPResponse> executeMcpTools(String question, List<NodeScore> mcpIntentScores) {
+    private List<MCPResponse> executeMcpTools(String question, List<NodeScore> mcpIntentScores,
+                                                CancellationToken token) {
         List<MCPRequest> requests = mcpIntentScores.stream()
                 .map(ns -> buildMcpRequest(question, ns.getNode()))
                 .filter(Objects::nonNull)
                 .toList();
 
-        return requests.isEmpty() ? List.of() : mcpService.executeBatch(requests);
+        return requests.isEmpty() ? List.of() : mcpService.executeBatch(requests, token);
     }
 
     private MCPRequest buildMcpRequest(String question, IntentNode intentNode) {

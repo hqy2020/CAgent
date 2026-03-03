@@ -28,6 +28,7 @@ import com.nageoffer.ai.ragent.rag.controller.request.IntentNodeUpdateRequest;
 import com.nageoffer.ai.ragent.rag.controller.vo.IntentNodeTreeVO;
 import com.nageoffer.ai.ragent.rag.dao.entity.IntentNodeDO;
 import com.nageoffer.ai.ragent.rag.dao.mapper.IntentNodeMapper;
+import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeBaseDO;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeBaseMapper;
 import com.nageoffer.ai.ragent.rag.enums.IntentKind;
 import com.nageoffer.ai.ragent.rag.enums.IntentLevel;
@@ -120,14 +121,21 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
             throw new ClientException("Domain类型的RAG检索意图识别时，必须指定目标知识库");
         }
 
+        Long kbId = null;
+        String collectionName = null;
+        if (StrUtil.isNotBlank(requestParam.getKbId())) {
+            kbId = Long.parseLong(requestParam.getKbId());
+            KnowledgeBaseDO knowledgeBase = knowledgeBaseMapper.selectById(kbId);
+            if (knowledgeBase == null || Objects.equals(knowledgeBase.getDeleted(), 1)) {
+                throw new ClientException("知识库不存在");
+            }
+            collectionName = knowledgeBase.getCollectionName();
+        }
+
         IntentNodeDO node = IntentNodeDO.builder()
                 .intentCode(requestParam.getIntentCode())
-                .kbId(
-                        StrUtil.isNotBlank(requestParam.getKbId()) ? Long.parseLong(requestParam.getKbId()) : null
-                )
-                .collectionName(
-                        StrUtil.isNotBlank(requestParam.getKbId()) ? knowledgeBaseMapper.selectById(requestParam.getKbId()).getCollectionName() : null
-                )
+                .kbId(kbId)
+                .collectionName(collectionName)
                 .name(requestParam.getName())
                 .level(requestParam.getLevel())
                 .parentCode(requestParam.getParentCode())
