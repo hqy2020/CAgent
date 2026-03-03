@@ -246,7 +246,97 @@ public class IntentTreeFactory {
         sales.setChildren(List.of(dingTaskSales));
         roots.add(sales);
 
-        // ========== 4. 系统交互 / 助手说明 ==========
+        // ========== 4. Obsidian 第二大脑 ==========
+
+        IntentNode obsidian = IntentNode.builder()
+                .id("obsidian")
+                .name("第二大脑 / Obsidian 笔记管理")
+                .level(DOMAIN)
+                .kind(IntentKind.MCP)
+                .build();
+
+        IntentNode obsRead = IntentNode.builder()
+                .id("obsidian-read")
+                .name("读取笔记")
+                .level(CATEGORY)
+                .parentId(obsidian.getId())
+                .mcpToolId("obsidian_read")
+                .kind(IntentKind.MCP)
+                .promptTemplate(OBSIDIAN_MCP_PROMPT_TEMPLATE)
+                .paramPromptTemplate(MCP_SALES_DATA_PARAMETER_EXTRACT_PROMPT)
+                .description("读取 Obsidian 笔记库中指定笔记的完整内容")
+                .examples(List.of("读取我的日记", "打开笔记 README", "查看 RAG 笔记内容"))
+                .build();
+
+        IntentNode obsSearch = IntentNode.builder()
+                .id("obsidian-search")
+                .name("搜索笔记")
+                .level(CATEGORY)
+                .parentId(obsidian.getId())
+                .mcpToolId("obsidian_search")
+                .kind(IntentKind.MCP)
+                .promptTemplate(OBSIDIAN_MCP_PROMPT_TEMPLATE)
+                .paramPromptTemplate(MCP_SALES_DATA_PARAMETER_EXTRACT_PROMPT)
+                .description("在 Obsidian 笔记库中全文搜索笔记内容")
+                .examples(List.of("搜索关于 RAG 的笔记", "在笔记库中查找 Spring Boot", "搜索包含 TODO 的笔记"))
+                .build();
+
+        IntentNode obsCreate = IntentNode.builder()
+                .id("obsidian-create")
+                .name("创建笔记")
+                .level(CATEGORY)
+                .parentId(obsidian.getId())
+                .mcpToolId("obsidian_create")
+                .kind(IntentKind.MCP)
+                .promptTemplate(OBSIDIAN_MCP_PROMPT_TEMPLATE)
+                .paramPromptTemplate(MCP_SALES_DATA_PARAMETER_EXTRACT_PROMPT)
+                .description("在 Obsidian 笔记库中创建新笔记")
+                .examples(List.of("创建一个关于 Docker 的笔记", "新建一篇学习笔记", "在知识库文件夹创建笔记"))
+                .build();
+
+        IntentNode obsUpdate = IntentNode.builder()
+                .id("obsidian-update")
+                .name("更新笔记")
+                .level(CATEGORY)
+                .parentId(obsidian.getId())
+                .mcpToolId("obsidian_update")
+                .kind(IntentKind.MCP)
+                .promptTemplate(OBSIDIAN_MCP_PROMPT_TEMPLATE)
+                .paramPromptTemplate(MCP_SALES_DATA_PARAMETER_EXTRACT_PROMPT)
+                .description("向已有 Obsidian 笔记追加或前插内容，也可向今日日记追加内容")
+                .examples(List.of("在日记里追加一条待办", "往 README 末尾添加内容", "在笔记开头插入摘要"))
+                .build();
+
+        IntentNode obsDelete = IntentNode.builder()
+                .id("obsidian-delete")
+                .name("删除笔记")
+                .level(CATEGORY)
+                .parentId(obsidian.getId())
+                .mcpToolId("obsidian_delete")
+                .kind(IntentKind.MCP)
+                .promptTemplate(OBSIDIAN_MCP_PROMPT_TEMPLATE)
+                .paramPromptTemplate(MCP_SALES_DATA_PARAMETER_EXTRACT_PROMPT)
+                .description("删除 Obsidian 笔记库中的指定笔记")
+                .examples(List.of("删除草稿笔记", "把 temp 笔记删掉", "清理测试笔记"))
+                .build();
+
+        IntentNode obsList = IntentNode.builder()
+                .id("obsidian-list")
+                .name("列出笔记")
+                .level(CATEGORY)
+                .parentId(obsidian.getId())
+                .mcpToolId("obsidian_list")
+                .kind(IntentKind.MCP)
+                .promptTemplate(OBSIDIAN_MCP_PROMPT_TEMPLATE)
+                .paramPromptTemplate(MCP_SALES_DATA_PARAMETER_EXTRACT_PROMPT)
+                .description("列出 Obsidian 笔记库中的文件或文件夹")
+                .examples(List.of("列出笔记库里的文件夹", "查看所有笔记", "列出知识库文件夹下的文件"))
+                .build();
+
+        obsidian.setChildren(List.of(obsRead, obsSearch, obsCreate, obsUpdate, obsDelete, obsList));
+        roots.add(obsidian);
+
+        // ========== 5. 系统交互 / 助手说明 ==========
         IntentNode sys = IntentNode.builder()
                 .id("sys")
                 .name("系统交互")
@@ -450,6 +540,31 @@ public class IntentTreeFactory {
             【动态数据】
             %s
             
+            【用户问题】
+            %s
+            """;
+
+    private static final String OBSIDIAN_MCP_PROMPT_TEMPLATE = """
+            你是用户的第二大脑助手，帮助用户管理和使用 Obsidian 笔记库。系统已通过 Obsidian CLI 获取到了【操作结果】。
+            你的任务是将结果以**清晰、易读的自然语言**回复给用户。
+
+            【核心处理规则】
+            1. **直接回答**：开门见山告知操作结果，不要使用技术性的开头。
+            2. **格式化输出**：
+               - **文件列表**：使用 Markdown 列表或树状结构展示，突出文件夹层级。
+               - **笔记内容**：保留原始 Markdown 格式，适当添加引导语。
+               - **搜索结果**：按相关度列出匹配项，显示匹配上下文。
+            3. **操作确认**：创建/更新/删除操作完成后，明确告知用户操作结果。
+
+            【异常处理】
+            1. **数据为空**：如搜索无结果，友好提示"未找到匹配的笔记"并建议调整关键词。
+            2. **操作失败**：用友好的语言告知失败原因，并给出可能的解决建议。
+
+            {{INTENT_RULES}}
+
+            【操作结果】
+            %s
+
             【用户问题】
             %s
             """;

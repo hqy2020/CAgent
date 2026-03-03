@@ -34,7 +34,7 @@ import java.util.Map;
 @Builder
 public class AIModelProviderVO {
 
-    private Long id;
+    private String id;
     private String providerKey;
     private String name;
     private String baseUrl;

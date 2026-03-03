@@ -65,19 +65,19 @@ public class AIModelController {
     }
 
     @PostMapping("/ai/providers")
-    public Result<Long> createProvider(@RequestBody ModelProviderRequest request) {
-        return Results.success(modelService.createProvider(request));
+    public Result<String> createProvider(@RequestBody ModelProviderRequest request) {
+        return Results.success(String.valueOf(modelService.createProvider(request)));
     }
 
     @PutMapping("/ai/providers/{id}")
-    public Result<Void> updateProvider(@PathVariable Long id, @RequestBody ModelProviderRequest request) {
-        modelService.updateProvider(id, request);
+    public Result<Void> updateProvider(@PathVariable String id, @RequestBody ModelProviderRequest request) {
+        modelService.updateProvider(Long.parseLong(id), request);
         return Results.success();
     }
 
     @DeleteMapping("/ai/providers/{id}")
-    public Result<Void> deleteProvider(@PathVariable Long id) {
-        modelService.deleteProvider(id);
+    public Result<Void> deleteProvider(@PathVariable String id) {
+        modelService.deleteProvider(Long.parseLong(id));
         return Results.success();
     }
 
@@ -89,37 +89,37 @@ public class AIModelController {
     }
 
     @PostMapping("/ai/models")
-    public Result<Long> createCandidate(@RequestBody ModelCandidateRequest request) {
-        return Results.success(modelService.createCandidate(request));
+    public Result<String> createCandidate(@RequestBody ModelCandidateRequest request) {
+        return Results.success(String.valueOf(modelService.createCandidate(request)));
     }
 
     @PutMapping("/ai/models/{id}")
-    public Result<Void> updateCandidate(@PathVariable Long id, @RequestBody ModelCandidateRequest request) {
-        modelService.updateCandidate(id, request);
+    public Result<Void> updateCandidate(@PathVariable String id, @RequestBody ModelCandidateRequest request) {
+        modelService.updateCandidate(Long.parseLong(id), request);
         return Results.success();
     }
 
     @DeleteMapping("/ai/models/{id}")
-    public Result<Void> deleteCandidate(@PathVariable Long id) {
-        modelService.deleteCandidate(id);
+    public Result<Void> deleteCandidate(@PathVariable String id) {
+        modelService.deleteCandidate(Long.parseLong(id));
         return Results.success();
     }
 
     @PutMapping("/ai/models/{id}/default")
-    public Result<Void> setDefaultModel(@PathVariable Long id) {
-        modelService.setDefaultModel(id);
+    public Result<Void> setDefaultModel(@PathVariable String id) {
+        modelService.setDefaultModel(Long.parseLong(id));
         return Results.success();
     }
 
     @PutMapping("/ai/models/{id}/deep-thinking")
-    public Result<Void> setDeepThinkingModel(@PathVariable Long id) {
-        modelService.setDeepThinkingModel(id);
+    public Result<Void> setDeepThinkingModel(@PathVariable String id) {
+        modelService.setDeepThinkingModel(Long.parseLong(id));
         return Results.success();
     }
 
     private AIModelProviderVO toProviderVO(AIModelProviderDO entity) {
         return AIModelProviderVO.builder()
-                .id(entity.getId())
+                .id(String.valueOf(entity.getId()))
                 .providerKey(entity.getProviderKey())
                 .name(entity.getName())
                 .baseUrl(entity.getBaseUrl())
@@ -134,7 +134,7 @@ public class AIModelController {
 
     private AIModelCandidateVO toCandidateVO(AIModelCandidateDO entity) {
         return AIModelCandidateVO.builder()
-                .id(entity.getId())
+                .id(String.valueOf(entity.getId()))
                 .modelId(entity.getModelId())
                 .modelType(entity.getModelType())
                 .providerKey(entity.getProviderKey())

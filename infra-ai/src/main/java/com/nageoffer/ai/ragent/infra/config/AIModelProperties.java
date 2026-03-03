@@ -173,9 +173,14 @@ public class AIModelProperties {
         private Integer failureThreshold = 2;
 
         /**
-         * 熔断器打开持续时间（毫秒）
+         * 熔断器打开基础持续时间（毫秒）
          */
         private Long openDurationMs = 30000L;
+
+        /**
+         * 熔断器指数退避最大持续时间（毫秒），HALF_OPEN 失败后 OPEN 时间翻倍但不超过此值
+         */
+        private Long maxOpenDurationMs = 300000L;
     }
 
     /**
@@ -189,5 +194,10 @@ public class AIModelProperties {
          * 消息分块大小
          */
         private Integer messageChunkSize = 12;
+
+        /**
+         * 流式首包探测超时时间（秒），超过该时间未收到首包则判定为超时并切换到下一个候选模型
+         */
+        private Integer firstPacketTimeoutSeconds = 60;
     }
 }

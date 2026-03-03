@@ -89,6 +89,7 @@ public class ModelHealthStore {
             v.consecutiveFailures = 0;
             v.openUntil = 0L;
             v.halfOpenInFlight = false;
+            v.openAttempts = 0;
             return v;
         });
     }
@@ -104,7 +105,8 @@ public class ModelHealthStore {
             }
             if (v.state == State.HALF_OPEN) {
                 v.state = State.OPEN;
-                v.openUntil = now + properties.getSelection().getOpenDurationMs();
+                v.openAttempts++;
+                v.openUntil = now + computeBackoffDuration(v.openAttempts);
                 v.consecutiveFailures = 0;
                 v.halfOpenInFlight = false;
                 return v;
@@ -119,16 +121,29 @@ public class ModelHealthStore {
         });
     }
 
+    /**
+     * 计算指数退避时长：base * 2^(attempts-1)，不超过 maxOpenDurationMs
+     */
+    private long computeBackoffDuration(int openAttempts) {
+        long baseDuration = properties.getSelection().getOpenDurationMs();
+        long maxDuration = properties.getSelection().getMaxOpenDurationMs();
+        int exponent = Math.min(openAttempts - 1, 30);
+        long duration = baseDuration * (1L << exponent);
+        return Math.min(duration, maxDuration);
+    }
+
     private static class ModelHealth {
         private int consecutiveFailures;
         private long openUntil;
         private boolean halfOpenInFlight;
+        private int openAttempts;
         private State state;
 
         private ModelHealth() {
             this.consecutiveFailures = 0;
             this.openUntil = 0L;
             this.halfOpenInFlight = false;
+            this.openAttempts = 0;
             this.state = State.CLOSED;
         }
     }

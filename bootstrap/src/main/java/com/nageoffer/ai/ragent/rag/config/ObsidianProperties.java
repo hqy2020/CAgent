@@ -15,36 +15,27 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.controller.vo;
+package com.nageoffer.ai.ragent.rag.config;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
-
-import java.util.Date;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
 
 /**
- * 模型候选 VO
+ * Obsidian CLI 集成配置
  */
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class AIModelCandidateVO {
+@Component
+@ConfigurationProperties(prefix = "obsidian")
+public class ObsidianProperties {
 
-    private String id;
-    private String modelId;
-    private String modelType;
-    private String providerKey;
-    private String modelName;
-    private String customUrl;
-    private Integer dimension;
-    private Integer priority;
-    private Integer enabled;
-    private Integer supportsThinking;
-    private Integer isDefault;
-    private Integer isDeepThinking;
-    private Date createTime;
-    private Date updateTime;
+    private boolean enabled = true;
+
+    private String cliPath = "/Applications/Obsidian.app/Contents/MacOS/obsidian";
+
+    private String vaultName = "GardenOfOpeningClouds";
+
+    private String vaultPath = "/Users/openingcloud/Documents/GardenOfOpeningClouds";
+
+    private int timeoutSeconds = 30;
 }

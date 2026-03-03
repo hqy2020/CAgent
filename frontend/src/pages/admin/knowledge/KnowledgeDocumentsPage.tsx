@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Check, FileUp, FolderOpen, PlayCircle, RefreshCw, Trash2, Pencil, FileBarChart, Loader2 } from "lucide-react";
+import { Check, FileUp, FolderOpen, Eye, ClipboardCopy, RefreshCw, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -149,7 +149,6 @@ export function KnowledgeDocumentsPage() {
   const [logTarget, setLogTarget] = useState<KnowledgeDocument | null>(null);
   const [logData, setLogData] = useState<PageResult<KnowledgeDocumentChunkLog> | null>(null);
   const [logLoading, setLogLoading] = useState(false);
-  const [batchChunking, setBatchChunking] = useState(false);
 
   const documents = pageData?.records || [];
 
@@ -224,63 +223,6 @@ export function KnowledgeDocumentsPage() {
   const handleRefresh = () => {
     setPageNo(1);
     loadDocuments(1, statusFilter, keyword);
-  };
-
-  const handleStartPending = async () => {
-    if (!kbId || batchChunking) return;
-    setBatchChunking(true);
-    try {
-      const pendingStatuses = ["pending", "pending_manual"] as const;
-      const pendingDocMap = new Map<string, KnowledgeDocument>();
-
-      for (const status of pendingStatuses) {
-        let current = 1;
-        let pages = 1;
-        do {
-          const page = await getDocumentsPage(kbId, {
-            pageNo: current,
-            pageSize: 100,
-            status
-          });
-          for (const doc of page.records || []) {
-            pendingDocMap.set(String(doc.id), doc);
-          }
-          pages = page.pages || 1;
-          current += 1;
-        } while (current <= pages);
-      }
-      const pendingDocs = Array.from(pendingDocMap.values());
-
-      if (pendingDocs.length === 0) {
-        toast.info("当前没有 pending / pending_manual 文档");
-        return;
-      }
-
-      let successCount = 0;
-      let failedCount = 0;
-      for (const doc of pendingDocs) {
-        try {
-          await startDocumentChunk(String(doc.id));
-          successCount += 1;
-        } catch (error) {
-          failedCount += 1;
-          console.error("触发分块失败", doc.id, error);
-        }
-      }
-
-      if (successCount > 0) {
-        toast.success(`已触发 ${successCount} 个文档开始分块`);
-      }
-      if (failedCount > 0) {
-        toast.error(`${failedCount} 个文档触发失败，请稍后重试`);
-      }
-      await loadDocuments(pageNo, statusFilter, keyword);
-    } catch (error) {
-      toast.error(getErrorMessage(error, "批量触发 pending 失败"));
-      console.error(error);
-    } finally {
-      setBatchChunking(false);
-    }
   };
 
   const handleDelete = async () => {
@@ -455,14 +397,6 @@ export function KnowledgeDocumentsPage() {
                 <RefreshCw className="mr-2 h-4 w-4" />
                 刷新
               </Button>
-              <Button variant="outline" onClick={handleStartPending} disabled={batchChunking}>
-                {batchChunking ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <PlayCircle className="mr-2 h-4 w-4" />
-                )}
-                处理 Pending
-              </Button>
             </div>
           </div>
         </CardHeader>
@@ -568,18 +502,21 @@ export function KnowledgeDocumentsPage() {
                         <Button
                           size="icon"
                           variant="ghost"
-                          onClick={() => setChunkTarget(doc)}
-                          title="分块"
+                          onClick={() => navigate(`/admin/knowledge/${kbId}/docs/${doc.id}`)}
+                          title="查看"
                         >
-                          <PlayCircle className="h-4 w-4" />
+                          <Eye className="h-4 w-4" />
                         </Button>
                         <Button
                           size="icon"
                           variant="ghost"
-                          onClick={() => handleOpenChunkLogs(doc)}
-                          title="分块详情"
+                          onClick={() => {
+                            navigator.clipboard.writeText(doc.docName || "");
+                            toast.success("已复制文档名称");
+                          }}
+                          title="复制"
                         >
-                          <FileBarChart className="h-4 w-4" />
+                          <ClipboardCopy className="h-4 w-4" />
                         </Button>
                         <Button
                           size="icon"

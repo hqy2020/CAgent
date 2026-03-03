@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.infra.chat;
 
 import cn.hutool.core.collection.CollUtil;
+import com.nageoffer.ai.ragent.infra.config.AIModelProperties;
 import com.nageoffer.ai.ragent.infra.convention.ChatRequest;
 import com.nageoffer.ai.ragent.framework.errorcode.BaseErrorCode;
 import com.nageoffer.ai.ragent.framework.exception.RemoteException;
@@ -52,7 +53,6 @@ import java.util.stream.Collectors;
 @Primary
 public class RoutingLLMService implements LLMService {
 
-    private static final int FIRST_PACKET_TIMEOUT_SECONDS = 60;
     private static final String STREAM_INTERRUPTED_MESSAGE = "流式请求被中断";
     private static final String STREAM_NO_PROVIDER_MESSAGE = "无可用大模型提供者";
     private static final String STREAM_START_FAILED_MESSAGE = "流式请求启动失败";
@@ -63,16 +63,19 @@ public class RoutingLLMService implements LLMService {
     private final ModelSelector selector;
     private final ModelHealthStore healthStore;
     private final ModelRoutingExecutor executor;
+    private final AIModelProperties aiModelProperties;
     private final Map<String, ChatClient> clientsByProvider;
 
     public RoutingLLMService(
             ModelSelector selector,
             ModelHealthStore healthStore,
             ModelRoutingExecutor executor,
+            AIModelProperties aiModelProperties,
             List<ChatClient> clients) {
         this.selector = selector;
         this.healthStore = healthStore;
         this.executor = executor;
+        this.aiModelProperties = aiModelProperties;
         this.clientsByProvider = clients.stream()
                 .collect(Collectors.toMap(ChatClient::provider, Function.identity()));
     }
@@ -163,7 +166,7 @@ public class RoutingLLMService implements LLMService {
                                                        StreamCancellationHandle handle,
                                                        StreamCallback callback) {
         try {
-            return awaiter.await(FIRST_PACKET_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            return awaiter.await(aiModelProperties.getStream().getFirstPacketTimeoutSeconds(), TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             handle.cancel();

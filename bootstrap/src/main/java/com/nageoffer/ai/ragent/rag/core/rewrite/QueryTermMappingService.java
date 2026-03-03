@@ -67,16 +67,13 @@ public class QueryTermMappingService {
             if (Boolean.FALSE.equals(mapping.getEnabled())) {
                 continue;
             }
-            if (mapping.getMatchType() != null && mapping.getMatchType() != 1) {
-                // 这里只示例 match_type = 1 的简单子串匹配，其他类型可以自己扩展
-                continue;
-            }
             String source = mapping.getSourceTerm();
             String target = mapping.getTargetTerm();
             if (source == null || source.isEmpty() || target == null || target.isEmpty()) {
                 continue;
             }
-            result = QueryTermMappingUtil.applyMapping(result, source, target);
+            int matchType = mapping.getMatchType() != null ? mapping.getMatchType() : QueryTermMappingUtil.MATCH_EXACT;
+            result = QueryTermMappingUtil.applyMapping(result, source, target, matchType);
         }
 
         if (!Objects.equals(text, result)) {

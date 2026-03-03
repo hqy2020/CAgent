@@ -3,7 +3,7 @@ import { api } from "@/services/api";
 // ─── Provider 类型 ───
 
 export interface ModelProvider {
-  id: number;
+  id: string;
   providerKey: string;
   name: string;
   baseUrl: string;
@@ -28,7 +28,7 @@ export interface ModelProviderPayload {
 // ─── Candidate 类型 ───
 
 export interface ModelCandidate {
-  id: number;
+  id: string;
   modelId: string;
   modelType: string;
   providerKey: string;
@@ -62,15 +62,15 @@ export async function getProviders(): Promise<ModelProvider[]> {
   return api.get<ModelProvider[], ModelProvider[]>("/ai/providers");
 }
 
-export async function createProvider(data: ModelProviderPayload): Promise<number> {
-  return api.post<number, number>("/ai/providers", data);
+export async function createProvider(data: ModelProviderPayload): Promise<string> {
+  return api.post<string, string>("/ai/providers", data);
 }
 
-export async function updateProvider(id: number, data: ModelProviderPayload): Promise<void> {
+export async function updateProvider(id: string, data: ModelProviderPayload): Promise<void> {
   return api.put(`/ai/providers/${id}`, data);
 }
 
-export async function deleteProvider(id: number): Promise<void> {
+export async function deleteProvider(id: string): Promise<void> {
   return api.delete(`/ai/providers/${id}`);
 }
 
@@ -81,22 +81,22 @@ export async function getCandidates(type?: string): Promise<ModelCandidate[]> {
   return api.get<ModelCandidate[], ModelCandidate[]>("/ai/models", { params });
 }
 
-export async function createCandidate(data: ModelCandidatePayload): Promise<number> {
-  return api.post<number, number>("/ai/models", data);
+export async function createCandidate(data: ModelCandidatePayload): Promise<string> {
+  return api.post<string, string>("/ai/models", data);
 }
 
-export async function updateCandidate(id: number, data: ModelCandidatePayload): Promise<void> {
+export async function updateCandidate(id: string, data: ModelCandidatePayload): Promise<void> {
   return api.put(`/ai/models/${id}`, data);
 }
 
-export async function deleteCandidate(id: number): Promise<void> {
+export async function deleteCandidate(id: string): Promise<void> {
   return api.delete(`/ai/models/${id}`);
 }
 
-export async function setDefaultModel(id: number): Promise<void> {
+export async function setDefaultModel(id: string): Promise<void> {
   return api.put(`/ai/models/${id}/default`);
 }
 
-export async function setDeepThinkingModel(id: number): Promise<void> {
+export async function setDeepThinkingModel(id: string): Promise<void> {
   return api.put(`/ai/models/${id}/deep-thinking`);
 }

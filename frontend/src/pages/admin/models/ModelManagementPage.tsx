@@ -116,7 +116,7 @@ export function ModelManagementPage() {
   const [candidateSaving, setCandidateSaving] = useState(false);
 
   // Delete
-  const [deleteTarget, setDeleteTarget] = useState<{ type: "provider" | "candidate"; id: number } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: "provider" | "candidate"; id: string } | null>(null);
 
   const modelType = activeTab === "providers" ? null : activeTab;
 
@@ -614,7 +614,7 @@ function ProviderTable({
 }: {
   providers: ModelProvider[];
   onEdit: (p: ModelProvider) => void;
-  onDelete: (id: number) => void;
+  onDelete: (id: string) => void;
 }) {
   if (providers.length === 0) {
     return <div className="py-8 text-center text-sm text-slate-400">暂无提供方，点击右上角添加</div>;
@@ -682,9 +682,9 @@ function CandidateTable({
   candidates: ModelCandidate[];
   modelType: string;
   onEdit: (c: ModelCandidate) => void;
-  onDelete: (id: number) => void;
-  onSetDefault: (id: number) => void;
-  onSetDeepThinking: (id: number) => void;
+  onDelete: (id: string) => void;
+  onSetDefault: (id: string) => void;
+  onSetDeepThinking: (id: string) => void;
 }) {
   if (candidates.length === 0) {
     return <div className="py-8 text-center text-sm text-slate-400">暂无模型配置，点击右上角添加</div>;

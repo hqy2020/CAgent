@@ -204,6 +204,13 @@ rustfs:
   access-key-id: rustfsadmin
   secret-access-key: rustfsadmin
 
+obsidian:
+  enabled: true
+  cli-path: /Applications/Obsidian.app/Contents/MacOS/obsidian
+  vault-name: GardenOfOpeningClouds
+  vault-path: /Users/openingcloud/Documents/GardenOfOpeningClouds
+  timeout-seconds: 30
+
 sa-token:
   token-name: Authorization
   timeout: 2592000

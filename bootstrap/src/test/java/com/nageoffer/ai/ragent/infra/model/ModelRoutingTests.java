@@ -32,6 +32,7 @@ class ModelRoutingTests {
         AIModelProperties.Selection selection = new AIModelProperties.Selection();
         selection.setFailureThreshold(failureThreshold);
         selection.setOpenDurationMs(openDurationMs);
+        selection.setMaxOpenDurationMs(openDurationMs * 16);
         props.setSelection(selection);
         return new ModelHealthStore(props);
     }
@@ -144,5 +145,45 @@ class ModelRoutingTests {
 
         store.markFailure(modelId);
         assertFalse(store.isOpen(modelId));
+    }
+
+    @Test
+    void testExponentialBackoffOnRepeatedHalfOpenFailures() throws InterruptedException {
+        // base=50ms, max=800ms (50*16)
+        ModelHealthStore store = createStore(1, 50L);
+        String modelId = "model-backoff";
+
+        // 第1次: CLOSED -> OPEN (50ms)
+        store.markFailure(modelId);
+        assertTrue(store.isOpen(modelId));
+
+        // 等待 OPEN 到期 -> HALF_OPEN
+        Thread.sleep(80);
+        assertTrue(store.allowCall(modelId));
+
+        // HALF_OPEN 失败 -> OPEN，退避 50ms (base * 2^0)
+        store.markFailure(modelId);
+        assertTrue(store.isOpen(modelId));
+
+        // 等待第1次退避到期
+        Thread.sleep(80);
+        assertTrue(store.allowCall(modelId));
+
+        // HALF_OPEN 再次失败 -> OPEN，退避 100ms (base * 2^1)
+        store.markFailure(modelId);
+        assertTrue(store.isOpen(modelId));
+
+        // 50ms 后仍应 OPEN（因为退避是100ms）
+        Thread.sleep(60);
+        assertFalse(store.allowCall(modelId));
+
+        // 再等 60ms 应该到期
+        Thread.sleep(60);
+        assertTrue(store.allowCall(modelId));
+
+        // HALF_OPEN 成功 -> 退避重置
+        store.markSuccess(modelId);
+        assertFalse(store.isOpen(modelId));
+        assertTrue(store.allowCall(modelId));
     }
 }
