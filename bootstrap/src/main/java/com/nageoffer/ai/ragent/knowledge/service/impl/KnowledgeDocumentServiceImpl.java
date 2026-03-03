@@ -50,6 +50,8 @@ import com.nageoffer.ai.ragent.knowledge.enums.SourceType;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.exception.ServiceException;
+import com.nageoffer.ai.ragent.framework.mq.constant.MQConstant;
+import com.nageoffer.ai.ragent.framework.mq.event.DocumentChunkEvent;
 import com.nageoffer.ai.ragent.core.parser.DocumentParserSelector;
 import com.nageoffer.ai.ragent.core.parser.ParserType;
 import com.nageoffer.ai.ragent.rag.core.vector.VectorStoreService;
@@ -66,8 +68,12 @@ import com.nageoffer.ai.ragent.ingestion.dao.entity.IngestionPipelineDO;
 import com.nageoffer.ai.ragent.ingestion.dao.mapper.IngestionPipelineMapper;
 import com.nageoffer.ai.ragent.ingestion.domain.context.IngestionContext;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.PipelineDefinition;
+import cn.hutool.core.util.IdUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.client.producer.SendCallback;
+import org.apache.rocketmq.client.producer.SendResult;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -116,6 +122,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     @Qualifier("knowledgeChunkExecutor")
     private final Executor knowledgeChunkExecutor;
     private final PlatformTransactionManager transactionManager;
+    private final RocketMQTemplate rocketMQTemplate;
 
     @Value("${kb.chunk.semantic.targetChars:1400}")
     private int targetChars;
@@ -261,12 +268,27 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
 
                 scheduleService.upsertSchedule(documentDO);
                 patchStatus(documentDO);
-                try {
-                    knowledgeChunkExecutor.execute(() -> runChunkTask(documentDO));
-                } catch (RejectedExecutionException e) {
-                    log.error("分块任务提交失败: docId={}", docId, e);
-                    throw new ServiceException("分块任务排队失败");
-                }
+                DocumentChunkEvent event = DocumentChunkEvent.builder()
+                        .messageId(IdUtil.getSnowflakeNextIdStr())
+                        .docId(String.valueOf(documentDO.getId()))
+                        .kbId(String.valueOf(documentDO.getKbId()))
+                        .triggerSource("user")
+                        .operator(UserContext.getUsername())
+                        .sendTimestamp(System.currentTimeMillis())
+                        .build();
+                rocketMQTemplate.asyncSend(MQConstant.TOPIC_KNOWLEDGE_CHUNK, event,
+                        new SendCallback() {
+                            @Override
+                            public void onSuccess(SendResult r) {
+                                log.info("分块消息发送成功: docId={}, msgId={}", docId, r.getMsgId());
+                            }
+
+                            @Override
+                            public void onException(Throwable e) {
+                                log.error("分块消息发送失败: docId={}", docId, e);
+                                markChunkFailed(documentDO.getId());
+                            }
+                        });
             });
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -278,7 +300,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         }
     }
 
-    private void runChunkTask(KnowledgeDocumentDO documentDO) {
+    public void runChunkTask(KnowledgeDocumentDO documentDO) {
         String docId = String.valueOf(documentDO.getId());
         ProcessMode processMode = normalizeProcessMode(documentDO.getProcessMode());
 

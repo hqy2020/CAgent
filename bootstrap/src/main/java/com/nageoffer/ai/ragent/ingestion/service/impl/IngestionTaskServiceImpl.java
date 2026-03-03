@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.ingestion.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.lang.Assert;
+import cn.hutool.core.util.IdUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -34,6 +35,8 @@ import com.nageoffer.ai.ragent.ingestion.dao.mapper.IngestionTaskMapper;
 import com.nageoffer.ai.ragent.ingestion.dao.mapper.IngestionTaskNodeMapper;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
+import com.nageoffer.ai.ragent.framework.mq.constant.MQConstant;
+import com.nageoffer.ai.ragent.framework.mq.event.IngestionExecuteEvent;
 import com.nageoffer.ai.ragent.ingestion.domain.context.DocumentSource;
 import com.nageoffer.ai.ragent.ingestion.domain.context.IngestionContext;
 import com.nageoffer.ai.ragent.ingestion.domain.context.NodeLog;
@@ -49,12 +52,15 @@ import com.nageoffer.ai.ragent.rag.core.vector.VectorSpaceId;
 import com.nageoffer.ai.ragent.ingestion.service.IngestionPipelineService;
 import com.nageoffer.ai.ragent.ingestion.service.IngestionTaskService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -66,22 +72,67 @@ import java.util.Set;
 /**
  * 数据摄入任务服务实现
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class IngestionTaskServiceImpl implements IngestionTaskService {
+
+    private static final int MAX_BASE64_FILE_SIZE = 4 * 1024 * 1024;
 
     private final IngestionEngine engine;
     private final IngestionPipelineService pipelineService;
     private final IngestionTaskMapper taskMapper;
     private final IngestionTaskNodeMapper taskNodeMapper;
     private final ObjectMapper objectMapper;
+    private final RocketMQTemplate rocketMQTemplate;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public IngestionResult execute(IngestionTaskCreateRequest request) {
         Assert.notNull(request, () -> new ClientException("请求不能为空"));
         DocumentSource source = toSource(request.getSource());
-        return executeInternal(request.getPipelineId(), source, null, null, request.getVectorSpaceId());
+        String resolvedPipelineId = resolvePipelineId(request.getPipelineId());
+        pipelineService.getDefinition(resolvedPipelineId);
+
+        IngestionTaskDO task = IngestionTaskDO.builder()
+                .pipelineId(Long.parseLong(resolvedPipelineId))
+                .sourceType(source.getType() == null ? null : source.getType().getValue())
+                .sourceLocation(source.getLocation())
+                .sourceFileName(source.getFileName())
+                .status(IngestionStatus.PENDING.getValue())
+                .chunkCount(0)
+                .createdBy(UserContext.getUsername())
+                .updatedBy(UserContext.getUsername())
+                .build();
+        taskMapper.insert(task);
+
+        String credentialsJson = null;
+        if (source.getCredentials() != null && !source.getCredentials().isEmpty()) {
+            credentialsJson = writeJson(source.getCredentials());
+        }
+
+        IngestionExecuteEvent event = IngestionExecuteEvent.builder()
+                .messageId(String.valueOf(task.getId()))
+                .taskId(String.valueOf(task.getId()))
+                .pipelineId(resolvedPipelineId)
+                .sourceType(source.getType() == null ? null : source.getType().getValue())
+                .sourceLocation(source.getLocation())
+                .sourceFileName(source.getFileName())
+                .credentialsJson(credentialsJson)
+                .vectorSpaceLogicalName(request.getVectorSpaceId() == null ? null : request.getVectorSpaceId().getLogicalName())
+                .operator(UserContext.getUsername())
+                .sendTimestamp(System.currentTimeMillis())
+                .build();
+        rocketMQTemplate.syncSend(MQConstant.TOPIC_INGESTION_EXECUTE, event);
+        log.info("Ingestion 任务消息发送成功: taskId={}, pipelineId={}", task.getId(), resolvedPipelineId);
+
+        return IngestionResult.builder()
+                .taskId(String.valueOf(task.getId()))
+                .pipelineId(resolvedPipelineId)
+                .status(IngestionStatus.PENDING)
+                .chunkCount(0)
+                .message("任务已提交")
+                .build();
     }
 
     @Override
@@ -94,13 +145,49 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
             if (!StringUtils.hasText(fileName)) {
                 fileName = "upload.bin";
             }
+            if (bytes.length > MAX_BASE64_FILE_SIZE) {
+                throw new ClientException("上传文件不能超过 4MB");
+            }
             String mimeType = MimeTypeDetector.detect(bytes, fileName);
-            DocumentSource source = DocumentSource.builder()
-                    .type(SourceType.FILE)
-                    .location(fileName)
-                    .fileName(fileName)
+            String resolvedPipelineId = resolvePipelineId(pipelineId);
+            pipelineService.getDefinition(resolvedPipelineId);
+
+            IngestionTaskDO task = IngestionTaskDO.builder()
+                    .pipelineId(Long.parseLong(resolvedPipelineId))
+                    .sourceType(SourceType.FILE.getValue())
+                    .sourceLocation(fileName)
+                    .sourceFileName(fileName)
+                    .status(IngestionStatus.PENDING.getValue())
+                    .chunkCount(0)
+                    .createdBy(UserContext.getUsername())
+                    .updatedBy(UserContext.getUsername())
                     .build();
-            return executeInternal(pipelineId, source, bytes, mimeType, null);
+            taskMapper.insert(task);
+
+            IngestionExecuteEvent event = IngestionExecuteEvent.builder()
+                    .messageId(String.valueOf(task.getId()))
+                    .taskId(String.valueOf(task.getId()))
+                    .pipelineId(resolvedPipelineId)
+                    .sourceType(SourceType.FILE.getValue())
+                    .sourceLocation(fileName)
+                    .sourceFileName(fileName)
+                    .rawBytesBase64(Base64.getEncoder().encodeToString(bytes))
+                    .mimeType(mimeType)
+                    .operator(UserContext.getUsername())
+                    .sendTimestamp(System.currentTimeMillis())
+                    .build();
+            rocketMQTemplate.syncSend(MQConstant.TOPIC_INGESTION_EXECUTE, event);
+            log.info("Ingestion upload 任务消息发送成功: taskId={}", task.getId());
+
+            return IngestionResult.builder()
+                    .taskId(String.valueOf(task.getId()))
+                    .pipelineId(resolvedPipelineId)
+                    .status(IngestionStatus.PENDING)
+                    .chunkCount(0)
+                    .message("任务已提交")
+                    .build();
+        } catch (ClientException e) {
+            throw e;
         } catch (Exception e) {
             throw new ClientException("读取上传文件失败: " + e.getMessage());
         }
@@ -181,7 +268,7 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
                 .build();
     }
 
-    private void updateTaskFromContext(IngestionTaskDO task, IngestionContext context) {
+    public void updateTaskFromContext(IngestionTaskDO task, IngestionContext context) {
         task.setStatus(context.getStatus() == null ? IngestionStatus.FAILED.getValue() : context.getStatus().getValue());
         task.setChunkCount(context.getChunks() == null ? 0 : context.getChunks().size());
         task.setErrorMessage(context.getError() == null ? null : context.getError().getMessage());
@@ -192,7 +279,7 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
         taskMapper.updateById(task);
     }
 
-    private void saveNodeLogs(IngestionTaskDO task, PipelineDefinition pipeline, List<NodeLog> logs) {
+    public void saveNodeLogs(IngestionTaskDO task, PipelineDefinition pipeline, List<NodeLog> logs) {
         if (logs == null || logs.isEmpty()) {
             return;
         }

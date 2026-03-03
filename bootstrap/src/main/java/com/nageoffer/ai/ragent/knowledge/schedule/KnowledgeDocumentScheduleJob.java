@@ -22,6 +22,8 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.framework.context.LoginUser;
 import com.nageoffer.ai.ragent.framework.context.UserContext;
+import com.nageoffer.ai.ragent.framework.mq.constant.MQConstant;
+import com.nageoffer.ai.ragent.framework.mq.event.ScheduleRefreshEvent;
 import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeBaseDO;
 import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeDocumentDO;
 import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeDocumentScheduleDO;
@@ -40,6 +42,9 @@ import com.nageoffer.ai.ragent.rag.service.FileStorageService;
 import com.nageoffer.ai.ragent.ingestion.util.HttpClientHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.rocketmq.client.producer.SendCallback;
+import org.apache.rocketmq.client.producer.SendResult;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -91,6 +96,7 @@ public class KnowledgeDocumentScheduleJob {
     private final PlatformTransactionManager transactionManager;
     @Qualifier("knowledgeChunkExecutor")
     private final Executor knowledgeChunkExecutor;
+    private final RocketMQTemplate rocketMQTemplate;
 
     @Value("${rag.knowledge.schedule.lock-seconds:900}")
     private long lockSeconds;
@@ -129,17 +135,30 @@ public class KnowledgeDocumentScheduleJob {
             if (!tryAcquireLock(schedule.getId(), now, lockUntil)) {
                 continue;
             }
-            try {
-                knowledgeChunkExecutor.execute(() -> executeSchedule(schedule.getId()));
-            } catch (RejectedExecutionException e) {
-                log.error("定时任务提交失败: scheduleId={}, docId={}, kbId={}",
-                        schedule.getId(), schedule.getDocId(), schedule.getKbId(), e);
-                releaseLock(schedule.getId());
-            }
+            ScheduleRefreshEvent event = ScheduleRefreshEvent.builder()
+                    .messageId(schedule.getId() + "_" + System.currentTimeMillis())
+                    .scheduleId(String.valueOf(schedule.getId()))
+                    .docId(String.valueOf(schedule.getDocId()))
+                    .kbId(String.valueOf(schedule.getKbId()))
+                    .sendTimestamp(System.currentTimeMillis())
+                    .build();
+            rocketMQTemplate.asyncSend(MQConstant.TOPIC_KNOWLEDGE_SCHEDULE_REFRESH, event,
+                    new SendCallback() {
+                        @Override
+                        public void onSuccess(SendResult r) {
+                            log.info("定时刷新消息发送成功: scheduleId={}", schedule.getId());
+                        }
+
+                        @Override
+                        public void onException(Throwable e) {
+                            log.error("定时刷新消息发送失败: scheduleId={}", schedule.getId(), e);
+                            releaseLock(schedule.getId());
+                        }
+                    });
         }
     }
 
-    private void executeSchedule(Long scheduleId) {
+    public void executeSchedule(Long scheduleId) {
         Date startTime = new Date();
         KnowledgeDocumentScheduleDO schedule = scheduleMapper.selectById(scheduleId);
         if (schedule == null) {

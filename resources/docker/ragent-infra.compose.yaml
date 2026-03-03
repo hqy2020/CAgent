@@ -1,6 +1,6 @@
 # ==========================================================
 # CAgent 全栈基础设施 Docker Compose
-# 包含: MySQL 8 + Redis 7 + Milvus 2.6 + RustFS + etcd + Attu
+# 包含: MySQL 8 + Redis 7 + Milvus 2.6 + RustFS + etcd + Attu + RocketMQ 5.x
 # ==========================================================
 #
 # 启动: docker compose -f ragent-infra.compose.yaml up -d
@@ -144,12 +144,71 @@ services:
       milvus:
         condition: service_healthy
 
+  # ==================== RocketMQ NameServer ====================
+  rocketmq-namesrv:
+    container_name: ragent-rocketmq-namesrv
+    image: apache/rocketmq:5.3.1
+    user: root
+    command: sh mqnamesrv
+    environment:
+      JAVA_OPT_EXT: "-Xms256m -Xmx256m -Xmn128m"
+    ports:
+      - "9876:9876"
+    volumes:
+      - rocketmq-namesrv-data:/home/rocketmq/store
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9876' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ==================== RocketMQ Broker ====================
+  rocketmq-broker:
+    container_name: ragent-rocketmq-broker
+    image: apache/rocketmq:5.3.1
+    user: root
+    command: sh mqbroker -n rocketmq-namesrv:9876 -c /home/rocketmq/broker.conf
+    environment:
+      JAVA_OPT_EXT: "-Xms512m -Xmx512m -Xmn256m"
+    ports:
+      - "10911:10911"
+      - "10909:10909"
+    volumes:
+      - rocketmq-broker-data:/home/rocketmq/store
+      - ./rocketmq-broker.conf:/home/rocketmq/broker.conf:ro
+    depends_on:
+      rocketmq-namesrv:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/10911' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ==================== RocketMQ Dashboard ====================
+  rocketmq-dashboard:
+    container_name: ragent-rocketmq-dashboard
+    image: apacherocketmq/rocketmq-dashboard:latest
+    environment:
+      JAVA_OPTS: >-
+        -Drocketmq.namesrv.addr=rocketmq-namesrv:9876
+        -Xms128m -Xmx256m
+    ports:
+      - "8082:8080"
+    depends_on:
+      rocketmq-broker:
+        condition: service_healthy
+
 volumes:
   mysql-data:
   redis-data:
   rustfs-data:
   etcd-data:
   milvus-data:
+  rocketmq-namesrv-data:
+  rocketmq-broker-data:
 
 networks:
   default:

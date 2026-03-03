@@ -211,6 +211,14 @@ obsidian:
   vault-path: /Users/openingcloud/Documents/GardenOfOpeningClouds
   timeout-seconds: 30
 
+rocketmq:
+  name-server: 127.0.0.1:9876
+  producer:
+    group: ragent_producer_group
+    send-message-timeout: 5000
+    retry-times-when-send-failed: 2
+    retry-times-when-send-async-failed: 2
+
 sa-token:
   token-name: Authorization
   timeout: 2592000
