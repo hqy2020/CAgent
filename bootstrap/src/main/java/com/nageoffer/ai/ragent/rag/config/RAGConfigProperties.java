@@ -60,4 +60,22 @@ public class RAGConfigProperties {
      */
     @Value("${rag.query-rewrite.max-history-chars:500}")
     private Integer queryRewriteMaxHistoryChars;
+
+    @Value("${rag.chat.kb-temperature:0.3}")
+    private Double chatKbTemperature;
+
+    @Value("${rag.chat.kb-top-p:0.85}")
+    private Double chatKbTopP;
+
+    @Value("${rag.chat.system-temperature:0.7}")
+    private Double chatSystemTemperature;
+
+    @Value("${rag.chat.system-top-p:0.8}")
+    private Double chatSystemTopP;
+
+    @Value("${rag.chat.max-tokens-system:2048}")
+    private Integer chatMaxTokensSystem;
+
+    @Value("${rag.chat.max-tokens-kb:4096}")
+    private Integer chatMaxTokensKb;
 }

@@ -55,14 +55,22 @@ curl -X POST "http://localhost:8080/api/ragent/ingestion/pipelines" \
 ```bash
 curl -X POST "http://localhost:8080/api/ragent/ingestion/tasks/upload" \
   -F "pipelineId=1" \
-  -F "file=@/path/to/your/document.pdf" \
-  -F "metadata={\"category\":\"manual\",\"department\":\"IT\"}"
+  -F "file=@/path/to/your/document.pdf"
 ```
 
 **说明**:
 - `file`: 本地PDF文件路径
-- `metadata`: 自定义元数据（可选）
 - `pipelineId`: 第一步返回的流水线 ID（若已设置默认流水线可省略）
+
+### Step 2.1: 使用 JSON 创建任务（含 metadata 透传）
+
+```bash
+curl -X POST "http://localhost:8080/api/ragent/ingestion/tasks" \
+  -H "Content-Type: application/json" \
+  -d @ingestion-task-request.json
+```
+
+示例文件：`docs/examples/ingestion-task-request.json`
 
 **响应**:
 ```json
@@ -200,6 +208,12 @@ No start node found in pipeline
 
 ## 🧪 快速测试脚本
 
+可直接运行仓库脚本：
+
+```bash
+./scripts/ingestion_pipeline_user_test.sh
+```
+
 **完整自动化测试**:
 ```bash
 #!/bin/bash
@@ -218,8 +232,8 @@ echo "✅ Pipeline created: ID=${PIPELINE_ID}"
 # 2. 上传PDF
 echo "📤 Uploading PDF..."
 TASK_RESPONSE=$(curl -s -X POST "${API_BASE}/ingestion/tasks/upload" \
-  -F "file=@test.pdf" \
-  -F "metadata={\"test\":true}")
+  -F "pipelineId=${PIPELINE_ID}" \
+  -F "file=@test.pdf")
 
 TASK_ID=$(echo $TASK_RESPONSE | jq -r '.data.taskId')
 echo "✅ Task created: ID=${TASK_ID}"

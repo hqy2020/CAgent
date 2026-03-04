@@ -71,6 +71,15 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     }
   }, [fetchSessions, sessions.length]);
 
+  React.useEffect(() => {
+    if (sessionsLoaded && sessions.length === 0 && !isLoading) {
+      const timer = setTimeout(() => {
+        fetchSessions().catch(() => null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [sessionsLoaded, sessions.length, isLoading, fetchSessions]);
+
   const filteredSessions = React.useMemo(() => {
     const keyword = query.trim().toLowerCase();
     if (!keyword) return sessions;

@@ -257,7 +257,7 @@ export function ModelManagementPage() {
 
   // ─── 默认模型 ───
 
-  const handleSetDefault = async (id: number) => {
+  const handleSetDefault = async (id: string) => {
     try {
       await setDefaultModel(id);
       toast.success("已设为默认模型");
@@ -267,7 +267,7 @@ export function ModelManagementPage() {
     }
   };
 
-  const handleSetDeepThinking = async (id: number) => {
+  const handleSetDeepThinking = async (id: string) => {
     try {
       await setDeepThinkingModel(id);
       toast.success("已设为深度思考模型");

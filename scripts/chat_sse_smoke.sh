@@ -2,8 +2,8 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:8080/api/ragent}"
-USERNAME="${USERNAME:-admin}"
-PASSWORD="${PASSWORD:-admin}"
+LOGIN_USERNAME="${LOGIN_USERNAME:-admin}"
+LOGIN_PASSWORD="${LOGIN_PASSWORD:-admin}"
 QUESTION="${QUESTION:-请简要介绍这个系统的主要能力}"
 DEEP_THINKING="${DEEP_THINKING:-false}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-120}"
@@ -19,7 +19,7 @@ echo "[smoke] login: ${BASE_URL}/auth/login"
 curl "${CURL_COMMON_ARGS[@]}" \
   -X POST "${BASE_URL}/auth/login" \
   -H "Content-Type: application/json" \
-  -d "{\"username\":\"${USERNAME}\",\"password\":\"${PASSWORD}\"}" >"${LOGIN_BODY}"
+  -d "{\"username\":\"${LOGIN_USERNAME}\",\"password\":\"${LOGIN_PASSWORD}\"}" >"${LOGIN_BODY}"
 
 TOKEN=""
 if command -v jq >/dev/null 2>&1; then

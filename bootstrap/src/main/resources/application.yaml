@@ -1,5 +1,6 @@
 server:
   port: 8080
+  address: 0.0.0.0
   servlet:
     context-path: /api/ragent
 
@@ -9,8 +10,8 @@ spring:
 
   servlet:
     multipart:
-      max-file-size: 50MB
-      max-request-size: 100MB
+      max-file-size: 200MB
+      max-request-size: 250MB
 
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -37,6 +38,14 @@ milvus:
   rpc-deadline-ms: 8000
 
 rag:
+  chat:
+    kb-temperature: 0.3
+    kb-top-p: 0.85
+    system-temperature: 0.7
+    system-top-p: 0.8
+    max-tokens-system: 2048
+    max-tokens-kb: 4096
+
   default:
     collection-name: rag_default_store
     dimension: 4096
@@ -66,6 +75,9 @@ rag:
   knowledge:
     chunk:
       running-stale-minutes: 10
+    batch:
+      max-concurrent: 3
+      max-files-per-batch: 50
     schedule:
       scan-delay-ms: 10000
       lock-seconds: 900
@@ -130,7 +142,7 @@ ai:
     open-duration-ms: 30000
 
   stream:
-    message-chunk-size: 12
+    message-chunk-size: 5
 
   chat:
     default-model: minimax-m2.5

@@ -87,6 +87,7 @@ public class RetrievalEngine {
     /**
      * 检索方法（支持取消令牌）
      */
+    @RagTraceNode(name = "retrieval-engine", type = "RETRIEVE")
     public RetrievalContext retrieve(List<SubQuestionIntent> subIntents, int topK, CancellationToken token) {
         if (CollUtil.isEmpty(subIntents)) {
             return RetrievalContext.builder()
@@ -153,7 +154,9 @@ public class RetrievalEngine {
         List<NodeScore> kbIntents = filterKbIntents(intent.nodeScores());
         List<NodeScore> mcpIntents = filterMCPIntents(intent.nodeScores());
 
-        KbResult kbResult = retrieveAndRerank(intent, kbIntents, topK, token);
+        KbResult kbResult = CollUtil.isNotEmpty(kbIntents)
+                ? retrieveAndRerank(intent, kbIntents, topK, token)
+                : KbResult.empty();
 
         String mcpContext = CollUtil.isNotEmpty(mcpIntents)
                 ? executeMcpAndMerge(intent.subQuestion(), mcpIntents, token)
@@ -221,6 +224,10 @@ public class RetrievalEngine {
 
     private KbResult retrieveAndRerank(SubQuestionIntent intent, List<NodeScore> kbIntents, int topK,
                                         CancellationToken token) {
+        if (CollUtil.isEmpty(kbIntents)) {
+            return KbResult.empty();
+        }
+
         // 使用多通道检索引擎（是否启用全局检索由置信度阈值决定）
         List<SubQuestionIntent> subIntents = List.of(intent);
         List<RetrievedChunk> chunks = multiChannelRetrievalEngine.retrieveKnowledgeChannels(subIntents, topK, token);

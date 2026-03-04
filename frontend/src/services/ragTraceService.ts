@@ -54,6 +54,15 @@ export interface RagTraceRunQuery {
   status?: string;
 }
 
+const mapStatusToApiValue = (status?: string): string | undefined => {
+  const normalized = (status || "").trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (normalized === "failed") return "ERROR";
+  if (normalized === "success") return "SUCCESS";
+  if (normalized === "running") return "RUNNING";
+  return status;
+};
+
 export async function getRagTraceRuns(
   query: RagTraceRunQuery = {}
 ): Promise<PageResult<RagTraceRun>> {
@@ -64,7 +73,7 @@ export async function getRagTraceRuns(
       traceId: query.traceId || undefined,
       conversationId: query.conversationId || undefined,
       taskId: query.taskId || undefined,
-      status: query.status || undefined
+      status: mapStatusToApiValue(query.status)
     }
   });
 }

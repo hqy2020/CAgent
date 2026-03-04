@@ -24,6 +24,7 @@ import com.nageoffer.ai.ragent.knowledge.controller.request.KnowledgeDocumentUpd
 import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentVO;
 import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentChunkLogVO;
 import com.nageoffer.ai.ragent.knowledge.controller.vo.KnowledgeDocumentSearchVO;
+import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeDocumentDO;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -32,6 +33,13 @@ import java.util.List;
  * 知识库文档服务接口
  */
 public interface KnowledgeDocumentService {
+
+    /**
+     * 执行文档分块入库任务（同步）
+     *
+     * @param doc 文档实体
+     */
+    void runChunkTask(KnowledgeDocumentDO doc);
 
     /**
      * 上传文档

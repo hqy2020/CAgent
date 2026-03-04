@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { toast } from "sonner";
 
-import type { CompletionPayload, FeedbackValue, Message, MessageDeltaPayload, Session } from "@/types";
+import type { CompletionPayload, FeedbackValue, Message, MessageDeltaPayload, ReferenceItem, Session } from "@/types";
 import {
   type ConversationMessageVO,
   type ConversationVO,
@@ -122,11 +122,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
           const timeB = b.lastTime ? new Date(b.lastTime).getTime() : 0;
           return timeB - timeA;
         });
-      set({ sessions });
+      set({ sessions, isLoading: false, sessionsLoaded: true });
     } catch (error) {
+      set({ isLoading: false });
       toast.error((error as Error).message || "加载会话失败");
-    } finally {
-      set({ isLoading: false, sessionsLoaded: true });
+      if (!get().sessionsLoaded) {
+        setTimeout(() => {
+          get().fetchSessions().catch(() => null);
+        }, 2000);
+      }
     }
   },
   createSession: async () => {
@@ -297,6 +301,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (get().cancelRequested) {
           stopTask(payload.taskId).catch(() => null);
         }
+      },
+      onReferences: (payload: ReferenceItem[]) => {
+        if (get().streamingMessageId !== assistantId) return;
+        if (!payload || !Array.isArray(payload) || payload.length === 0) return;
+        set((state) => ({
+          messages: state.messages.map((msg) =>
+            msg.id === state.streamingMessageId
+              ? { ...msg, references: payload }
+              : msg
+          )
+        }));
       },
       onMessage: (payload: MessageDeltaPayload) => {
         if (!payload || typeof payload !== "object") return;

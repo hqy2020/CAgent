@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.ingestion.node;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nageoffer.ai.ragent.core.chunk.ChunkingMode;
 import com.nageoffer.ai.ragent.core.chunk.ChunkingOptions;
 import com.nageoffer.ai.ragent.core.chunk.ChunkingStrategyFactory;
 import com.nageoffer.ai.ragent.core.chunk.VectorChunk;
@@ -93,7 +94,18 @@ public class ChunkerNode implements IngestionNode {
     }
 
     private ChunkerSettings parseSettings(JsonNode node) {
-        ChunkerSettings settings = objectMapper.convertValue(node, ChunkerSettings.class);
+        ChunkerSettings settings;
+        if (node == null || node.isNull()) {
+            settings = ChunkerSettings.builder().build();
+        } else {
+            settings = objectMapper.convertValue(node, ChunkerSettings.class);
+        }
+        if (settings == null) {
+            settings = ChunkerSettings.builder().build();
+        }
+        if (settings.getStrategy() == null) {
+            settings.setStrategy(ChunkingMode.FIXED_SIZE);
+        }
         if (settings.getChunkSize() == null || settings.getChunkSize() <= 0) {
             settings.setChunkSize(512);
         }

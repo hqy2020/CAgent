@@ -62,6 +62,7 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
     }
 
     @Override
+    @RagTraceNode(name = "query-rewrite-and-split", type = "REWRITE")
     public RewriteResult rewriteWithSplit(String userQuestion) {
         return rewriteAndSplit(userQuestion);
     }
@@ -142,8 +143,9 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
             int maxChars = ragConfigProperties.getQueryRewriteMaxHistoryChars();
 
             List<ChatMessage> filtered = history.stream()
-                    .filter(msg -> msg.getRole() == ChatMessage.Role.USER
+                    .filter(msg -> (msg.getRole() == ChatMessage.Role.USER
                             || msg.getRole() == ChatMessage.Role.ASSISTANT)
+                            && StrUtil.isNotBlank(msg.getContent()))
                     .toList();
             List<ChatMessage> recentHistory = filtered.subList(
                     Math.max(0, filtered.size() - maxMessages), filtered.size());
@@ -153,12 +155,14 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
                 int totalChars = 0;
                 int startIndex = recentHistory.size();
                 for (int i = recentHistory.size() - 1; i >= 0; i--) {
-                    totalChars += recentHistory.get(i).getContent().length();
+                    totalChars += StrUtil.length(recentHistory.get(i).getContent());
                     if (totalChars > maxChars) {
                         break;
                     }
                     startIndex = i;
                 }
+                // 保证至少保留最近 1 条历史消息，避免单条超长消息导致全部丢弃
+                startIndex = Math.min(startIndex, Math.max(0, recentHistory.size() - 1));
                 recentHistory = recentHistory.subList(startIndex, recentHistory.size());
             }
 
@@ -235,9 +239,6 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
         }
         return parts.stream()
                 .map(s -> {
-                    if (s.endsWith("？") || s.endsWith("?")) {
-                        return s;
-                    }
                     if (QUESTION_PATTERN.matcher(s).matches()) {
                         return s + "？";
                     }

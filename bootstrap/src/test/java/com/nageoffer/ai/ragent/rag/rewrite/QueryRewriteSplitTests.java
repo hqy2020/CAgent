@@ -25,6 +25,7 @@ import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.rag.core.rewrite.MultiQuestionRewriteService;
 import com.nageoffer.ai.ragent.rag.core.rewrite.QueryTermMappingService;
 import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
+import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -35,6 +36,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -175,10 +177,147 @@ class QueryRewriteSplitTests {
                     .count() - 1; // 减去当前用户问题
             assertTrue(historyMsgCount < 4, "字符限制应截断部分历史消息");
         }
+
+        @Test
+        @DisplayName("BUG 1: history 含 null content 时不应抛 NPE")
+        void shouldNotThrowNPEWhenHistoryContainsNullContent() {
+            List<ChatMessage> history = new ArrayList<>();
+            history.add(ChatMessage.user("正常问题"));
+            history.add(ChatMessage.assistant(null)); // null content
+            history.add(ChatMessage.user("第二个问题"));
+            history.add(ChatMessage.assistant("正常回答"));
+
+            when(llmService.chat(any(ChatRequest.class))).thenReturn(
+                    "{\"rewrite\": \"测试\", \"should_split\": false}");
+
+            assertDoesNotThrow(() -> rewriteService.rewriteWithSplit("新问题", history),
+                    "history 含 null content 时不应抛 NPE");
+        }
+
+        @Test
+        @DisplayName("BUG 5: blank content 消息应被过滤")
+        void shouldFilterBlankContentMessages() {
+            List<ChatMessage> history = new ArrayList<>();
+            history.add(ChatMessage.user("正常问题"));
+            history.add(ChatMessage.assistant(""));  // blank content
+            history.add(ChatMessage.user("  "));     // whitespace-only content
+            history.add(ChatMessage.assistant("正常回答"));
+
+            when(llmService.chat(any(ChatRequest.class))).thenReturn(
+                    "{\"rewrite\": \"测试\", \"should_split\": false}");
+
+            rewriteService.rewriteWithSplit("新问题", history);
+
+            ArgumentCaptor<ChatRequest> captor = ArgumentCaptor.forClass(ChatRequest.class);
+            verify(llmService).chat(captor.capture());
+            List<ChatMessage> messages = captor.getValue().getMessages();
+
+            // blank content 消息应被过滤掉，只保留 system_prompt + 2条有效历史 + 当前问题
+            long nonSystemCount = messages.stream()
+                    .filter(m -> m.getRole() != ChatMessage.Role.SYSTEM)
+                    .count();
+            assertEquals(3, nonSystemCount, "应过滤掉 blank content 消息，保留2条有效历史 + 1条当前问题");
+        }
     }
 
     // ────────────────────────────────────────
     // Fix 3: should_split 字段被尊重
+    // ────────────────────────────────────────
+
+    @Nested
+    @DisplayName("BUG 2 - 单条超长消息不应丢弃全部历史")
+    class LongSingleMessageTests {
+
+        @Test
+        @DisplayName("单条消息超过 maxChars 时至少保留最近 1 条")
+        void shouldKeepAtLeastOneMessageWhenSingleMessageExceedsMaxChars() {
+            when(ragConfigProperties.getQueryRewriteMaxHistoryChars()).thenReturn(50);
+
+            // 构造一条远超 50 字符的消息
+            String longContent = "这是一段非常非常长的用户问题内容，远远超过了默认的字符限制，".repeat(5);
+            List<ChatMessage> history = List.of(
+                    ChatMessage.user(longContent)
+            );
+
+            when(llmService.chat(any(ChatRequest.class))).thenReturn(
+                    "{\"rewrite\": \"测试\", \"should_split\": false}");
+
+            rewriteService.rewriteWithSplit("它是什么意思", history);
+
+            ArgumentCaptor<ChatRequest> captor = ArgumentCaptor.forClass(ChatRequest.class);
+            verify(llmService).chat(captor.capture());
+            List<ChatMessage> messages = captor.getValue().getMessages();
+
+            // system_prompt + 至少1条历史 + 当前问题 >= 3
+            long historyCount = messages.stream()
+                    .filter(m -> m.getRole() == ChatMessage.Role.USER || m.getRole() == ChatMessage.Role.ASSISTANT)
+                    .count();
+            assertTrue(historyCount >= 2, "应至少保留1条历史消息 + 1条当前问题");
+        }
+
+        @Test
+        @DisplayName("全部消息超长时保留最近 1 条")
+        void shouldKeepLastMessageWhenAllMessagesAreLong() {
+            when(ragConfigProperties.getQueryRewriteMaxHistoryChars()).thenReturn(50);
+
+            String longMsg = "A".repeat(600);
+            List<ChatMessage> history = List.of(
+                    ChatMessage.user(longMsg),
+                    ChatMessage.assistant(longMsg),
+                    ChatMessage.user(longMsg),
+                    ChatMessage.assistant(longMsg)
+            );
+
+            when(llmService.chat(any(ChatRequest.class))).thenReturn(
+                    "{\"rewrite\": \"测试\", \"should_split\": false}");
+
+            rewriteService.rewriteWithSplit("后续问题", history);
+
+            ArgumentCaptor<ChatRequest> captor = ArgumentCaptor.forClass(ChatRequest.class);
+            verify(llmService).chat(captor.capture());
+            List<ChatMessage> messages = captor.getValue().getMessages();
+
+            // 至少应包含: system_prompt + 1条历史(最近的) + 当前问题
+            long nonSystemCount = messages.stream()
+                    .filter(m -> m.getRole() != ChatMessage.Role.SYSTEM)
+                    .count();
+            assertTrue(nonSystemCount >= 2, "全部超长时至少保留最近1条历史 + 1条当前问题");
+        }
+    }
+
+    // ────────────────────────────────────────
+    // BUG 4: @RagTraceNode 注解验证
+    // ────────────────────────────────────────
+
+    @Nested
+    @DisplayName("BUG 4 - @RagTraceNode 注解完整性")
+    class TraceAnnotationTests {
+
+        @Test
+        @DisplayName("rewriteWithSplit(String) 应有 @RagTraceNode 注解")
+        void rewriteWithSplitShouldHaveTraceAnnotation() throws NoSuchMethodException {
+            Method method = MultiQuestionRewriteService.class.getMethod("rewriteWithSplit", String.class);
+            RagTraceNode annotation = method.getAnnotation(RagTraceNode.class);
+
+            assertNotNull(annotation, "rewriteWithSplit(String) 缺少 @RagTraceNode 注解");
+            assertEquals("query-rewrite-and-split", annotation.name());
+            assertEquals("REWRITE", annotation.type());
+        }
+
+        @Test
+        @DisplayName("所有公开 rewrite 方法均有 @RagTraceNode 注解")
+        void allPublicRewriteMethodsShouldHaveTraceAnnotation() {
+            for (Method method : MultiQuestionRewriteService.class.getDeclaredMethods()) {
+                if (java.lang.reflect.Modifier.isPublic(method.getModifiers())
+                        && (method.getName().equals("rewrite") || method.getName().equals("rewriteWithSplit"))) {
+                    RagTraceNode annotation = method.getAnnotation(RagTraceNode.class);
+                    assertNotNull(annotation,
+                            "公开方法 " + method.getName() + "(" + method.getParameterCount() + " params) 缺少 @RagTraceNode 注解");
+                }
+            }
+        }
+    }
+
     // ────────────────────────────────────────
 
     @Nested

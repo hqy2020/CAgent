@@ -41,7 +41,6 @@ import java.util.stream.Collectors;
 public class ModelSelector {
 
     private final AIModelProperties properties;
-    private final ModelHealthStore healthStore;
 
     public List<ModelTarget> selectChatCandidates(Boolean deepThinking) {
         AIModelProperties.ModelGroup group = properties.getChat();
@@ -135,6 +134,9 @@ public class ModelSelector {
         }
 
         AIModelProperties.ModelCandidate firstChoice = findCandidate(candidates, firstChoiceModelId);
+        if (firstChoice == null) {
+            return;
+        }
         candidates.remove(firstChoice);
         candidates.add(0, firstChoice);
     }
@@ -152,9 +154,7 @@ public class ModelSelector {
 
     private ModelTarget buildModelTarget(AIModelProperties.ModelCandidate candidate, Map<String, AIModelProperties.ProviderConfig> providers) {
         String modelId = resolveId(candidate);
-
-        // 检查熔断状态
-        if (healthStore.isOpen(modelId)) {
+        if (modelId == null) {
             return null;
         }
 

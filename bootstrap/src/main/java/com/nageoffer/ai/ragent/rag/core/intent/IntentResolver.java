@@ -62,6 +62,7 @@ public class IntentResolver {
         return resolve(rewriteResult, CancellationToken.NONE);
     }
 
+    @RagTraceNode(name = "intent-resolve", type = "INTENT")
     public List<SubQuestionIntent> resolve(RewriteResult rewriteResult, CancellationToken token) {
         List<String> subQuestions = CollUtil.isNotEmpty(rewriteResult.subQuestions())
                 ? rewriteResult.subQuestions()

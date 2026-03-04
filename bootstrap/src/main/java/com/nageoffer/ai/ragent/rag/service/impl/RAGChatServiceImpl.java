@@ -28,7 +28,13 @@ import com.nageoffer.ai.ragent.framework.trace.RagTraceContext;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.infra.chat.StreamCallback;
 import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
+import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeBaseDO;
+import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeDocumentDO;
+import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeBaseMapper;
+import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeDocumentMapper;
 import com.nageoffer.ai.ragent.rag.aop.ChatRateLimit;
+import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
 import com.nageoffer.ai.ragent.rag.core.guidance.GuidanceDecision;
 import com.nageoffer.ai.ragent.rag.core.guidance.IntentGuidanceService;
@@ -41,10 +47,12 @@ import com.nageoffer.ai.ragent.rag.core.retrieve.RetrievalEngine;
 import com.nageoffer.ai.ragent.rag.core.rewrite.QueryRewriteService;
 import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
 import com.nageoffer.ai.ragent.rag.dto.IntentGroup;
+import com.nageoffer.ai.ragent.rag.dto.ReferenceItem;
 import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import com.nageoffer.ai.ragent.rag.exception.TaskCancelledException;
 import com.nageoffer.ai.ragent.rag.controller.request.ConversationCreateRequest;
+import com.nageoffer.ai.ragent.rag.enums.SSEEventType;
 import com.nageoffer.ai.ragent.rag.service.ConversationService;
 import com.nageoffer.ai.ragent.rag.service.RAGChatService;
 import com.nageoffer.ai.ragent.rag.service.handler.StreamCallbackFactory;
@@ -54,7 +62,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CHAT_SYSTEM_PROMPT_PATH;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.DEFAULT_TOP_K;
@@ -70,9 +84,8 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.DEFAULT_TOP_K;
 @RequiredArgsConstructor
 public class RAGChatServiceImpl implements RAGChatService {
 
-    private static final int CHAT_MAX_TOKENS = 1600;
-
     private final LLMService llmService;
+    private final RAGConfigProperties ragConfigProperties;
     private final RAGPromptService promptBuilder;
     private final PromptTemplateLoader promptTemplateLoader;
     private final ConversationMemoryService memoryService;
@@ -83,6 +96,8 @@ public class RAGChatServiceImpl implements RAGChatService {
     private final IntentResolver intentResolver;
     private final RetrievalEngine retrievalEngine;
     private final ConversationService conversationService;
+    private final KnowledgeDocumentMapper knowledgeDocumentMapper;
+    private final KnowledgeBaseMapper knowledgeBaseMapper;
 
     @Override
     @ChatRateLimit
@@ -165,6 +180,9 @@ public class RAGChatServiceImpl implements RAGChatService {
                 return;
             }
 
+            // 发送参考文档引用事件（在 LLM 流式输出前）
+            sendReferencesEvent(emitter, ctx);
+
             // 聚合所有意图用于 prompt 规划
             IntentGroup mergedGroup = intentResolver.mergeIntentGroup(subIntents);
 
@@ -200,9 +218,9 @@ public class RAGChatServiceImpl implements RAGChatService {
                         ChatMessage.system(systemPrompt),
                         ChatMessage.user(question)
                 ))
-                .temperature(0.7D)
-                .topP(0.8D)
-                .maxTokens(CHAT_MAX_TOKENS)
+                .temperature(ragConfigProperties.getChatSystemTemperature())
+                .topP(ragConfigProperties.getChatSystemTopP())
+                .maxTokens(ragConfigProperties.getChatMaxTokensSystem())
                 .thinking(false)
                 .build();
         return llmService.streamChat(req, callback);
@@ -229,11 +247,103 @@ public class RAGChatServiceImpl implements RAGChatService {
         ChatRequest chatRequest = ChatRequest.builder()
                 .messages(messages)
                 .thinking(deepThinking)
-                .temperature(ctx.hasMcp() ? 0.3D : 0D)  // MCP 场景稍微放宽温度
-                .topP(ctx.hasMcp() ? 0.8D : 1D)
-                .maxTokens(CHAT_MAX_TOKENS)
+                .temperature(ragConfigProperties.getChatKbTemperature())
+                .topP(ragConfigProperties.getChatKbTopP())
+                .maxTokens(ragConfigProperties.getChatMaxTokensKb())
                 .build();
 
         return llmService.streamChat(chatRequest, callback);
+    }
+
+    // ==================== 参考文档引用 ====================
+
+    private void sendReferencesEvent(SseEmitter emitter, RetrievalContext ctx) {
+        List<ReferenceItem> references = buildReferences(ctx);
+        if (references.isEmpty()) {
+            return;
+        }
+        try {
+            emitter.send(SseEmitter.event()
+                    .name(SSEEventType.REFERENCES.value())
+                    .data(references));
+        } catch (IOException e) {
+            log.warn("发送 references SSE 事件失败", e);
+        }
+    }
+
+    private List<ReferenceItem> buildReferences(RetrievalContext ctx) {
+        Map<String, List<RetrievedChunk>> intentChunks = ctx.getIntentChunks();
+        if (intentChunks == null || intentChunks.isEmpty()) {
+            return List.of();
+        }
+
+        // 按 documentId 分组收集所有命中 chunks
+        Map<String, List<RetrievedChunk>> chunksByDoc = new LinkedHashMap<>();
+        for (List<RetrievedChunk> chunks : intentChunks.values()) {
+            for (RetrievedChunk chunk : chunks) {
+                if (chunk.getDocumentId() == null) {
+                    continue;
+                }
+                chunksByDoc.computeIfAbsent(chunk.getDocumentId(), k -> new ArrayList<>()).add(chunk);
+            }
+        }
+
+        if (chunksByDoc.isEmpty()) {
+            return List.of();
+        }
+
+        // 每个文档的 chunks 按 score 降序排序
+        for (List<RetrievedChunk> docChunks : chunksByDoc.values()) {
+            docChunks.sort((a, b) -> {
+                if (b.getScore() == null) return -1;
+                if (a.getScore() == null) return 1;
+                return b.getScore().compareTo(a.getScore());
+            });
+        }
+
+        // 批量查询文档名和知识库名
+        Set<String> docIds = chunksByDoc.keySet();
+        Map<Long, KnowledgeDocumentDO> docMap = knowledgeDocumentMapper.selectBatchIds(
+                docIds.stream().map(Long::valueOf).collect(Collectors.toList())
+        ).stream().collect(Collectors.toMap(KnowledgeDocumentDO::getId, d -> d));
+
+        Set<Long> kbIds = chunksByDoc.values().stream()
+                .flatMap(List::stream)
+                .map(RetrievedChunk::getKbId)
+                .filter(id -> id != null)
+                .map(Long::valueOf)
+                .collect(Collectors.toSet());
+
+        Map<Long, KnowledgeBaseDO> kbMap = kbIds.isEmpty() ? Map.of() :
+                knowledgeBaseMapper.selectBatchIds(new ArrayList<>(kbIds))
+                        .stream().collect(Collectors.toMap(KnowledgeBaseDO::getId, kb -> kb));
+
+        // 构建引用列表
+        List<ReferenceItem> items = new ArrayList<>();
+        for (Map.Entry<String, List<RetrievedChunk>> entry : chunksByDoc.entrySet()) {
+            List<RetrievedChunk> docChunks = entry.getValue();
+            RetrievedChunk bestChunk = docChunks.get(0);
+            Long docIdLong = Long.valueOf(entry.getKey());
+            KnowledgeDocumentDO doc = docMap.get(docIdLong);
+
+            String docName = doc != null ? doc.getDocName() : null;
+            String kbName = null;
+            if (bestChunk.getKbId() != null) {
+                KnowledgeBaseDO kb = kbMap.get(Long.valueOf(bestChunk.getKbId()));
+                kbName = kb != null ? kb.getName() : null;
+            }
+
+            String preview = bestChunk.getText();
+            if (preview != null && preview.length() > 100) {
+                preview = preview.substring(0, 100) + "...";
+            }
+
+            List<ReferenceItem.ChunkDetail> chunkDetails = docChunks.stream()
+                    .map(c -> new ReferenceItem.ChunkDetail(c.getText(), c.getScore()))
+                    .toList();
+
+            items.add(new ReferenceItem(entry.getKey(), docName, kbName, bestChunk.getScore(), preview, chunkDetails));
+        }
+        return items;
     }
 }

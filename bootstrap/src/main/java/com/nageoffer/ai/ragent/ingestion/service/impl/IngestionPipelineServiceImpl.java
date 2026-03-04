@@ -125,9 +125,10 @@ public class IngestionPipelineServiceImpl implements IngestionPipelineService {
     public void delete(String pipelineId) {
         IngestionPipelineDO pipeline = pipelineMapper.selectById(pipelineId);
         Assert.notNull(pipeline, () -> new ClientException("未找到流水线"));
-        pipeline.setDeleted(1);
-        pipeline.setUpdatedBy(UserContext.getUsername());
-        pipelineMapper.updateById(pipeline);
+        int affected = pipelineMapper.deleteById(pipeline.getId());
+        if (affected < 1) {
+            throw new ClientException("删除流水线失败");
+        }
 
         LambdaQueryWrapper<IngestionPipelineNodeDO> qw = new LambdaQueryWrapper<IngestionPipelineNodeDO>()
                 .eq(IngestionPipelineNodeDO::getPipelineId, pipeline.getId());
@@ -154,9 +155,8 @@ public class IngestionPipelineServiceImpl implements IngestionPipelineService {
         if (nodes == null) {
             return;
         }
-        LambdaQueryWrapper<IngestionPipelineNodeDO> qw = new LambdaQueryWrapper<IngestionPipelineNodeDO>()
-                .eq(IngestionPipelineNodeDO::getPipelineId, pipelineId);
-        nodeMapper.delete(qw);
+        // 物理删除旧节点，避免 @TableLogic 逻辑删除与唯一索引冲突
+        nodeMapper.physicalDeleteByPipelineId(pipelineId);
         for (IngestionPipelineNodeRequest node : nodes) {
             if (node == null) {
                 continue;

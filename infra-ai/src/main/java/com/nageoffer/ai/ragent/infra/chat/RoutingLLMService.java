@@ -101,14 +101,18 @@ public class RoutingLLMService implements LLMService {
 
         String label = ModelCapability.CHAT.getDisplayName();
         Throwable lastError = null;
+        List<String> skipReasons = new ArrayList<>();
 
         for (ModelTarget target : targets) {
             ChatClient client = resolveClient(target, label);
             if (client == null) {
+                skipReasons.add(String.format("%s: client missing (provider=%s)", target.id(), target.candidate().getProvider()));
                 continue;
             }
 
             if (!healthStore.allowCall(target.id())) {
+                skipReasons.add(String.format("%s: circuit breaker rejected (provider=%s)", target.id(), target.candidate().getProvider()));
+                log.warn("{} 模型熔断器拒绝: modelId={}, provider={}", label, target.id(), target.candidate().getProvider());
                 continue;
             }
 
@@ -150,7 +154,7 @@ public class RoutingLLMService implements LLMService {
         }
 
         // 所有模型都失败了，通知客户端错误
-        throw notifyAllFailed(callback, lastError);
+        throw notifyAllFailed(callback, lastError, skipReasons);
     }
 
     private ChatClient resolveClient(ModelTarget target, String label) {
@@ -207,7 +211,14 @@ public class RoutingLLMService implements LLMService {
         }
     }
 
-    private RemoteException notifyAllFailed(StreamCallback callback, Throwable lastError) {
+    private RemoteException notifyAllFailed(StreamCallback callback, Throwable lastError, List<String> skipReasons) {
+        String diagnosis = skipReasons.isEmpty()
+                ? ""
+                : " skipped=[" + String.join("; ", skipReasons) + "]";
+        if (!diagnosis.isEmpty() || lastError != null) {
+            log.error("所有流式模型候选均失败。{}{}", diagnosis,
+                    lastError != null ? " lastError=" + lastError.getMessage() : "");
+        }
         RemoteException finalException = new RemoteException(
                 STREAM_ALL_FAILED_MESSAGE,
                 lastError,

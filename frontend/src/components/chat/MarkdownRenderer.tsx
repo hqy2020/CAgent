@@ -16,8 +16,9 @@ interface MarkdownRendererProps {
   content: string;
 }
 
-export function MarkdownRenderer({ content }: MarkdownRendererProps) {
+export const MarkdownRenderer = React.memo(function MarkdownRenderer({ content }: MarkdownRendererProps) {
   const theme = useThemeStore((state) => state.theme);
+  const deferredContent = React.useDeferredValue(content);
 
   return (
     <ReactMarkdown
@@ -165,10 +166,10 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
       }}
       className="prose prose-gray max-w-none dark:prose-invert prose-headings:font-semibold prose-headings:text-[#1A1A1A] dark:prose-headings:text-[#EEEEEE] prose-p:text-[#333333] dark:prose-p:text-[#CCCCCC] prose-p:leading-relaxed prose-li:text-[#333333] dark:prose-li:text-[#CCCCCC] prose-strong:text-[#1A1A1A] dark:prose-strong:text-[#EEEEEE]"
     >
-      {content}
+      {deferredContent}
     </ReactMarkdown>
   );
-}
+});
 
 function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = React.useState(false);

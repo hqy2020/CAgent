@@ -21,11 +21,13 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.infra.convention.ChatMessage;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 @Slf4j
 @Service
@@ -33,11 +35,14 @@ public class DefaultConversationMemoryService implements ConversationMemoryServi
 
     private final ConversationMemoryStore memoryStore;
     private final ConversationMemorySummaryService summaryService;
+    private final Executor memoryLoadExecutor;
 
     public DefaultConversationMemoryService(ConversationMemoryStore memoryStore,
-                                            ConversationMemorySummaryService summaryService) {
+                                            ConversationMemorySummaryService summaryService,
+                                            @Qualifier("ragContextThreadPoolExecutor") Executor memoryLoadExecutor) {
         this.memoryStore = memoryStore;
         this.summaryService = summaryService;
+        this.memoryLoadExecutor = memoryLoadExecutor;
     }
 
     @Override
@@ -51,10 +56,10 @@ public class DefaultConversationMemoryService implements ConversationMemoryServi
         try {
             // 并行加载摘要和历史记录
             CompletableFuture<ChatMessage> summaryFuture = CompletableFuture.supplyAsync(
-                    () -> loadSummaryWithFallback(conversationId, userId)
+                    () -> loadSummaryWithFallback(conversationId, userId), memoryLoadExecutor
             );
             CompletableFuture<List<ChatMessage>> historyFuture = CompletableFuture.supplyAsync(
-                    () -> loadHistoryWithFallback(conversationId, userId)
+                    () -> loadHistoryWithFallback(conversationId, userId), memoryLoadExecutor
             );
 
             // 等待所有任务完成后合并结果

@@ -45,6 +45,7 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Map;
 
 @Slf4j
@@ -114,6 +115,7 @@ public class IngestionExecuteConsumer implements RocketMQListener<IngestionExecu
                     .rawBytes(rawBytes)
                     .mimeType(event.getMimeType())
                     .vectorSpaceId(vectorSpaceId)
+                    .metadata(parseMetadata(event.getMetadataJson()))
                     .logs(new ArrayList<>())
                     .build();
 
@@ -156,6 +158,19 @@ public class IngestionExecuteConsumer implements RocketMQListener<IngestionExecu
         } catch (Exception e) {
             log.warn("凭证 JSON 解析失败: {}", json, e);
             return null;
+        }
+    }
+
+    private Map<String, Object> parseMetadata(String json) {
+        if (!StringUtils.hasText(json)) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<>() {
+            });
+        } catch (Exception e) {
+            log.warn("metadata JSON 解析失败: {}", json, e);
+            return new HashMap<>();
         }
     }
 }

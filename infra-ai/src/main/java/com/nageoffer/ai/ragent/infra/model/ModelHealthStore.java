@@ -37,6 +37,9 @@ public class ModelHealthStore {
     private final Map<String, ModelHealth> healthById = new ConcurrentHashMap<>();
 
     public boolean isOpen(String id) {
+        if (id == null) {
+            return false;
+        }
         ModelHealth health = healthById.get(id);
         if (health == null) {
             return false;

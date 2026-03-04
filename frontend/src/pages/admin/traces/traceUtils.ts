@@ -35,7 +35,11 @@ export const STATUS_OPTIONS: { value: TraceStatus; label: string }[] = [
   { value: "failed", label: "失败" }
 ];
 
-export const normalizeStatus = (status?: string | null): string => (status || "").trim().toLowerCase();
+export const normalizeStatus = (status?: string | null): string => {
+  const normalized = (status || "").trim().toLowerCase();
+  if (normalized === "error") return "failed";
+  return normalized;
+};
 
 export const statusLabel = (status?: string | null): string => {
   const normalized = normalizeStatus(status);

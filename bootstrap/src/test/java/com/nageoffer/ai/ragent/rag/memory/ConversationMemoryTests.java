@@ -28,6 +28,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.concurrent.Executor;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -41,12 +42,21 @@ class ConversationMemoryTests {
     private ConversationMemoryStore memoryStore;
     @Mock
     private ConversationMemorySummaryService summaryService;
+    @Mock
+    private Executor memoryLoadExecutor;
 
     private DefaultConversationMemoryService service;
 
     @BeforeEach
     void setUp() {
-        service = new DefaultConversationMemoryService(memoryStore, summaryService);
+        // 让 mock Executor 直接在调用线程执行，简化测试
+        lenient().doAnswer(invocation -> {
+            Runnable task = invocation.getArgument(0);
+            task.run();
+            return null;
+        }).when(memoryLoadExecutor).execute(any(Runnable.class));
+
+        service = new DefaultConversationMemoryService(memoryStore, summaryService, memoryLoadExecutor);
     }
 
     @Test
@@ -126,5 +136,16 @@ class ConversationMemoryTests {
         List<ChatMessage> result = service.load("conv-4", "user-4");
 
         assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testLoadUsesInjectedExecutor() {
+        when(summaryService.loadLatestSummary("conv-5", "user-5")).thenReturn(null);
+        when(memoryStore.loadHistory("conv-5", "user-5")).thenReturn(List.of(ChatMessage.user("hi")));
+
+        service.load("conv-5", "user-5");
+
+        // 并行加载摘要和历史 → executor 应被调用至少 2 次
+        verify(memoryLoadExecutor, atLeast(2)).execute(any(Runnable.class));
     }
 }

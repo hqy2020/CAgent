@@ -31,6 +31,7 @@ export interface Message {
   createdAt?: string;
   feedback?: FeedbackValue;
   status?: MessageStatus;
+  references?: ReferenceItem[];
 }
 
 export interface StreamMetaPayload {
@@ -46,4 +47,18 @@ export interface MessageDeltaPayload {
 export interface CompletionPayload {
   messageId?: string | null;
   title?: string | null;
+}
+
+export interface ChunkDetail {
+  content: string;
+  score?: number;
+}
+
+export interface ReferenceItem {
+  documentId: string;
+  documentName: string;
+  knowledgeBaseName?: string;
+  score?: number;
+  textPreview?: string;
+  chunks?: ChunkDetail[];
 }

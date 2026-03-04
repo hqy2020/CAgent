@@ -49,7 +49,12 @@ public enum ChunkingMode {
     /**
      * 按段落切分 - 以段落为单位进行切分
      */
-    PARAGRAPH("paragraph");
+    PARAGRAPH("paragraph"),
+
+    /**
+     * 递归切分 - 按分隔符从粗到细逐级递归切分，优先保留语义完整性
+     */
+    RECURSIVE("recursive");
 
     /**
      * 策略值（小写 snake_case）

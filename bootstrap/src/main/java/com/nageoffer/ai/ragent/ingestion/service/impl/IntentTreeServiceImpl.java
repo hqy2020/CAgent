@@ -40,6 +40,7 @@ import com.nageoffer.ai.ragent.rag.core.intent.IntentTreeCacheManager;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentTreeFactory;
 import com.nageoffer.ai.ragent.ingestion.service.IntentTreeService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,6 +57,7 @@ import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.rag.enums.IntentLevel.DOMAIN;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentNodeDO> implements IntentTreeService {
@@ -113,12 +115,6 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
                 .eq(IntentNodeDO::getDeleted, 0));
         if (count > 0) {
             throw new ClientException("意图标识已存在: " + requestParam.getIntentCode());
-        }
-
-        if (Objects.equals(requestParam.getLevel(), DOMAIN.getCode())
-                && Objects.equals(requestParam.getKind(), IntentKind.KB.getCode())
-                && StrUtil.isBlank(requestParam.getKbId())) {
-            throw new ClientException("Domain类型的RAG检索意图识别时，必须指定目标知识库");
         }
 
         Long kbId = null;
@@ -309,17 +305,42 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
         List<IntentNode> roots = IntentTreeFactory.buildIntentTree();
         List<IntentNode> allNodes = flatten(roots);
 
+        // 预查 collectionName → kbId 映射表，避免逐节点查询（N+1）
+        Map<String, Long> collectionToKbId = knowledgeBaseMapper.selectList(
+                new LambdaQueryWrapper<KnowledgeBaseDO>()
+                        .eq(KnowledgeBaseDO::getDeleted, 0)
+                        .isNotNull(KnowledgeBaseDO::getCollectionName)
+        ).stream().collect(Collectors.toMap(
+                KnowledgeBaseDO::getCollectionName,
+                KnowledgeBaseDO::getId,
+                (existing, replacement) -> existing // 同名 collection 保留第一个
+        ));
+
         int sort = 0;
         int created = 0;
 
         for (IntentNode node : allNodes) {
-            // 如果已经存在相同 intentCode，就跳过，避免重复初始化
+            // 如果已经存在相同 intentCode，尝试补齐缺失的 collection 映射
             if (existsByIntentCode(node.getId())) {
+                if (repairCollectionMapping(node, collectionToKbId)) {
+                    created++;
+                }
                 continue;
             }
 
+            // collectionName → kbId 动态解析
+            String resolvedKbId = node.getKbId();
+            if (resolvedKbId == null && node.getCollectionName() != null) {
+                Long kbId = collectionToKbId.get(node.getCollectionName());
+                if (kbId != null) {
+                    resolvedKbId = String.valueOf(kbId);
+                } else {
+                    log.warn("知识库未找到: collection={}, intentCode={}", node.getCollectionName(), node.getId());
+                }
+            }
+
             IntentNodeCreateRequest nodeCreateRequest = IntentNodeCreateRequest.builder()
-                    .kbId(node.getKbId())
+                    .kbId(resolvedKbId)
                     .intentCode(node.getId())
                     .name(node.getName())
                     .level(mapLevel(node.getLevel()))
@@ -388,6 +409,36 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
                         .eq(IntentNodeDO::getIntentCode, intentCode)
                         .eq(IntentNodeDO::getDeleted, 0)
         ) > 0;
+    }
+
+    /**
+     * 补齐已有节点中缺失的 collectionName / kbId 映射
+     * 解决初始化时序问题：意图树先于知识库创建时，collection 映射为空
+     *
+     * @return true 如果执行了修复
+     */
+    private boolean repairCollectionMapping(IntentNode factoryNode, Map<String, Long> collectionToKbId) {
+        if (factoryNode.getCollectionName() == null) {
+            return false;
+        }
+        IntentNodeDO existing = baseMapper.selectOne(
+                new LambdaQueryWrapper<IntentNodeDO>()
+                        .eq(IntentNodeDO::getIntentCode, factoryNode.getId())
+                        .eq(IntentNodeDO::getDeleted, 0)
+        );
+        if (existing == null || existing.getCollectionName() != null) {
+            return false;
+        }
+        Long kbId = collectionToKbId.get(factoryNode.getCollectionName());
+        if (kbId == null) {
+            return false;
+        }
+        existing.setKbId(kbId);
+        existing.setCollectionName(factoryNode.getCollectionName());
+        baseMapper.updateById(existing);
+        log.info("补齐意图节点 collection 映射: intentCode={}, collection={}, kbId={}",
+                factoryNode.getId(), factoryNode.getCollectionName(), kbId);
+        return true;
     }
 
     /**

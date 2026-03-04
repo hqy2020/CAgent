@@ -48,7 +48,8 @@ import java.util.List;
                 @MCPParam(name = "position", description = "插入位置", type = "string", required = false,
                         defaultValue = "append", enumValues = {"append", "prepend"}),
                 @MCPParam(name = "daily", description = "是否写入今日日记", type = "string", required = false,
-                        defaultValue = "false", enumValues = {"true", "false"})
+                        defaultValue = "false", enumValues = {"true", "false"}),
+                @MCPParam(name = "date", description = "目标日期（YYYY-MM-DD 格式），仅 daily=true 时生效，默认今天", type = "string", required = false)
         }
 )
 public class ObsidianUpdateNoteTool {
@@ -66,6 +67,7 @@ public class ObsidianUpdateNoteTool {
         String path = request.getStringParameter("path");
         String position = request.getStringParameter("position");
         String daily = request.getStringParameter("daily");
+        String date = request.getStringParameter("date");
 
         boolean isDaily = "true".equalsIgnoreCase(daily);
         boolean isPrepend = "prepend".equalsIgnoreCase(position);
@@ -81,7 +83,11 @@ public class ObsidianUpdateNoteTool {
 
         List<String> args = new ArrayList<>();
         args.add("content=" + content);
-        if (!isDaily) {
+        if (isDaily) {
+            if (date != null && !date.isBlank()) {
+                args.add("date=" + date);
+            }
+        } else {
             if (path != null && !path.isBlank()) {
                 args.add("path=" + path);
             } else if (file != null && !file.isBlank()) {

@@ -59,7 +59,11 @@ public class ConversationMessageServiceImpl implements ConversationMessageServic
 
     @Override
     public List<ConversationMessageVO> listMessages(String conversationId, Integer limit, ConversationMessageOrder order) {
-        String userId = UserContext.getUserId();
+        return listMessages(conversationId, UserContext.getUserId(), limit, order);
+    }
+
+    @Override
+    public List<ConversationMessageVO> listMessages(String conversationId, String userId, Integer limit, ConversationMessageOrder order) {
         if (StrUtil.isBlank(conversationId) || StrUtil.isBlank(userId)) {
             return List.of();
         }

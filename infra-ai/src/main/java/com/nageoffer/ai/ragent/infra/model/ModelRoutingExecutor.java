@@ -24,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
@@ -49,13 +50,19 @@ public class ModelRoutingExecutor {
         }
 
         Throwable last = null;
+        List<String> skipReasons = new ArrayList<>();
         for (ModelTarget target : targets) {
             C client = clientResolver.apply(target);
             if (client == null) {
+                String reason = String.format("%s: client missing (provider=%s)", target.id(), target.candidate().getProvider());
+                skipReasons.add(reason);
                 log.warn("{} provider client missing: provider={}, modelId={}", label, target.candidate().getProvider(), target.id());
                 continue;
             }
             if (!healthStore.allowCall(target.id())) {
+                String reason = String.format("%s: circuit breaker rejected (provider=%s)", target.id(), target.candidate().getProvider());
+                skipReasons.add(reason);
+                log.warn("{} model circuit breaker rejected: modelId={}, provider={}", label, target.id(), target.candidate().getProvider());
                 continue;
             }
 
@@ -70,8 +77,12 @@ public class ModelRoutingExecutor {
             }
         }
 
+        String diagnosis = skipReasons.isEmpty()
+                ? (last == null ? "unknown" : last.getMessage())
+                : "skipped=[" + String.join("; ", skipReasons) + "]"
+                        + (last != null ? ", lastError=" + last.getMessage() : "");
         throw new RemoteException(
-                "All " + label + " model candidates failed: " + (last == null ? "unknown" : last.getMessage()),
+                "All " + label + " model candidates failed: " + diagnosis,
                 last,
                 BaseErrorCode.REMOTE_ERROR
         );

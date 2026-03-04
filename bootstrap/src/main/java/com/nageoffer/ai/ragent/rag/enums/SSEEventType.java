@@ -36,6 +36,11 @@ public enum SSEEventType {
     MESSAGE("message"),
 
     /**
+     * 参考文档引用事件
+     */
+    REFERENCES("references"),
+
+    /**
      * 模型回复完成事件
      */
     FINISH("finish"),

@@ -55,6 +55,7 @@ public class MySQLConversationMemoryStore implements ConversationMemoryStore {
         int maxMessages = resolveMaxHistoryMessages();
         List<ConversationMessageVO> dbMessages = conversationMessageService.listMessages(
                 conversationId,
+                userId,
                 maxMessages,
                 ConversationMessageOrder.DESC
         );

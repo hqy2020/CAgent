@@ -44,6 +44,8 @@ public class IngestionExecuteEvent implements Serializable {
 
     private String credentialsJson;
 
+    private String metadataJson;
+
     private String rawBytesBase64;
 
     private String mimeType;

@@ -356,3 +356,70 @@ export const getChunkLogsPage = async (
     }
   );
 };
+
+// 批量上传
+export interface BatchUploadItem {
+  id: string;
+  fileName: string;
+  fileSize?: number | null;
+  fileType?: string | null;
+  status: string;
+  errorMessage?: string | null;
+  createTime?: string | null;
+}
+
+export interface BatchUploadTask {
+  id: string;
+  kbId: string;
+  totalCount: number;
+  uploadedCount: number;
+  successCount: number;
+  failedCount: number;
+  status: string;
+  processMode?: string | null;
+  chunkStrategy?: string | null;
+  createTime?: string | null;
+  items: BatchUploadItem[];
+}
+
+export interface BatchUploadCreatePayload {
+  fileNames: string[];
+  processMode?: string;
+  chunkStrategy?: string;
+  chunkConfig?: string;
+  chunkSize?: number | null;
+  overlapSize?: number | null;
+  targetChars?: number | null;
+  maxChars?: number | null;
+  minChars?: number | null;
+  overlapChars?: number | null;
+  pipelineId?: string | null;
+}
+
+export const createBatchUpload = async (
+  kbId: string,
+  payload: BatchUploadCreatePayload
+): Promise<BatchUploadTask> => {
+  return api.post<BatchUploadTask, BatchUploadTask>(`/knowledge-base/${kbId}/batch-upload`, payload);
+};
+
+export const uploadBatchItem = async (
+  batchId: string,
+  itemId: string,
+  file: File
+): Promise<void> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  await api.post(`/knowledge-base/batch-upload/${batchId}/items/${itemId}/upload`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 300000
+  });
+};
+
+export const startBatchProcess = async (batchId: string): Promise<void> => {
+  await api.post(`/knowledge-base/batch-upload/${batchId}/start`);
+};
+
+export const getBatchProgress = async (batchId: string): Promise<BatchUploadTask> => {
+  return api.get<BatchUploadTask, BatchUploadTask>(`/knowledge-base/batch-upload/${batchId}`);
+};

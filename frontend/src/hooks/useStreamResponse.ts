@@ -1,9 +1,10 @@
-import type { CompletionPayload, MessageDeltaPayload, StreamMetaPayload } from "@/types";
+import type { CompletionPayload, MessageDeltaPayload, ReferenceItem, StreamMetaPayload } from "@/types";
 
 export interface StreamHandlers {
   onMeta?: (payload: StreamMetaPayload) => void;
   onMessage?: (payload: MessageDeltaPayload) => void;
   onThinking?: (payload: MessageDeltaPayload) => void;
+  onReferences?: (payload: ReferenceItem[]) => void;
   onFinish?: (payload: CompletionPayload) => void;
   onDone?: () => void;
   onCancel?: (payload: CompletionPayload) => void;
@@ -79,6 +80,9 @@ async function readSseStream(response: Response, handlers: StreamHandlers, signa
           }
           handlers.onMessage?.(messagePayload);
         }
+        break;
+      case "references":
+        handlers.onReferences?.(payload as ReferenceItem[]);
         break;
       case "finish":
         hasTerminalEvent = true;

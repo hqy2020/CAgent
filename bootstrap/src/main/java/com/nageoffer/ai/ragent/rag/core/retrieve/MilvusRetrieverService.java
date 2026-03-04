@@ -30,6 +30,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -84,10 +87,22 @@ public class MilvusRetrieverService implements RetrieverService {
         // TODO 需确认后续是否对分数较低数据进行限制，限制多少合适？0.65？
         // TODO 如果本次查询分数都较高，是否应该扩大查询范围？1.5倍？
         return results.get(0).stream()
-                .map(r -> new RetrievedChunk(
-                        Objects.toString(r.getEntity().get("doc_id"), ""),
-                        Objects.toString(r.getEntity().get("content"), ""),
-                        r.getScore()))
+                .map(r -> {
+                    String documentId = null;
+                    String kbId = null;
+                    Object metadataObj = r.getEntity().get("metadata");
+                    if (metadataObj instanceof JsonObject meta) {
+                        documentId = getJsonString(meta, "doc_id");
+                        kbId = getJsonString(meta, "kb_id");
+                    }
+                    return RetrievedChunk.builder()
+                            .id(Objects.toString(r.getEntity().get("doc_id"), ""))
+                            .text(Objects.toString(r.getEntity().get("content"), ""))
+                            .score(r.getScore())
+                            .documentId(documentId)
+                            .kbId(kbId)
+                            .build();
+                })
                 .collect(Collectors.toList());
     }
 
@@ -104,5 +119,10 @@ public class MilvusRetrieverService implements RetrieverService {
         float[] nv = new float[v.length];
         for (int i = 0; i < v.length; i++) nv[i] = (float) (v[i] / len);
         return nv;
+    }
+
+    private static String getJsonString(JsonObject json, String key) {
+        JsonElement el = json.get(key);
+        return (el != null && !el.isJsonNull()) ? el.getAsString() : null;
     }
 }

@@ -51,4 +51,16 @@ public class RetrievedChunk {
      * 数值越大表示与查询的相关性越高
      */
     private Float score;
+
+    /**
+     * 真实文档 ID（对应 t_knowledge_document.id）
+     * 从 Milvus metadata 中解析而来
+     */
+    private String documentId;
+
+    /**
+     * 知识库 ID（对应 t_knowledge_base.id）
+     * 从 Milvus metadata 中解析而来
+     */
+    private String kbId;
 }

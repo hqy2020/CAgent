@@ -193,6 +193,25 @@ public class ThreadPoolExecutorConfig {
     }
 
     /**
+     * 批量上传入库线程池
+     */
+    @Bean
+    public Executor batchUploadExecutor() {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                4,
+                Math.max(8, CPU_COUNT),
+                60,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(500),
+                ThreadFactoryBuilder.create()
+                        .setNamePrefix("batch_upload_executor_")
+                        .build(),
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
+        return TtlExecutors.getTtlExecutor(executor);
+    }
+
+    /**
      * 知识库文档分块线程池
      */
     @Bean

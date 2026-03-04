@@ -17,9 +17,7 @@
 
 package com.nageoffer.ai.ragent.ingestion.service.impl;
 
-import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.lang.Assert;
-import cn.hutool.core.util.IdUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -119,6 +117,7 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
                 .sourceLocation(source.getLocation())
                 .sourceFileName(source.getFileName())
                 .credentialsJson(credentialsJson)
+                .metadataJson(writeJson(request.getMetadata()))
                 .vectorSpaceLogicalName(request.getVectorSpaceId() == null ? null : request.getVectorSpaceId().getLogicalName())
                 .operator(UserContext.getUsername())
                 .sendTimestamp(System.currentTimeMillis())
@@ -420,7 +419,7 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
                 .chunkCount(task.getChunkCount())
                 .errorMessage(task.getErrorMessage())
                 .logs(readLogs(task.getLogsJson()))
-                .metadata(BeanUtil.beanToMap(task.getMetadataJson()))
+                .metadata(readMap(task.getMetadataJson()))
                 .startedAt(task.getStartedAt())
                 .completedAt(task.getCompletedAt())
                 .createdBy(task.getCreatedBy())
@@ -441,7 +440,7 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
                 .durationMs(node.getDurationMs())
                 .message(node.getMessage())
                 .errorMessage(node.getErrorMessage())
-                .output(BeanUtil.beanToMap(node.getOutputJson()))
+                .output(readMap(node.getOutputJson()))
                 .createTime(node.getCreateTime())
                 .updateTime(node.getUpdateTime())
                 .build();
@@ -484,6 +483,18 @@ public class IngestionTaskServiceImpl implements IngestionTaskService {
             });
         } catch (Exception e) {
             return List.of();
+        }
+    }
+
+    private Map<String, Object> readMap(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(raw, new TypeReference<Map<String, Object>>() {
+            });
+        } catch (Exception e) {
+            return Map.of();
         }
     }
 

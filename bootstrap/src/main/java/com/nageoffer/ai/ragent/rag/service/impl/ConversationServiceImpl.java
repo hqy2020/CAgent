@@ -36,13 +36,14 @@ import com.nageoffer.ai.ragent.framework.exception.ClientException;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.rag.service.ConversationService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CONVERSATION_TITLE_PROMPT_PATH;
@@ -53,7 +54,6 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CONVERSATION_TITL
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ConversationServiceImpl implements ConversationService {
 
     private final ConversationMapper conversationMapper;
@@ -62,6 +62,24 @@ public class ConversationServiceImpl implements ConversationService {
     private final MemoryProperties memoryProperties;
     private final PromptTemplateLoader promptTemplateLoader;
     private final LLMService llmService;
+    private final Executor titleGeneratorExecutor;
+
+    public ConversationServiceImpl(
+            ConversationMapper conversationMapper,
+            ConversationMessageMapper messageMapper,
+            ConversationSummaryMapper summaryMapper,
+            MemoryProperties memoryProperties,
+            PromptTemplateLoader promptTemplateLoader,
+            LLMService llmService,
+            @Qualifier("ragContextThreadPoolExecutor") Executor titleGeneratorExecutor) {
+        this.conversationMapper = conversationMapper;
+        this.messageMapper = messageMapper;
+        this.summaryMapper = summaryMapper;
+        this.memoryProperties = memoryProperties;
+        this.promptTemplateLoader = promptTemplateLoader;
+        this.llmService = llmService;
+        this.titleGeneratorExecutor = titleGeneratorExecutor;
+    }
 
     @Override
     public List<ConversationVO> listByUserId(String userId) {
@@ -105,14 +123,32 @@ public class ConversationServiceImpl implements ConversationService {
         );
 
         if (existing == null) {
-            String title = generateTitleFromQuestion(question);
+            int maxLen = memoryProperties.getTitleMaxLength();
+            if (maxLen <= 0) {
+                maxLen = 30;
+            }
+            String tempTitle = question != null && question.length() > maxLen
+                    ? question.substring(0, maxLen)
+                    : (question != null ? question : "新对话");
             ConversationDO record = ConversationDO.builder()
                     .conversationId(conversationId)
                     .userId(userId)
-                    .title(title)
+                    .title(tempTitle)
                     .lastTime(request.getLastTime())
                     .build();
             conversationMapper.insert(record);
+            Long recordId = record.getId();
+            titleGeneratorExecutor.execute(() -> {
+                try {
+                    String generatedTitle = generateTitleFromQuestion(question);
+                    ConversationDO update = new ConversationDO();
+                    update.setId(recordId);
+                    update.setTitle(generatedTitle);
+                    conversationMapper.updateById(update);
+                } catch (Exception ex) {
+                    log.warn("异步生成会话标题失败, conversationId={}", conversationId, ex);
+                }
+            });
             return;
         }
 

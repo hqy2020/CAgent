@@ -28,7 +28,7 @@ BASE_URL = "http://localhost:8080/api/ragent"
 LOGIN_USER = "admin"
 LOGIN_PASS = "admin"
 
-EMBEDDING_MODEL = "qwen3-embedding:8b-fp16"
+EMBEDDING_MODEL = "qwen-emb-8b"
 
 UPLOAD_CONCURRENCY = 3
 CHUNK_CONCURRENCY = 2

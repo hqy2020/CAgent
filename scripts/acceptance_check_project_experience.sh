@@ -12,8 +12,8 @@ echo "[acceptance] step 1/2: run core unit tests"
 echo "[acceptance] step 2/2: run live SSE smoke test when backend is online"
 if lsof -nP -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1; then
   BASE_URL="${BASE_URL:-http://localhost:8080/api/ragent}" \
-  USERNAME="${USERNAME:-admin}" \
-  PASSWORD="${PASSWORD:-admin}" \
+  LOGIN_USERNAME="${LOGIN_USERNAME:-admin}" \
+  LOGIN_PASSWORD="${LOGIN_PASSWORD:-admin}" \
   QUESTION="${QUESTION:-请简要介绍这个系统的主要能力}" \
   ./scripts/chat_sse_smoke.sh
 else

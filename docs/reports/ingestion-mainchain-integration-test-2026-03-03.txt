@@ -1,0 +1,86 @@
+入库主链路集成测试报告
+日期: 2026-03-03 22:08:00 CST (+0800)
+仓库: /Users/openingcloud/IdeaProjects/ragent
+分支: main
+提交: bfc3b96
+
+一、环境信息（复用当前环境）
+1) 服务端口状态
+- 8080 (backend): java pid=41578 *:8080
+- 9876 (RocketMQ namesrv): com.docke pid=14697 *:9876
+- 10911 (RocketMQ broker): com.docke pid=14697 *:10911
+- 19530 (Milvus): com.docke pid=14697 *:19530
+2) 管理账号
+- admin/admin 登录可用（/api/ragent/auth/login 返回 code=0，token 下发）
+
+二、执行命令清单
+1) 自动化回归（模块内）
+- ./mvnw -pl bootstrap -am clean -Dtest=IngestionPipelineTests,IngestionTaskServiceImplTests,ChunkerNodeTests,IngestionExecuteConsumerTests -Dsurefire.failIfNoSpecifiedTests=false test
+2) 真实接口主链路脚本
+- ./scripts/ingestion_pipeline_user_test.sh
+3) 主链路失败后的固定排查（最小链路）
+- /tmp/minimal_ingestion_test.sh
+  - 链路: fetcher -> parser -> chunker -> indexer
+
+三、结果汇总（PASS/FAIL）
+1) 自动化回归
+- 结果: PASS
+- 明细: Tests run: 9, Failures: 0, Errors: 0, Skipped: 0
+
+2) 真实接口主链路脚本
+- 结果: FAIL
+- pipelineId: 2028834809803005952
+- taskId: 2028834810134355968
+- 最终状态: failed
+- 错误信息: 未匹配到Chat模型: qwen-plus
+
+3) 关键接口/类型校验
+- POST /ingestion/tasks metadata 透传: PASS
+  - 证据: taskId=2028834810134355968 查询结果 data.metadata={"owner":"qa","category":"smoke"}
+- GET /ingestion/tasks/{id} data.metadata 类型为 object: PASS
+  - 证据: metadataType=object
+- GET /ingestion/tasks/{id}/nodes 每个 output 类型为 object: PASS
+  - 证据: invalidOutputCount=0，节点 outputType 均为 object
+- MQ 事件 metadataJson 链路验证（内部）: PASS（由自动化回归覆盖）
+  - 证据: IngestionTaskServiceImplTests + IngestionExecuteConsumerTests 通过
+
+4) 最小链路隔离验证（去 enhancer）
+- 结果: FAIL（但完成归因）
+- pipelineId: 2028834875812962304
+- taskId: 2028834876152700928
+- 最终状态: failed
+- 错误信息: 调用 SiliconFlow Embedding 失败: HTTP 401 - "Invalid token"
+- metadata 类型: object
+- nodes output 类型: invalid count = 0
+
+四、测试场景清单结论
+- 场景 A（创建 5 节点 pipeline）: PASS
+- 场景 B（创建带 metadata 的 URL task）: PASS
+- 场景 C（metadata 回传 object）: PASS
+- 场景 D（节点 output 类型正确）: PASS
+- 场景 E（异常可定位到具体节点阶段）: PASS
+  - 首次失败定位到 enhancer 节点（chat model qwen-plus 未匹配）
+  - 最小链路失败定位到 chunker 节点（embedding token 无效）
+
+五、根因定位与阻断点
+根因 1（主链路阻断）
+- enhancer 节点配置 modelId=qwen-plus，但当前运行环境未匹配到可用 Chat 模型，导致任务失败。
+
+根因 2（最小链路阻断）
+- chunker/indexer 依赖 embedding；当前 SiliconFlow Embedding 凭据无效（HTTP 401 Invalid token），导致无法完成向量化与入库。
+
+阻断点
+- 在当前环境下无法到达“Milvus 成功写入 + 任务 completed + 脚本 PASS”的验收终态。
+
+六、最终判定（按约定规则）
+- 自动化回归通过 + 脚本 PASS => 才判定通过。
+- 本次脚本未 PASS（任务 failed），故：
+【本轮“入库主链路集成测试”判定：不通过】
+
+七、下一步建议
+1) 修复 enhancer 模型匹配
+- 在模型配置中启用/映射 qwen-plus，或将 pipeline enhancer.modelId 改为当前环境可用 chat model。
+2) 修复 embedding 凭据
+- 更新 SiliconFlow Embedding token（或切换到可用 embedding provider/model），确保 chunker/indexer 可生成向量。
+3) 修复后复跑
+- 先跑自动化回归命令，再跑 ./scripts/ingestion_pipeline_user_test.sh，目标输出 PASS 且任务状态 completed。

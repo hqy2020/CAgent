@@ -22,6 +22,7 @@ import com.nageoffer.ai.ragent.infra.convention.ChatRequest;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.infra.chat.StreamCallback;
 import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
+import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
 import com.nageoffer.ai.ragent.rag.core.guidance.GuidanceDecision;
 import com.nageoffer.ai.ragent.rag.core.guidance.IntentGuidanceService;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentResolver;
@@ -77,6 +78,8 @@ class RAGChatServiceImplTests {
     private IntentResolver intentResolver;
     @Mock
     private RetrievalEngine retrievalEngine;
+    @Mock
+    private ConversationService conversationService;
 
     @InjectMocks
     private RAGChatServiceImpl ragChatService;
@@ -87,15 +90,16 @@ class RAGChatServiceImplTests {
         StreamCancellationHandle handle = org.mockito.Mockito.mock(StreamCancellationHandle.class);
 
         when(callbackFactory.createChatEventHandler(any(), anyString(), anyString())).thenReturn(callback);
+        when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
         when(memoryService.loadAndAppend(anyString(), any(), any()))
                 .thenReturn(List.of(ChatMessage.user("history")));
         when(queryRewriteService.rewriteWithSplit(anyString(), anyList()))
                 .thenReturn(new RewriteResult("改写问题", List.of("改写问题")));
-        when(intentResolver.resolve(any()))
+        when(intentResolver.resolve(any(RewriteResult.class), any(CancellationToken.class)))
                 .thenReturn(List.of(new SubQuestionIntent("改写问题", List.of())));
         when(guidanceService.detectAmbiguity(anyString(), anyList())).thenReturn(GuidanceDecision.none());
         when(intentResolver.isSystemOnly(anyList())).thenReturn(false);
-        when(retrievalEngine.retrieve(anyList(), anyInt())).thenThrow(new RuntimeException("milvus unavailable"));
+        when(retrievalEngine.retrieve(anyList(), anyInt(), any(CancellationToken.class))).thenThrow(new RuntimeException("milvus unavailable"));
         when(promptTemplateLoader.load(anyString())).thenReturn("system prompt");
         when(llmService.streamChat(any(ChatRequest.class), same(callback))).thenReturn(handle);
 
@@ -111,11 +115,12 @@ class RAGChatServiceImplTests {
         StreamCallback callback = org.mockito.Mockito.mock(StreamCallback.class);
 
         when(callbackFactory.createChatEventHandler(any(), anyString(), anyString())).thenReturn(callback);
+        when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
         when(memoryService.loadAndAppend(anyString(), any(), any()))
                 .thenReturn(List.of(ChatMessage.user("history")));
         when(queryRewriteService.rewriteWithSplit(anyString(), anyList()))
                 .thenReturn(new RewriteResult("改写问题", List.of("改写问题")));
-        when(intentResolver.resolve(any()))
+        when(intentResolver.resolve(any(RewriteResult.class), any(CancellationToken.class)))
                 .thenReturn(List.of(new SubQuestionIntent("改写问题", List.of())));
         when(guidanceService.detectAmbiguity(anyString(), anyList())).thenReturn(GuidanceDecision.none());
         when(intentResolver.isSystemOnly(anyList())).thenReturn(true);

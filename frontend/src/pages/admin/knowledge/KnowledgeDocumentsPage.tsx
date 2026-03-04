@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Check, FileUp, FolderOpen, Eye, ClipboardCopy, RefreshCw, Trash2, Pencil } from "lucide-react";
+import { Check, FileUp, FolderOpen, Eye, ClipboardCopy, RefreshCw, Trash2, Pencil, FolderUp, Play } from "lucide-react";
 import { toast } from "sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -30,6 +30,7 @@ import {
   getChunkLogsPage
 } from "@/services/knowledgeService";
 import { getIngestionPipelines, type IngestionPipeline } from "@/services/ingestionService";
+import { BatchUploadDialog } from "@/components/admin/BatchUploadDialog";
 import { getErrorMessage } from "@/utils/error";
 
 const PAGE_SIZE = 10;
@@ -140,6 +141,7 @@ export function KnowledgeDocumentsPage() {
   const [keyword, setKeyword] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [batchUploadOpen, setBatchUploadOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeDocument | null>(null);
   const [chunkTarget, setChunkTarget] = useState<KnowledgeDocument | null>(null);
   const [detailTarget, setDetailTarget] = useState<KnowledgeDocument | null>(null);
@@ -354,6 +356,10 @@ export function KnowledgeDocumentsPage() {
             <FileUp className="mr-2 h-4 w-4" />
             上传文档
           </Button>
+          <Button variant="outline" onClick={() => setBatchUploadOpen(true)}>
+            <FolderUp className="mr-2 h-4 w-4" />
+            批量上传
+          </Button>
         </div>
       </div>
 
@@ -521,6 +527,22 @@ export function KnowledgeDocumentsPage() {
                         <Button
                           size="icon"
                           variant="ghost"
+                          onClick={() => setChunkTarget(doc)}
+                          title="触发分块"
+                        >
+                          <Play className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => handleOpenChunkLogs(doc)}
+                          title="分块日志"
+                        >
+                          <FolderOpen className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
                           className="text-destructive hover:text-destructive"
                           onClick={() => setDeleteTarget(doc)}
                           title="删除"
@@ -575,6 +597,16 @@ export function KnowledgeDocumentsPage() {
           setUploadOpen(false);
           setPageNo(1);
           await loadDocuments(1, statusFilter, keyword);
+        }}
+      />
+
+      <BatchUploadDialog
+        open={batchUploadOpen}
+        onOpenChange={setBatchUploadOpen}
+        kbId={kbId || ""}
+        onComplete={() => {
+          setPageNo(1);
+          loadDocuments(1, statusFilter, keyword);
         }}
       />
 

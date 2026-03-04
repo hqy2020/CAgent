@@ -2132,6 +2132,25 @@ textarea {
   scrollbar-width: none;
 }
 
+/* ===== 流式输出闪烁光标 ===== */
+.streaming-cursor::after {
+  content: "▍";
+  display: inline;
+  animation: cursor-blink 0.8s step-end infinite;
+  color: #3b82f6;
+  font-weight: normal;
+  margin-left: 1px;
+}
+
+@keyframes cursor-blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
 .sidebar-scroll::-webkit-scrollbar {
   width: 0;
   height: 0;

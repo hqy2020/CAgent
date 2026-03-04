@@ -23,7 +23,7 @@ CREATE TABLE `t_conversation_summary`
     `id`              bigint(20) NOT NULL COMMENT '主键ID',
     `conversation_id` varchar(64) NOT NULL COMMENT '会话ID',
     `user_id`         varchar(64) NOT NULL COMMENT '用户ID',
-    `last_message_id` varchar(64) NOT NULL COMMENT '摘要最后消息ID',
+    `last_message_id` bigint(20) NOT NULL DEFAULT 0 COMMENT '摘要最后消息ID',
     `content`         text        NOT NULL COMMENT '会话摘要内容',
     `create_time`     datetime DEFAULT NULL COMMENT '创建时间',
     `update_time`     datetime DEFAULT NULL COMMENT '更新时间',
@@ -453,3 +453,42 @@ CREATE TABLE `t_system_config`
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_group_key` (`config_group`, `config_key`, `deleted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统配置表';
+
+CREATE TABLE `t_batch_upload_task`
+(
+    `id`             bigint(20) NOT NULL COMMENT '主键ID',
+    `kb_id`          bigint(20) NOT NULL COMMENT '知识库ID',
+    `total_count`    int(11) NOT NULL DEFAULT '0' COMMENT '总文件数',
+    `uploaded_count` int(11) NOT NULL DEFAULT '0' COMMENT '已上传数',
+    `success_count`  int(11) NOT NULL DEFAULT '0' COMMENT '处理成功数',
+    `failed_count`   int(11) NOT NULL DEFAULT '0' COMMENT '处理失败数',
+    `status`         varchar(32) NOT NULL DEFAULT 'uploading' COMMENT '状态: uploading/processing/completed/partial_failed',
+    `process_mode`   varchar(32)          DEFAULT 'chunk' COMMENT '处理模式: chunk/pipeline',
+    `chunk_strategy` varchar(32)          DEFAULT NULL COMMENT '分块策略',
+    `chunk_config`   json                 DEFAULT NULL COMMENT '分块参数JSON',
+    `pipeline_id`    bigint(20) DEFAULT NULL COMMENT '数据通道ID',
+    `created_by`     varchar(64) NOT NULL COMMENT '创建人',
+    `create_time`    datetime    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time`    datetime    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted`        tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否删除 0：正常 1：删除',
+    PRIMARY KEY (`id`),
+    KEY              `idx_kb_id` (`kb_id`),
+    KEY              `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='批量上传任务表';
+
+CREATE TABLE `t_batch_upload_item`
+(
+    `id`            bigint(20) NOT NULL COMMENT '主键ID',
+    `batch_id`      bigint(20) NOT NULL COMMENT '批量任务ID',
+    `doc_id`        bigint(20) DEFAULT NULL COMMENT '关联文档ID',
+    `file_name`     varchar(256) NOT NULL COMMENT '文件名称',
+    `file_url`      varchar(1024)         DEFAULT NULL COMMENT '文件地址',
+    `file_size`     bigint(20) DEFAULT NULL COMMENT '文件大小（字节）',
+    `file_type`     varchar(32)           DEFAULT NULL COMMENT '文件类型',
+    `status`        varchar(32) NOT NULL DEFAULT 'pending' COMMENT '状态: pending/uploaded/processing/success/failed',
+    `error_message` text COMMENT '错误信息',
+    `create_time`   datetime    NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time`   datetime    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    KEY             `idx_batch_id` (`batch_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='批量上传子项表';
