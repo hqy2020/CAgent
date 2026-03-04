@@ -43,6 +43,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -214,12 +215,15 @@ public class RetrievalEngine {
             return "";
         }
 
-        List<MCPResponse> responses = executeMcpTools(question, mcpIntents, token);
-        if (responses.isEmpty() || responses.stream().noneMatch(MCPResponse::isSuccess)) {
+        List<NodeScore> deduplicatedIntents = deduplicateMcpIntentsByTool(mcpIntents);
+        if (CollUtil.isEmpty(deduplicatedIntents)) {
             return "";
         }
-
-        return contextFormatter.formatMcpContext(responses, mcpIntents);
+        List<MCPResponse> responses = executeMcpTools(question, deduplicatedIntents, token);
+        if (responses.isEmpty()) {
+            return "";
+        }
+        return contextFormatter.formatMcpContext(responses, deduplicatedIntents);
     }
 
     private KbResult retrieveAndRerank(SubQuestionIntent intent, List<NodeScore> kbIntents, int topK,
@@ -264,6 +268,24 @@ public class RetrievalEngine {
                 .toList();
 
         return requests.isEmpty() ? List.of() : mcpService.executeBatch(requests, token);
+    }
+
+    private List<NodeScore> deduplicateMcpIntentsByTool(List<NodeScore> mcpIntents) {
+        Map<String, NodeScore> byToolId = new LinkedHashMap<>();
+        for (NodeScore nodeScore : mcpIntents) {
+            if (nodeScore == null || nodeScore.getNode() == null) {
+                continue;
+            }
+            String toolId = nodeScore.getNode().getMcpToolId();
+            if (StrUtil.isBlank(toolId)) {
+                continue;
+            }
+            NodeScore existing = byToolId.get(toolId);
+            if (existing == null || nodeScore.getScore() > existing.getScore()) {
+                byToolId.put(toolId, nodeScore);
+            }
+        }
+        return byToolId.values().stream().toList();
     }
 
     private MCPRequest buildMcpRequest(String question, IntentNode intentNode) {

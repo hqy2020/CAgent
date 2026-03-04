@@ -33,6 +33,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -105,13 +106,19 @@ public class IntentResolver {
     }
 
     public IntentGroup mergeIntentGroup(List<SubQuestionIntent> subIntents) {
-        List<NodeScore> mcpIntents = new ArrayList<>();
+        Map<String, NodeScore> mcpByToolId = new LinkedHashMap<>();
         List<NodeScore> kbIntents = new ArrayList<>();
         for (SubQuestionIntent si : subIntents) {
-            mcpIntents.addAll(filterMcpIntents(si.nodeScores()));
+            for (NodeScore mcpNodeScore : filterMcpIntents(si.nodeScores())) {
+                String toolId = mcpNodeScore.getNode().getMcpToolId();
+                NodeScore existing = mcpByToolId.get(toolId);
+                if (existing == null || mcpNodeScore.getScore() > existing.getScore()) {
+                    mcpByToolId.put(toolId, mcpNodeScore);
+                }
+            }
             kbIntents.addAll(filterKbIntents(si.nodeScores()));
         }
-        return new IntentGroup(mcpIntents, kbIntents);
+        return new IntentGroup(new ArrayList<>(mcpByToolId.values()), kbIntents);
     }
 
     public boolean isSystemOnly(List<NodeScore> nodeScores) {

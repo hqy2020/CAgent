@@ -26,8 +26,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Obsidian MCP 工具 — 更新笔记（追加/前插/日记追加）
@@ -56,6 +59,20 @@ public class ObsidianUpdateNoteTool {
 
     private final ObsidianCliExecutor cliExecutor;
 
+    private static final Pattern TODAY_DAILY_PATTERN = Pattern.compile("今日日记|今天(?:的)?日记|今日(?:的)?日记");
+    private static final Pattern TARGET_DAILY_ISO_PATTERN =
+            Pattern.compile("(?<!\\d)(\\d{4})[-./年](\\d{1,2})[-./月](\\d{1,2})日?\\s*(?:的)?\\s*日记");
+    private static final Pattern TARGET_DAILY_MONTH_DAY_PATTERN =
+            Pattern.compile("(?<!\\d)(\\d{1,2})[./-](\\d{1,2})\\s*(?:的)?\\s*日记");
+    private static final Pattern TARGET_DAILY_CN_MONTH_DAY_PATTERN =
+            Pattern.compile("(?<!\\d)(\\d{1,2})月(\\d{1,2})日\\s*(?:的)?\\s*日记");
+    private static final Pattern SIMPLE_MONTH_DAY_PATTERN = Pattern.compile("^(\\d{1,2})[./-](\\d{1,2})$");
+    private static final Pattern CN_MONTH_DAY_PATTERN = Pattern.compile("^(\\d{1,2})月(\\d{1,2})日?$");
+    private static final Pattern TODO_TAIL_PATTERN =
+            Pattern.compile("(?:待办(?:事项)?|todo)[，,:：]\\s*(.+)$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CHECKBOX_PATTERN =
+            Pattern.compile("^\\s*[-*]\\s*\\[[ xX]\\]\\s+.+");
+
     @MCPExecute
     public MCPResponse handle(MCPRequest request) {
         String content = request.getStringParameter("content");
@@ -68,9 +85,11 @@ public class ObsidianUpdateNoteTool {
         String position = request.getStringParameter("position");
         String daily = request.getStringParameter("daily");
         String date = request.getStringParameter("date");
+        String userQuestion = request.getUserQuestion();
 
         boolean isDaily = "true".equalsIgnoreCase(daily);
         boolean isPrepend = "prepend".equalsIgnoreCase(position);
+        String normalizedContent = normalizeContent(content, userQuestion);
 
         String command;
         if (isDaily) {
@@ -82,10 +101,14 @@ public class ObsidianUpdateNoteTool {
         }
 
         List<String> args = new ArrayList<>();
-        args.add("content=" + content);
+        args.add("content=" + normalizedContent);
         if (isDaily) {
-            if (date != null && !date.isBlank()) {
-                args.add("date=" + date);
+            DailyDateDecision decision = resolveDailyDate(userQuestion, date);
+            if (decision.hasConflict()) {
+                return MCPResponse.error("obsidian_update", "DATE_CONFLICT", decision.conflictMessage());
+            }
+            if (decision.resolvedDate() != null && !decision.resolvedDate().isBlank()) {
+                args.add("date=" + decision.resolvedDate());
             }
         } else {
             if (path != null && !path.isBlank()) {
@@ -102,5 +125,190 @@ public class ObsidianUpdateNoteTool {
             return MCPResponse.error("obsidian_update", "CLI_ERROR", result.stderr());
         }
         return MCPResponse.success("obsidian_update", "笔记更新成功。\n" + result.stdout());
+    }
+
+    private DailyDateDecision resolveDailyDate(String userQuestion, String extractedDate) {
+        LocalDate today = LocalDate.now();
+        boolean todayDailyMentioned = containsTodayDailySemantic(userQuestion);
+        LocalDate explicitTargetDate = extractTargetDailyDate(userQuestion);
+
+        if (todayDailyMentioned && explicitTargetDate != null && !explicitTargetDate.equals(today)) {
+            String conflict = String.format(
+                    "检测到日期冲突：你同时提到了“今日日记”（%s）和“指定日日记”（%s）。请确认要写入哪一天：%s 或 %s。",
+                    today,
+                    explicitTargetDate,
+                    today,
+                    explicitTargetDate
+            );
+            return DailyDateDecision.conflict(conflict);
+        }
+
+        if (explicitTargetDate != null) {
+            return DailyDateDecision.resolved(explicitTargetDate.toString());
+        }
+
+        if (todayDailyMentioned) {
+            return DailyDateDecision.resolved(today.toString());
+        }
+
+        if ((userQuestion == null || userQuestion.isBlank()) && extractedDate != null && !extractedDate.isBlank()) {
+            LocalDate parsedDate = parseDateText(extractedDate);
+            if (parsedDate != null) {
+                return DailyDateDecision.resolved(parsedDate.toString());
+            }
+        }
+
+        return DailyDateDecision.resolved(null);
+    }
+
+    private LocalDate extractTargetDailyDate(String userQuestion) {
+        if (userQuestion == null || userQuestion.isBlank()) {
+            return null;
+        }
+
+        LocalDate parsed = null;
+        Matcher isoMatcher = TARGET_DAILY_ISO_PATTERN.matcher(userQuestion);
+        while (isoMatcher.find()) {
+            parsed = buildDate(safeParseInt(isoMatcher.group(1)), safeParseInt(isoMatcher.group(2)), safeParseInt(isoMatcher.group(3)));
+        }
+        if (parsed != null) {
+            return parsed;
+        }
+
+        Matcher monthDayMatcher = TARGET_DAILY_MONTH_DAY_PATTERN.matcher(userQuestion);
+        while (monthDayMatcher.find()) {
+            parsed = buildDate(LocalDate.now().getYear(), safeParseInt(monthDayMatcher.group(1)), safeParseInt(monthDayMatcher.group(2)));
+        }
+        if (parsed != null) {
+            return parsed;
+        }
+
+        Matcher cnMonthDayMatcher = TARGET_DAILY_CN_MONTH_DAY_PATTERN.matcher(userQuestion);
+        while (cnMonthDayMatcher.find()) {
+            parsed = buildDate(LocalDate.now().getYear(), safeParseInt(cnMonthDayMatcher.group(1)), safeParseInt(cnMonthDayMatcher.group(2)));
+        }
+        return parsed;
+    }
+
+    private LocalDate parseDateText(String rawDate) {
+        if (rawDate == null || rawDate.isBlank()) {
+            return null;
+        }
+        String trimmed = rawDate.trim();
+        if ("今天".equals(trimmed) || "today".equalsIgnoreCase(trimmed)) {
+            return LocalDate.now();
+        }
+        if ("昨天".equals(trimmed) || "yesterday".equalsIgnoreCase(trimmed)) {
+            return LocalDate.now().minusDays(1);
+        }
+        if ("明天".equals(trimmed) || "tomorrow".equalsIgnoreCase(trimmed)) {
+            return LocalDate.now().plusDays(1);
+        }
+
+        try {
+            return LocalDate.parse(trimmed);
+        } catch (Exception ignore) {
+            // fallback to month-day parsing below
+        }
+
+        Matcher simpleMonthDay = SIMPLE_MONTH_DAY_PATTERN.matcher(trimmed);
+        if (simpleMonthDay.matches()) {
+            return buildDate(LocalDate.now().getYear(), safeParseInt(simpleMonthDay.group(1)), safeParseInt(simpleMonthDay.group(2)));
+        }
+
+        Matcher cnMonthDay = CN_MONTH_DAY_PATTERN.matcher(trimmed);
+        if (cnMonthDay.matches()) {
+            return buildDate(LocalDate.now().getYear(), safeParseInt(cnMonthDay.group(1)), safeParseInt(cnMonthDay.group(2)));
+        }
+        return null;
+    }
+
+    private String normalizeContent(String rawContent, String userQuestion) {
+        String normalized = rawContent == null ? "" : rawContent.trim();
+        boolean todoIntent = containsTodoIntent(userQuestion, normalized);
+
+        if (todoIntent) {
+            String tail = extractTodoTail(userQuestion);
+            if (tail != null && !tail.isBlank()) {
+                normalized = tail.trim();
+            }
+            if (!isCheckboxContent(normalized)) {
+                normalized = "- [ ] " + trimListPrefix(normalized);
+            }
+        }
+        return normalized;
+    }
+
+    private String extractTodoTail(String userQuestion) {
+        if (userQuestion == null || userQuestion.isBlank()) {
+            return null;
+        }
+        Matcher matcher = TODO_TAIL_PATTERN.matcher(userQuestion);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return null;
+    }
+
+    private boolean isCheckboxContent(String content) {
+        if (content == null || content.isBlank()) {
+            return false;
+        }
+        return CHECKBOX_PATTERN.matcher(content).matches();
+    }
+
+    private String trimListPrefix(String content) {
+        if (content == null) {
+            return "";
+        }
+        String trimmed = content.replaceFirst("^\\s*[-*]\\s*", "");
+        trimmed = trimmed.replaceFirst("^\\[[ xX]\\]\\s*", "");
+        return trimmed.strip();
+    }
+
+    private boolean containsTodayDailySemantic(String userQuestion) {
+        if (userQuestion == null || userQuestion.isBlank()) {
+            return false;
+        }
+        return TODAY_DAILY_PATTERN.matcher(userQuestion).find();
+    }
+
+    private boolean containsTodoIntent(String userQuestion, String content) {
+        String q = userQuestion == null ? "" : userQuestion;
+        String c = content == null ? "" : content;
+        return q.contains("待办") || q.toLowerCase().contains("todo") || c.contains("待办") || c.toLowerCase().contains("todo");
+    }
+
+    private int safeParseInt(String text) {
+        try {
+            return Integer.parseInt(text);
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    private LocalDate buildDate(int year, int month, int day) {
+        if (year <= 0 || month <= 0 || day <= 0) {
+            return null;
+        }
+        try {
+            return LocalDate.of(year, month, day);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private record DailyDateDecision(String resolvedDate, String conflictMessage) {
+        static DailyDateDecision resolved(String resolvedDate) {
+            return new DailyDateDecision(resolvedDate, null);
+        }
+
+        static DailyDateDecision conflict(String conflictMessage) {
+            return new DailyDateDecision(null, conflictMessage);
+        }
+
+        boolean hasConflict() {
+            return conflictMessage != null && !conflictMessage.isBlank();
+        }
     }
 }

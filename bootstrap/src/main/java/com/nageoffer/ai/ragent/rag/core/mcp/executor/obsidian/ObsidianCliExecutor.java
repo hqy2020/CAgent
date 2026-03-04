@@ -247,6 +247,10 @@ public class ObsidianCliExecutor {
         String existing = Files.readString(filePath, StandardCharsets.UTF_8);
         String separator = existing.endsWith("\n") ? "" : "\n";
         Files.writeString(filePath, existing + separator + content + "\n", StandardCharsets.UTF_8);
+        CliResult verifyResult = verifyWrite(filePath, separator + content + "\n", WritePosition.END, "追加");
+        if (verifyResult != null) {
+            return verifyResult;
+        }
         return new CliResult(0, "已追加内容到: " + getVaultPath().relativize(filePath), "");
     }
 
@@ -266,6 +270,10 @@ public class ObsidianCliExecutor {
 
         String existing = Files.readString(filePath, StandardCharsets.UTF_8);
         Files.writeString(filePath, content + "\n" + existing, StandardCharsets.UTF_8);
+        CliResult verifyResult = verifyWrite(filePath, content + "\n", WritePosition.START, "前插");
+        if (verifyResult != null) {
+            return verifyResult;
+        }
         return new CliResult(0, "已前插内容到: " + getVaultPath().relativize(filePath), "");
     }
 
@@ -287,12 +295,20 @@ public class ObsidianCliExecutor {
             // 如果日记文件不存在，创建并写入标题 + 内容
             String header = "# " + date.format(DateTimeFormatter.ISO_LOCAL_DATE) + "\n\n";
             Files.writeString(dailyPath, header + content + "\n", StandardCharsets.UTF_8);
+            CliResult verifyResult = verifyWrite(dailyPath, header + content + "\n", WritePosition.START, "创建日记并写入");
+            if (verifyResult != null) {
+                return verifyResult;
+            }
             return new CliResult(0, "已创建日记并写入内容: " + dateFileName, "");
         }
 
         String existing = Files.readString(dailyPath, StandardCharsets.UTF_8);
         String separator = existing.endsWith("\n") ? "" : "\n";
         Files.writeString(dailyPath, existing + separator + content + "\n", StandardCharsets.UTF_8);
+        CliResult verifyResult = verifyWrite(dailyPath, separator + content + "\n", WritePosition.END, "日记追加");
+        if (verifyResult != null) {
+            return verifyResult;
+        }
         return new CliResult(0, "已追加内容到日记: " + dateFileName, "");
     }
 
@@ -444,6 +460,28 @@ public class ObsidianCliExecutor {
         }
     }
 
+    private CliResult verifyWrite(Path filePath, String expectedSegment, WritePosition position, String operation)
+            throws IOException {
+        if (expectedSegment == null || expectedSegment.isEmpty()) {
+            return null;
+        }
+        String persisted = readFileForVerification(filePath);
+        boolean matched = switch (position) {
+            case START -> persisted.startsWith(expectedSegment);
+            case END -> persisted.endsWith(expectedSegment);
+            case CONTAINS -> persisted.contains(expectedSegment);
+        };
+        if (matched) {
+            return null;
+        }
+        String relativePath = getVaultPath().relativize(filePath).toString();
+        return new CliResult(1, "", "WRITE_VERIFY_FAILED: " + operation + "后校验失败，目标文件: " + relativePath);
+    }
+
+    protected String readFileForVerification(Path path) throws IOException {
+        return Files.readString(path, StandardCharsets.UTF_8);
+    }
+
     private int countOccurrences(String text, String sub) {
         int count = 0;
         int idx = 0;
@@ -462,5 +500,11 @@ public class ObsidianCliExecutor {
         public boolean isSuccess() {
             return exitCode == 0;
         }
+    }
+
+    private enum WritePosition {
+        START,
+        END,
+        CONTAINS
     }
 }

@@ -189,4 +189,91 @@ class RetrievalEngineTests {
         verify(multiChannelRetrievalEngine).retrieveKnowledgeChannels(anyList(), eq(6), any(CancellationToken.class));
         verify(mcpService).executeBatch(anyList(), any(CancellationToken.class));
     }
+
+    @Test
+    void testMcpFailureResponseShouldStillBuildMcpContext() {
+        String question = "帮我写日记";
+        IntentNode mcpNode = IntentNode.builder()
+                .id("obs-update-daily")
+                .kind(IntentKind.MCP)
+                .mcpToolId("obsidian_update")
+                .build();
+        SubQuestionIntent subIntent = new SubQuestionIntent(
+                question,
+                List.of(NodeScore.builder().node(mcpNode).score(0.92D).build())
+        );
+
+        MCPTool tool = MCPTool.builder()
+                .toolId("obsidian_update")
+                .name("更新 Obsidian")
+                .description("更新 Obsidian")
+                .parameters(Map.of(
+                        "content",
+                        MCPTool.ParameterDef.builder().type("string").required(true).build()
+                ))
+                .build();
+        when(mcpToolRegistry.getExecutor("obsidian_update")).thenReturn(Optional.of(mcpToolExecutor));
+        when(mcpToolExecutor.getToolDefinition()).thenReturn(tool);
+        when(mcpParameterExtractor.extractParameters(eq(question), same(tool), isNull()))
+                .thenReturn(Map.of("content", "测试内容"));
+        when(mcpService.executeBatch(anyList(), any(CancellationToken.class)))
+                .thenReturn(List.of(MCPResponse.error("obsidian_update", "DATE_CONFLICT", "冲突")));
+        when(contextFormatter.formatMcpContext(anyList(), anyList())).thenReturn("mcp-error-context");
+
+        RetrievalContext context = retrievalEngine.retrieve(List.of(subIntent), 5, CancellationToken.NONE);
+
+        assertTrue(context.hasMcp());
+        assertTrue(context.getMcpContext().contains("mcp-error-context"));
+    }
+
+    @Test
+    void testMcpRequestsShouldDeduplicateByToolIdAndKeepHighestScore() {
+        String question = "更新今日日记";
+        IntentNode highNode = IntentNode.builder()
+                .id("obs-update-daily")
+                .kind(IntentKind.MCP)
+                .mcpToolId("obsidian_update")
+                .paramPromptTemplate("HIGH_PROMPT")
+                .build();
+        IntentNode lowNode = IntentNode.builder()
+                .id("obs-update-append")
+                .kind(IntentKind.MCP)
+                .mcpToolId("obsidian_update")
+                .paramPromptTemplate("LOW_PROMPT")
+                .build();
+        SubQuestionIntent subIntent = new SubQuestionIntent(
+                question,
+                List.of(
+                        NodeScore.builder().node(highNode).score(0.96D).build(),
+                        NodeScore.builder().node(lowNode).score(0.83D).build()
+                )
+        );
+
+        MCPTool tool = MCPTool.builder()
+                .toolId("obsidian_update")
+                .name("更新 Obsidian")
+                .description("更新 Obsidian")
+                .parameters(Map.of(
+                        "content",
+                        MCPTool.ParameterDef.builder().type("string").required(true).build()
+                ))
+                .build();
+        when(mcpToolRegistry.getExecutor("obsidian_update")).thenReturn(Optional.of(mcpToolExecutor));
+        when(mcpToolExecutor.getToolDefinition()).thenReturn(tool);
+        when(mcpParameterExtractor.extractParameters(eq(question), same(tool), eq("HIGH_PROMPT")))
+                .thenReturn(Map.of("content", "high"));
+        when(mcpService.executeBatch(anyList(), any(CancellationToken.class)))
+                .thenReturn(List.of(MCPResponse.success("obsidian_update", "ok")));
+        when(contextFormatter.formatMcpContext(anyList(), anyList())).thenReturn("mcp-context");
+
+        RetrievalContext context = retrievalEngine.retrieve(List.of(subIntent), 5, CancellationToken.NONE);
+
+        assertTrue(context.hasMcp());
+        verify(mcpParameterExtractor, never()).extractParameters(eq(question), same(tool), eq("LOW_PROMPT"));
+        verify(mcpService).executeBatch(argThat(requests ->
+                        requests.size() == 1
+                                && "obsidian_update".equals(requests.get(0).getToolId())
+                                && "high".equals(requests.get(0).getParameter("content"))),
+                any(CancellationToken.class));
+    }
 }

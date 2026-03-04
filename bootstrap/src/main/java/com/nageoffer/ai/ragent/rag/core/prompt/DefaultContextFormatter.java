@@ -146,7 +146,7 @@ public class DefaultContextFormatter implements ContextFormatter {
 
     @Override
     public String formatMcpContext(List<MCPResponse> responses, List<NodeScore> mcpIntents) {
-        if (CollUtil.isEmpty(responses) || responses.stream().noneMatch(MCPResponse::isSuccess)) {
+        if (CollUtil.isEmpty(responses)) {
             return "";
         }
         if (CollUtil.isEmpty(mcpIntents)) {
@@ -163,7 +163,6 @@ public class DefaultContextFormatter implements ContextFormatter {
         }
 
         Map<String, List<MCPResponse>> grouped = responses.stream()
-                .filter(MCPResponse::isSuccess)
                 .filter(r -> StrUtil.isNotBlank(r.getToolId()))
                 .collect(Collectors.groupingBy(MCPResponse::getToolId));
 

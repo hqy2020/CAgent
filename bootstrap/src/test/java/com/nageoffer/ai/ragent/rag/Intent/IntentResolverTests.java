@@ -115,4 +115,28 @@ class IntentResolverTests {
         NodeScore kbScore = NodeScore.builder().node(kbNode).score(0.9).build();
         assertFalse(resolver.isSystemOnly(List.of(sysScore, kbScore)));
     }
+
+    @Test
+    void testMergeIntentGroupDeduplicatesMcpByToolId() {
+        IntentNode highNode = IntentNode.builder().id("mcp-high").name("MCP-H").kind(IntentKind.MCP)
+                .mcpToolId("obsidian_update").build();
+        IntentNode lowNode = IntentNode.builder().id("mcp-low").name("MCP-L").kind(IntentKind.MCP)
+                .mcpToolId("obsidian_update").build();
+        IntentNode kbNode = IntentNode.builder().id("kb-1").name("KB").kind(IntentKind.KB).build();
+
+        NodeScore highScore = NodeScore.builder().node(highNode).score(0.96).build();
+        NodeScore lowScore = NodeScore.builder().node(lowNode).score(0.72).build();
+        NodeScore kbScore = NodeScore.builder().node(kbNode).score(0.81).build();
+
+        List<SubQuestionIntent> subIntents = List.of(
+                new SubQuestionIntent("q1", List.of(lowScore, kbScore)),
+                new SubQuestionIntent("q2", List.of(highScore))
+        );
+
+        IntentGroup group = resolver.mergeIntentGroup(subIntents);
+
+        assertEquals(1, group.mcpIntents().size());
+        assertEquals("mcp-high", group.mcpIntents().get(0).getNode().getId());
+        assertEquals(1, group.kbIntents().size());
+    }
 }
