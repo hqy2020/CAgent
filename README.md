@@ -110,6 +110,7 @@ Browser (localhost:5173)
 - 全局向量兜底：意图置信度不足时自动回退到全局检索
 - 后处理器链：去重 → Rerank，提升召回质量
 - MCP 工具调用：工具结果与文档上下文统一进入 Prompt
+- **Obsidian MCP 集成**：支持读取和更新 Obsidian 笔记（vault: GardenOfOpeningClouds）
 
 ### 知识沉淀
 
@@ -117,6 +118,8 @@ Browser (localhost:5173)
 - 知识库：文档上传 → Ingestion Pipeline（解析/分块/向量化）→ Milvus 索引
 - 支持 PDF、Word、Markdown 等格式（Apache Tika 解析）
 - 多种分块策略：固定大小 / 段落 / 句子 / 结构感知
+- **批量上传**：支持批量上传文档，实时追踪上传进度和状态
+- **RocketMQ 异步处理**：文档入库通过 RocketMQ 5.x 异步处理，提升大规模导入性能
 
 ### 复盘备战
 
@@ -144,7 +147,7 @@ cd resources/docker/milvus
 docker compose -f milvus-stack-2.6.6.compose.yaml up -d
 ```
 
-启动内容：Milvus（19530）、RustFS（9000）、etcd、Attu（8000，Milvus 可视化）
+启动内容：Milvus（19530）、RustFS（9000/9001）、etcd、Attu（8000，Milvus 可视化）
 
 ### 2. 配置后端
 
@@ -186,6 +189,36 @@ VITE_API_BASE_URL=/api/ragent
 - 后端：`http://localhost:8080/api/ragent`
 
 默认管理员账号：`admin / admin`
+
+---
+
+## 测试验证
+
+### 单元测试
+
+项目包含丰富的单元测试，覆盖核心业务逻辑：
+
+- `IntentTreeFactoryTests` — 意图树工厂测试
+- `MySQLConversationMemoryStoreTests` — MySQL 会话记忆存储测试
+- `RetrievalEngineTests` — 检索引擎测试
+- `IngestionPipelineServiceImplTests` — 入库流水线服务测试
+- `IngestionTaskServiceImplTests` — 入库任务服务测试
+
+运行测试：
+```bash
+./mvnw test
+```
+
+### 质量测试脚本
+
+项目提供多个端到端测试脚本，位于 `scripts/` 目录：
+
+| 脚本 | 用途 |
+|------|------|
+| `chat_quality_test.sh` | 对话质量测试 |
+| `trace_fullchain_smoke.sh` | 全链路追踪冒烟测试 |
+| `ingestion_pipeline_user_test.sh` | 入库流水线用户测试 |
+| `mcp_kb_integration_test.sh` | MCP 与知识库集成测试 |
 
 ---
 
