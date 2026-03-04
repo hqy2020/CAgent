@@ -46,6 +46,26 @@ public enum SSEEventType {
     WORKFLOW("workflow"),
 
     /**
+     * Agent 规划事件
+     */
+    AGENT_PLAN("agent_plan"),
+
+    /**
+     * Agent 步骤执行事件
+     */
+    AGENT_STEP("agent_step"),
+
+    /**
+     * Agent 重规划事件
+     */
+    AGENT_REPLAN("agent_replan"),
+
+    /**
+     * Agent 写操作确认事件
+     */
+    AGENT_CONFIRM_REQUIRED("agent_confirm_required"),
+
+    /**
      * 模型回复完成事件
      */
     FINISH("finish"),

@@ -7,6 +7,7 @@ import { ReferenceDetailDialog } from "@/components/chat/ReferenceDetailDialog";
 import { ThinkingIndicator } from "@/components/chat/ThinkingIndicator";
 import { useAnimatedText } from "@/hooks/useAnimatedText";
 import { cn } from "@/lib/utils";
+import { useChatStore } from "@/stores/chatStore";
 import type { Message, ReferenceItem } from "@/types";
 
 interface MessageItemProps {
@@ -42,6 +43,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isLast }: 
   const animatedContent = useAnimatedText(message.content, isStreamingMsg && !isThinking);
   const hasContent = animatedContent.trim().length > 0;
   const isWaiting = isStreamingMsg && !isThinking && !hasContent;
+  const sendMessage = useChatStore((state) => state.sendMessage);
 
   React.useEffect(() => {
     setExpandedPreviewKeys(new Set());
@@ -123,6 +125,96 @@ export const MessageItem = React.memo(function MessageItem({ message, isLast }: 
           {hasContent ? (
             <div className={cn(isStreamingMsg && !isThinking && "streaming-cursor")}>
               <MarkdownRenderer content={animatedContent} />
+            </div>
+          ) : null}
+          {message.agentTimeline && message.agentTimeline.length > 0 ? (
+            <div className="overflow-hidden rounded-lg border border-[#C7D2FE] bg-[#E0E7FF]">
+              <div className="flex items-center gap-2 px-4 py-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#C7D2FE]">
+                  <Wrench className="h-4 w-4 text-[#4338CA]" />
+                </div>
+                <span className="text-sm font-medium text-[#4338CA]">Agent 时间线</span>
+                <span className="rounded-full bg-[#C7D2FE] px-2 py-0.5 text-xs text-[#4338CA]">
+                  {message.agentTimeline.length}条
+                </span>
+              </div>
+              <div className="border-t border-[#C7D2FE] px-4 py-3">
+                <ul className="space-y-2 text-xs text-[#3730A3]">
+                  {message.agentTimeline.map((item, index) => {
+                    if (item.kind === "plan") {
+                      return (
+                        <li key={`plan-${index}`} className="rounded bg-white/70 px-2 py-1">
+                          <p className="font-medium">规划（loop {item.payload.loop}）：{item.payload.goal}</p>
+                          {"steps" in item.payload && item.payload.steps && item.payload.steps.length > 0 ? (
+                            <p className="mt-1">
+                              {item.payload.steps
+                                .map((step) => `${step.stepIndex}.${step.type}`)
+                                .join(" | ")}
+                            </p>
+                          ) : null}
+                        </li>
+                      );
+                    }
+                    if (item.kind === "step") {
+                      return (
+                        <li key={`step-${index}`} className="rounded bg-white/70 px-2 py-1">
+                          <p className="font-medium">
+                            步骤 {item.payload.stepIndex}（{item.payload.type}）
+                            <span className="ml-1">[{item.payload.status}]</span>
+                          </p>
+                          {"summary" in item.payload && item.payload.summary ? (
+                            <p className="mt-1">{item.payload.summary}</p>
+                          ) : null}
+                        </li>
+                      );
+                    }
+                    return (
+                      <li key={`replan-${index}`} className="rounded bg-white/70 px-2 py-1">
+                        <p className="font-medium">重规划（loop {item.payload.loop}）</p>
+                        {"reason" in item.payload && item.payload.reason ? (
+                          <p className="mt-1">{item.payload.reason}</p>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </div>
+          ) : null}
+          {message.pendingProposal ? (
+            <div className="overflow-hidden rounded-lg border border-[#FECACA] bg-[#FEE2E2]">
+              <div className="flex items-center gap-2 px-4 py-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#FECACA]">
+                  <Wrench className="h-4 w-4 text-[#B91C1C]" />
+                </div>
+                <span className="text-sm font-medium text-[#B91C1C]">待确认写操作</span>
+              </div>
+              <div className="border-t border-[#FECACA] px-4 py-3 text-xs text-[#7F1D1D]">
+                <p>proposalId: {message.pendingProposal.proposalId}</p>
+                <p className="mt-1">tool: {message.pendingProposal.toolId}</p>
+                {message.pendingProposal.targetPath ? (
+                  <p className="mt-1">目标路径: {message.pendingProposal.targetPath}</p>
+                ) : null}
+                {message.pendingProposal.riskHint ? (
+                  <p className="mt-1">风险提示: {message.pendingProposal.riskHint}</p>
+                ) : null}
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="rounded bg-[#DC2626] px-2 py-1 text-white hover:bg-[#B91C1C]"
+                    onClick={() => void sendMessage(`/confirm ${message.pendingProposal?.proposalId}`)}
+                  >
+                    确认执行
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border border-[#DC2626] px-2 py-1 text-[#DC2626] hover:bg-[#FECACA]"
+                    onClick={() => void sendMessage(`/reject ${message.pendingProposal?.proposalId}`)}
+                  >
+                    拒绝执行
+                  </button>
+                </div>
+              </div>
             </div>
           ) : null}
           {message.workflow ? (

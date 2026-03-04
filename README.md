@@ -267,6 +267,23 @@ video-transcript:
 - `把这个 B 站链接转录并写进 Obsidian`
 - `转录这个小宇宙链接，放到视频转录目录`
 
+### Agentic RAG 配置（`rag.agent.*`）
+
+```yaml
+rag:
+  agent:
+    enabled: true
+    max-loops: 3
+    max-steps-per-loop: 6
+    low-confidence-threshold: 0.55
+    confirmation-ttl-minutes: 30
+```
+
+说明：
+- 复杂请求会进入 Planner-Executor-Replan 流程；
+- 写操作默认不会直接执行，会先产生确认提案；
+- 用户可通过 `/confirm <proposalId>` 或 `/reject <proposalId>` 决定是否落盘。
+
 ---
 
 ## SSE 事件协议（v3）
@@ -277,6 +294,12 @@ video-transcript:
 |------|------|------|
 | `meta` | `{ conversationId, taskId }` | 会话初始化 |
 | `message` | `{ type: "response"\|"think", delta }` | 流式 token |
+| `references` | `ReferenceItem[]` | 文档引用 |
+| `workflow` | `{ workflowId, changedFiles, opsCount, warnings }` | 工作流摘要 |
+| `agent_plan` | `{ loop, goal, steps[] }` | Agent 规划 |
+| `agent_step` | `{ loop, stepIndex, type, status, summary }` | Agent 执行步骤 |
+| `agent_replan` | `{ loop, reason, nextSteps[] }` | Agent 重规划 |
+| `agent_confirm_required` | `{ proposalId, toolId, parameters, targetPath, expiresAt }` | 待确认写操作 |
 | `finish` | `{ messageId, title }` | 正常结束 |
 | `cancel` | `{ messageId, title }` | 用户取消 |
 | `reject` | `{ type: "response", delta }` | 被拒绝 |

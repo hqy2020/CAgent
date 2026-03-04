@@ -111,6 +111,13 @@ rag:
     enabled: true
     max-error-length: 1000
 
+  agent:
+    enabled: true
+    max-loops: 3
+    max-steps-per-loop: 6
+    low-confidence-threshold: 0.55
+    confirmation-ttl-minutes: 30
+
 ai:
   providers:
     ollama:

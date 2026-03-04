@@ -2,6 +2,11 @@ import { create } from "zustand";
 import { toast } from "sonner";
 
 import type {
+  AgentConfirmPayload,
+  AgentPlanPayload,
+  AgentReplanPayload,
+  AgentStepPayload,
+  AgentTimelineItem,
   CompletionPayload,
   FeedbackValue,
   Message,
@@ -321,13 +326,87 @@ export const useChatStore = create<ChatState>((set, get) => ({
           )
         }));
       },
-      onWorkflow: (payload: WorkflowEventPayload) => {
+  onWorkflow: (payload: WorkflowEventPayload) => {
         if (get().streamingMessageId !== assistantId) return;
         if (!payload || typeof payload !== "object") return;
         set((state) => ({
           messages: state.messages.map((msg) =>
             msg.id === state.streamingMessageId
               ? { ...msg, workflow: payload }
+              : msg
+          )
+        }));
+      },
+      onAgentPlan: (payload: AgentPlanPayload) => {
+        if (get().streamingMessageId !== assistantId) return;
+        if (!payload || typeof payload !== "object") return;
+        set((state) => ({
+          messages: state.messages.map((msg) =>
+            msg.id === state.streamingMessageId
+              ? {
+                  ...msg,
+                  agentTimeline: [
+                    ...(msg.agentTimeline ?? []),
+                    {
+                      kind: "plan",
+                      at: Date.now(),
+                      payload
+                    } satisfies AgentTimelineItem
+                  ]
+                }
+              : msg
+          )
+        }));
+      },
+      onAgentStep: (payload: AgentStepPayload) => {
+        if (get().streamingMessageId !== assistantId) return;
+        if (!payload || typeof payload !== "object") return;
+        set((state) => ({
+          messages: state.messages.map((msg) =>
+            msg.id === state.streamingMessageId
+              ? {
+                  ...msg,
+                  agentTimeline: [
+                    ...(msg.agentTimeline ?? []),
+                    {
+                      kind: "step",
+                      at: Date.now(),
+                      payload
+                    } satisfies AgentTimelineItem
+                  ]
+                }
+              : msg
+          )
+        }));
+      },
+      onAgentReplan: (payload: AgentReplanPayload) => {
+        if (get().streamingMessageId !== assistantId) return;
+        if (!payload || typeof payload !== "object") return;
+        set((state) => ({
+          messages: state.messages.map((msg) =>
+            msg.id === state.streamingMessageId
+              ? {
+                  ...msg,
+                  agentTimeline: [
+                    ...(msg.agentTimeline ?? []),
+                    {
+                      kind: "replan",
+                      at: Date.now(),
+                      payload
+                    } satisfies AgentTimelineItem
+                  ]
+                }
+              : msg
+          )
+        }));
+      },
+      onAgentConfirmRequired: (payload: AgentConfirmPayload) => {
+        if (get().streamingMessageId !== assistantId) return;
+        if (!payload || typeof payload !== "object") return;
+        set((state) => ({
+          messages: state.messages.map((msg) =>
+            msg.id === state.streamingMessageId
+              ? { ...msg, pendingProposal: payload }
               : msg
           )
         }));

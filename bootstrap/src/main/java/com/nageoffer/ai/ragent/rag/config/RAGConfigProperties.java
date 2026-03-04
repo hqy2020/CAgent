@@ -78,4 +78,19 @@ public class RAGConfigProperties {
 
     @Value("${rag.chat.max-tokens-kb:4096}")
     private Integer chatMaxTokensKb;
+
+    @Value("${rag.agent.enabled:true}")
+    private Boolean agentEnabled;
+
+    @Value("${rag.agent.max-loops:3}")
+    private Integer agentMaxLoops;
+
+    @Value("${rag.agent.max-steps-per-loop:6}")
+    private Integer agentMaxStepsPerLoop;
+
+    @Value("${rag.agent.low-confidence-threshold:0.55}")
+    private Double agentLowConfidenceThreshold;
+
+    @Value("${rag.agent.confirmation-ttl-minutes:30}")
+    private Integer agentConfirmationTtlMinutes;
 }

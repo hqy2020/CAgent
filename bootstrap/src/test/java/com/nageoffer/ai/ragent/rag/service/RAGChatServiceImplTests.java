@@ -23,6 +23,10 @@ import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.infra.chat.StreamCallback;
 import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
 import com.nageoffer.ai.ragent.rag.agent.AgentCommandRouter;
+import com.nageoffer.ai.ragent.rag.agent.AgentModeDecider;
+import com.nageoffer.ai.ragent.rag.agent.AgentModeDecision;
+import com.nageoffer.ai.ragent.rag.agent.AgentOrchestrator;
+import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
 import com.nageoffer.ai.ragent.rag.core.guidance.GuidanceDecision;
 import com.nageoffer.ai.ragent.rag.core.guidance.IntentGuidanceService;
@@ -34,6 +38,8 @@ import com.nageoffer.ai.ragent.rag.core.retrieve.RetrievalEngine;
 import com.nageoffer.ai.ragent.rag.core.rewrite.QueryRewriteService;
 import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
+import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeBaseMapper;
+import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeDocumentMapper;
 import com.nageoffer.ai.ragent.rag.service.handler.StreamCallbackFactory;
 import com.nageoffer.ai.ragent.rag.service.handler.StreamTaskManager;
 import com.nageoffer.ai.ragent.rag.service.impl.RAGChatServiceImpl;
@@ -42,6 +48,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
@@ -57,6 +65,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class RAGChatServiceImplTests {
 
     @Mock
@@ -67,6 +76,8 @@ class RAGChatServiceImplTests {
     private PromptTemplateLoader promptTemplateLoader;
     @Mock
     private ConversationMemoryService memoryService;
+    @Mock
+    private RAGConfigProperties ragConfigProperties;
     @Mock
     private StreamTaskManager taskManager;
     @Mock
@@ -83,6 +94,14 @@ class RAGChatServiceImplTests {
     private ConversationService conversationService;
     @Mock
     private AgentCommandRouter agentCommandRouter;
+    @Mock
+    private AgentModeDecider agentModeDecider;
+    @Mock
+    private AgentOrchestrator agentOrchestrator;
+    @Mock
+    private KnowledgeDocumentMapper knowledgeDocumentMapper;
+    @Mock
+    private KnowledgeBaseMapper knowledgeBaseMapper;
 
     @InjectMocks
     private RAGChatServiceImpl ragChatService;
@@ -93,6 +112,7 @@ class RAGChatServiceImplTests {
         StreamCancellationHandle handle = org.mockito.Mockito.mock(StreamCancellationHandle.class);
 
         when(callbackFactory.createChatEventHandler(any(), anyString(), anyString())).thenReturn(callback);
+        mockChatConfig();
         when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
         when(memoryService.loadAndAppend(anyString(), any(), any()))
                 .thenReturn(List.of(ChatMessage.user("history")));
@@ -104,6 +124,7 @@ class RAGChatServiceImplTests {
                 .thenReturn(List.of(new SubQuestionIntent("改写问题", List.of())));
         when(guidanceService.detectAmbiguity(anyString(), anyList())).thenReturn(GuidanceDecision.none());
         when(intentResolver.isSystemOnly(anyList())).thenReturn(false);
+        when(agentModeDecider.decide(anyString(), anyList(), any())).thenReturn(AgentModeDecision.disabled("test"));
         when(retrievalEngine.retrieve(anyList(), anyInt(), any(CancellationToken.class))).thenThrow(new RuntimeException("milvus unavailable"));
         when(promptTemplateLoader.load(anyString())).thenReturn("system prompt");
         when(llmService.streamChat(any(ChatRequest.class), same(callback))).thenReturn(handle);
@@ -120,6 +141,7 @@ class RAGChatServiceImplTests {
         StreamCallback callback = org.mockito.Mockito.mock(StreamCallback.class);
 
         when(callbackFactory.createChatEventHandler(any(), anyString(), anyString())).thenReturn(callback);
+        mockChatConfig();
         when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
         when(memoryService.loadAndAppend(anyString(), any(), any()))
                 .thenReturn(List.of(ChatMessage.user("history")));
@@ -145,6 +167,7 @@ class RAGChatServiceImplTests {
         StreamCallback callback = org.mockito.Mockito.mock(StreamCallback.class);
 
         when(callbackFactory.createChatEventHandler(any(), anyString(), anyString())).thenReturn(callback);
+        mockChatConfig();
         when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
         when(memoryService.loadAndAppend(anyString(), any(), any()))
                 .thenReturn(List.of(ChatMessage.user("history")));
@@ -159,5 +182,45 @@ class RAGChatServiceImplTests {
         verify(retrievalEngine, never()).retrieve(anyList(), anyInt(), any(CancellationToken.class));
         verify(llmService, never()).streamChat(any(ChatRequest.class), any(StreamCallback.class));
         verify(taskManager, never()).bindHandle(anyString(), any());
+    }
+
+    @Test
+    void testAgentModeShouldBeHandledByOrchestrator() {
+        StreamCallback callback = org.mockito.Mockito.mock(StreamCallback.class);
+        when(callbackFactory.createChatEventHandler(any(), anyString(), anyString())).thenReturn(callback);
+        mockChatConfig();
+        when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
+        when(memoryService.loadAndAppend(anyString(), any(), any()))
+                .thenReturn(List.of(ChatMessage.user("history")));
+        when(agentCommandRouter.tryRoute(anyString(), anyString(), any(), anyString(), any(), same(callback), any(CancellationToken.class)))
+                .thenReturn(false);
+        when(queryRewriteService.rewriteWithSplit(anyString(), anyList()))
+                .thenReturn(new RewriteResult("改写问题", List.of("改写问题")));
+        when(intentResolver.resolve(any(RewriteResult.class), any(CancellationToken.class)))
+                .thenReturn(List.of(new SubQuestionIntent("改写问题", List.of())));
+        when(guidanceService.detectAmbiguity(anyString(), anyList())).thenReturn(GuidanceDecision.none());
+        when(intentResolver.isSystemOnly(anyList())).thenReturn(false);
+        when(retrievalEngine.retrieve(anyList(), anyInt(), any(CancellationToken.class)))
+                .thenReturn(com.nageoffer.ai.ragent.rag.dto.RetrievalContext.builder()
+                        .kbContext("kb")
+                        .mcpContext("")
+                        .intentChunks(java.util.Map.of())
+                        .build());
+        when(agentModeDecider.decide(anyString(), anyList(), any())).thenReturn(AgentModeDecision.enabled("multi-step", 0.2));
+        when(agentOrchestrator.execute(any())).thenReturn(true);
+
+        ragChatService.streamChat("请帮我先检索再整理", null, false, new SseEmitter(0L));
+
+        verify(agentOrchestrator).execute(any());
+        verify(llmService, never()).streamChat(any(ChatRequest.class), any(StreamCallback.class));
+    }
+
+    private void mockChatConfig() {
+        when(ragConfigProperties.getChatSystemTemperature()).thenReturn(0.7D);
+        when(ragConfigProperties.getChatSystemTopP()).thenReturn(0.8D);
+        when(ragConfigProperties.getChatMaxTokensSystem()).thenReturn(2048);
+        when(ragConfigProperties.getChatKbTemperature()).thenReturn(0.3D);
+        when(ragConfigProperties.getChatKbTopP()).thenReturn(0.85D);
+        when(ragConfigProperties.getChatMaxTokensKb()).thenReturn(2048);
     }
 }

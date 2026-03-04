@@ -34,6 +34,9 @@ import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeDocumentDO;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeBaseMapper;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeDocumentMapper;
 import com.nageoffer.ai.ragent.rag.agent.AgentCommandRouter;
+import com.nageoffer.ai.ragent.rag.agent.AgentModeDecider;
+import com.nageoffer.ai.ragent.rag.agent.AgentModeDecision;
+import com.nageoffer.ai.ragent.rag.agent.AgentOrchestrator;
 import com.nageoffer.ai.ragent.rag.aop.ChatRateLimit;
 import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
@@ -99,6 +102,8 @@ public class RAGChatServiceImpl implements RAGChatService {
     private final RetrievalEngine retrievalEngine;
     private final ConversationService conversationService;
     private final AgentCommandRouter agentCommandRouter;
+    private final AgentModeDecider agentModeDecider;
+    private final AgentOrchestrator agentOrchestrator;
     private final KnowledgeDocumentMapper knowledgeDocumentMapper;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
 
@@ -188,6 +193,31 @@ public class RAGChatServiceImpl implements RAGChatService {
                         ? ctx.getKbContext().substring(0, 500) + "..."
                         : ctx.getKbContext();
                 log.info("kbContext preview:\n{}", preview);
+            }
+            AgentModeDecision agentModeDecision = agentModeDecider.decide(
+                    rewriteResult.rewrittenQuestion(),
+                    subIntents,
+                    ctx
+            );
+            if (agentModeDecision.enabled()) {
+                log.info("进入 Agentic RAG 模式，reason={}, confidence={}, conversationId={}, taskId={}",
+                        agentModeDecision.reason(), agentModeDecision.confidence(), actualConversationId, taskId);
+                boolean handled = agentOrchestrator.execute(AgentOrchestrator.AgentExecuteRequest.builder()
+                        .question(rewriteResult.rewrittenQuestion())
+                        .conversationId(actualConversationId)
+                        .userId(userId)
+                        .history(history)
+                        .subIntents(subIntents)
+                        .firstRoundContext(ctx)
+                        .emitter(emitter)
+                        .callback(callback)
+                        .token(token)
+                        .build());
+                if (handled) {
+                    return;
+                }
+                log.warn("Agentic RAG 执行未产出结果，回退到普通 RAG 流程。conversationId={}, taskId={}",
+                        actualConversationId, taskId);
             }
             if (ctx.isEmpty()) {
                 String emptyReply = "未检索到与问题相关的文档内容。";

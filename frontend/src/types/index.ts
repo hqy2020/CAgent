@@ -26,6 +26,8 @@ export interface Message {
   content: string;
   thinking?: string;
   workflow?: WorkflowEventPayload;
+  agentTimeline?: AgentTimelineItem[];
+  pendingProposal?: AgentConfirmPayload;
   thinkingDuration?: number;
   isDeepThinking?: boolean;
   isThinking?: boolean;
@@ -56,6 +58,48 @@ export interface WorkflowEventPayload {
   opsCount?: number;
   warnings?: string[];
 }
+
+export interface AgentPlanStepPayload {
+  stepIndex: number;
+  type: string;
+  instruction: string;
+}
+
+export interface AgentPlanPayload {
+  loop: number;
+  goal: string;
+  steps?: AgentPlanStepPayload[];
+}
+
+export interface AgentStepPayload {
+  loop: number;
+  stepIndex: number;
+  type: string;
+  status: string;
+  summary?: string;
+  references?: ReferenceItem[];
+  error?: string;
+}
+
+export interface AgentReplanPayload {
+  loop: number;
+  reason?: string;
+  nextSteps?: string[];
+}
+
+export interface AgentConfirmPayload {
+  proposalId: string;
+  toolId: string;
+  parameters?: Record<string, unknown>;
+  targetPath?: string;
+  riskHint?: string;
+  expiresAt?: number;
+}
+
+export type AgentTimelineItem =
+  | { kind: "plan"; at: number; payload: AgentPlanPayload }
+  | { kind: "step"; at: number; payload: AgentStepPayload }
+  | { kind: "replan"; at: number; payload: AgentReplanPayload };
 
 export interface ChunkDetail {
   content: string;

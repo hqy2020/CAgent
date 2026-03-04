@@ -1,4 +1,8 @@
 import type {
+  AgentConfirmPayload,
+  AgentPlanPayload,
+  AgentReplanPayload,
+  AgentStepPayload,
   CompletionPayload,
   MessageDeltaPayload,
   ReferenceItem,
@@ -12,6 +16,10 @@ export interface StreamHandlers {
   onThinking?: (payload: MessageDeltaPayload) => void;
   onReferences?: (payload: ReferenceItem[]) => void;
   onWorkflow?: (payload: WorkflowEventPayload) => void;
+  onAgentPlan?: (payload: AgentPlanPayload) => void;
+  onAgentStep?: (payload: AgentStepPayload) => void;
+  onAgentReplan?: (payload: AgentReplanPayload) => void;
+  onAgentConfirmRequired?: (payload: AgentConfirmPayload) => void;
   onFinish?: (payload: CompletionPayload) => void;
   onDone?: () => void;
   onCancel?: (payload: CompletionPayload) => void;
@@ -93,6 +101,18 @@ async function readSseStream(response: Response, handlers: StreamHandlers, signa
         break;
       case "workflow":
         handlers.onWorkflow?.(payload as WorkflowEventPayload);
+        break;
+      case "agent_plan":
+        handlers.onAgentPlan?.(payload as AgentPlanPayload);
+        break;
+      case "agent_step":
+        handlers.onAgentStep?.(payload as AgentStepPayload);
+        break;
+      case "agent_replan":
+        handlers.onAgentReplan?.(payload as AgentReplanPayload);
+        break;
+      case "agent_confirm_required":
+        handlers.onAgentConfirmRequired?.(payload as AgentConfirmPayload);
         break;
       case "finish":
         hasTerminalEvent = true;

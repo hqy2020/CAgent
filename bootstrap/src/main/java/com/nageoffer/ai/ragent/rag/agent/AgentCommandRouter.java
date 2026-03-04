@@ -17,7 +17,10 @@
 
 package com.nageoffer.ai.ragent.rag.agent;
 
+import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPResponse;
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPService;
 import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
 import com.nageoffer.ai.ragent.rag.dto.WorkflowEventPayload;
 import com.nageoffer.ai.ragent.rag.enums.SSEEventType;
@@ -38,9 +41,11 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class AgentCommandRouter {
 
-    private static final Pattern COMMAND_PATTERN = Pattern.compile("^/(qy-review|qy-job|qy-debrief)(?:\\s+(.*))?$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern COMMAND_PATTERN = Pattern.compile("^/(qy-review|qy-job|qy-debrief|confirm|reject)(?:\\s+(.*))?$", Pattern.CASE_INSENSITIVE);
 
     private final AgentWorkflowRegistry workflowRegistry;
+    private final PendingProposalStore pendingProposalStore;
+    private final MCPService mcpService;
 
     @RagTraceNode(name = "agent-command-route", type = "AGENT_ROUTE")
     public boolean tryRoute(String question,
@@ -53,6 +58,11 @@ public class AgentCommandRouter {
         AgentCommand command = parseCommand(question);
         if (command == null) {
             return false;
+        }
+
+        if (isProposalCommand(command)) {
+            handleProposalCommand(command, conversationId, userId, emitter, callback);
+            return true;
         }
 
         AgentWorkflow workflow = workflowRegistry.find(command).orElse(null);
@@ -98,6 +108,65 @@ public class AgentCommandRouter {
                 .rawInput(question)
                 .args(args)
                 .build();
+    }
+
+    private boolean isProposalCommand(AgentCommand command) {
+        if (command == null || command.workflowId() == null) {
+            return false;
+        }
+        return "/confirm".equalsIgnoreCase(command.workflowId())
+                || "/reject".equalsIgnoreCase(command.workflowId());
+    }
+
+    @RagTraceNode(name = "agent-confirm", type = "AGENT_CONFIRM")
+    protected void handleProposalCommand(AgentCommand command,
+                                         String conversationId,
+                                         String userId,
+                                         SseEmitter emitter,
+                                         StreamCallback callback) {
+        String proposalId = command.args() == null ? "" : command.args().trim();
+        if (proposalId.isBlank()) {
+            callback.onContent("命令参数缺失。请使用 `/confirm <proposalId>` 或 `/reject <proposalId>`。");
+            callback.onComplete();
+            return;
+        }
+
+        if ("/reject".equalsIgnoreCase(command.workflowId())) {
+            PendingProposalStore.ProposalDecisionResult rejected = pendingProposalStore.reject(proposalId, conversationId, userId);
+            if (!rejected.success()) {
+                callback.onContent("拒绝失败：" + rejected.message());
+                callback.onComplete();
+                return;
+            }
+            callback.onContent("已拒绝提案：" + proposalId);
+            callback.onComplete();
+            return;
+        }
+
+        PendingProposalStore.ProposalDecisionResult confirmed = pendingProposalStore.confirm(proposalId, conversationId, userId);
+        if (!confirmed.success()) {
+            callback.onContent("确认失败：" + confirmed.message());
+            callback.onComplete();
+            return;
+        }
+
+        PendingProposal proposal = confirmed.proposal();
+        MCPResponse response = mcpService.execute(proposal.toMcpRequest());
+        if (!response.isSuccess()) {
+            callback.onContent("已确认提案，但执行失败：" + response.getErrorMessage());
+            callback.onComplete();
+            return;
+        }
+
+        sendWorkflowEvent(emitter, AgentWorkflowResult.builder()
+                .reply(response.getTextResult())
+                .changedFiles(proposal.getTargetPath() == null ? java.util.List.of() : java.util.List.of(proposal.getTargetPath()))
+                .opsCount(1)
+                .warnings(java.util.List.of())
+                .build(), "/confirm");
+
+        callback.onContent(StrUtil.blankToDefault(response.getTextResult(), "提案已确认并执行完成。"));
+        callback.onComplete();
     }
 
     @RagTraceNode(name = "agent-workflow-summary", type = "AGENT_SUMMARY")

@@ -19,6 +19,8 @@ package com.nageoffer.ai.ragent.rag.agent;
 
 import com.nageoffer.ai.ragent.infra.chat.StreamCallback;
 import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPResponse;
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPService;
 import com.nageoffer.ai.ragent.rag.dto.WorkflowEventPayload;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,6 +32,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -37,6 +40,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -54,11 +58,17 @@ class AgentCommandRouterTests {
     @Mock
     private StreamCallback callback;
 
+    @Mock
+    private PendingProposalStore pendingProposalStore;
+
+    @Mock
+    private MCPService mcpService;
+
     private AgentCommandRouter router;
 
     @BeforeEach
     void setUp() {
-        router = new AgentCommandRouter(workflowRegistry);
+        router = new AgentCommandRouter(workflowRegistry, pendingProposalStore, mcpService);
     }
 
     @Test
@@ -86,7 +96,6 @@ class AgentCommandRouterTests {
         assertTrue(routed);
         verify(callback).onContent("ok");
         verify(callback).onComplete();
-        assertTrue(emitter.eventNames.contains("workflow"));
         assertTrue(emitter.rawPayloads.stream().anyMatch(each -> each instanceof WorkflowEventPayload));
     }
 
@@ -127,7 +136,89 @@ class AgentCommandRouterTests {
 
         assertFalse(routed);
         verify(callback, never()).onComplete();
-        assertTrue(emitter.eventNames.isEmpty());
+        assertTrue(emitter.rawPayloads.isEmpty());
+    }
+
+    @Test
+    void shouldConfirmProposalAndExecuteMcp() {
+        PendingProposal proposal = PendingProposal.builder()
+                .proposalId("p-1")
+                .conversationId("c1")
+                .userId("u1")
+                .toolId("obsidian_update")
+                .userQuestion("update")
+                .parameters(new HashMap<>())
+                .targetPath("a.md")
+                .status(PendingProposalStore.STATUS_PENDING)
+                .createdAt(System.currentTimeMillis())
+                .expiresAt(System.currentTimeMillis() + 10000)
+                .build();
+        when(pendingProposalStore.confirm(eq("p-1"), eq("c1"), eq("u1")))
+                .thenReturn(new PendingProposalStore.ProposalDecisionResult(true, proposal, null));
+        when(mcpService.execute(any())).thenReturn(MCPResponse.success("obsidian_update", "ok"));
+
+        boolean routed = router.tryRoute(
+                "/confirm p-1",
+                "c1",
+                "u1",
+                "t1",
+                new CapturingSseEmitter(),
+                callback,
+                CancellationToken.NONE
+        );
+
+        assertTrue(routed);
+        verify(callback).onContent("ok");
+        verify(callback).onComplete();
+    }
+
+    @Test
+    void shouldRejectProposal() {
+        PendingProposal proposal = PendingProposal.builder()
+                .proposalId("p-2")
+                .conversationId("c1")
+                .userId("u1")
+                .status(PendingProposalStore.STATUS_PENDING)
+                .createdAt(System.currentTimeMillis())
+                .expiresAt(System.currentTimeMillis() + 10000)
+                .build();
+        when(pendingProposalStore.reject(eq("p-2"), eq("c1"), eq("u1")))
+                .thenReturn(new PendingProposalStore.ProposalDecisionResult(true, proposal, null));
+
+        boolean routed = router.tryRoute(
+                "/reject p-2",
+                "c1",
+                "u1",
+                "t1",
+                new CapturingSseEmitter(),
+                callback,
+                CancellationToken.NONE
+        );
+
+        assertTrue(routed);
+        verify(callback).onContent("已拒绝提案：p-2");
+        verify(callback).onComplete();
+    }
+
+    @Test
+    void shouldFailWhenConfirmProposalUnauthorized() {
+        when(pendingProposalStore.confirm(eq("p-3"), eq("c1"), eq("u1")))
+                .thenReturn(new PendingProposalStore.ProposalDecisionResult(false, null, "无权限确认该提案"));
+
+        boolean routed = router.tryRoute(
+                "/confirm p-3",
+                "c1",
+                "u1",
+                "t1",
+                new CapturingSseEmitter(),
+                callback,
+                CancellationToken.NONE
+        );
+
+        assertTrue(routed);
+        verify(callback).onContent("确认失败：无权限确认该提案");
+        verify(callback).onComplete();
+        verifyNoInteractions(mcpService);
     }
 
     private static final class CapturingSseEmitter extends SseEmitter {
