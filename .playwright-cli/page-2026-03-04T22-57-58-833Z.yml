@@ -1,0 +1,250 @@
+- generic [ref=e2]:
+  - generic [ref=e31]:
+    - complementary [ref=e32]:
+      - generic [ref=e34]:
+        - img [ref=e36]
+        - generic [ref=e39]:
+          - paragraph [ref=e40]: RAG 智能问答
+          - paragraph [ref=e41]: Powered by AI
+      - generic [ref=e42]:
+        - generic [ref=e46]:
+          - generic [ref=e47]:
+            - generic [ref=e48]: 快速开始
+            - generic [ref=e49]: 新内容
+          - button "新建对话 从空白开始" [ref=e50] [cursor=pointer]:
+            - img [ref=e52]
+            - generic [ref=e53]:
+              - generic [ref=e54]: 新建对话
+              - generic [ref=e55]: 从空白开始
+          - button "管理后台" [ref=e56] [cursor=pointer]:
+            - img [ref=e57]
+            - text: 管理后台
+        - generic [ref=e60]:
+          - generic [ref=e61]:
+            - generic [ref=e62]: 搜索对话
+            - generic [ref=e63]: Ctrl / Cmd + K
+          - generic [ref=e65]:
+            - img [ref=e66]
+            - textbox "搜索对话..." [ref=e69]
+      - generic [ref=e72]:
+        - generic [ref=e73]:
+          - paragraph [ref=e74]: 今天
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e75] [cursor=pointer]:
+            - generic [ref=e76]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+        - generic [ref=e77]:
+          - paragraph [ref=e78]: 7天内
+          - button "添加今日待办事项：3.7 答辩 会话操作" [ref=e79] [cursor=pointer]:
+            - generic [ref=e80]: 添加今日待办事项：3.7 答辩
+            - button "会话操作":
+              - img
+          - button "阿里云实习经历回顾 会话操作" [ref=e81] [cursor=pointer]:
+            - generic [ref=e82]: 阿里云实习经历回顾
+            - button "会话操作":
+              - img
+          - button "geek 的含义 会话操作" [ref=e83] [cursor=pointer]:
+            - generic [ref=e84]: geek 的含义
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e85] [cursor=pointer]:
+            - generic [ref=e86]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e87] [cursor=pointer]:
+            - generic [ref=e88]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e89] [cursor=pointer]:
+            - generic [ref=e90]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e91] [cursor=pointer]:
+            - generic [ref=e92]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Milvus原理讲解 会话操作" [ref=e93] [cursor=pointer]:
+            - generic [ref=e94]: Milvus原理讲解
+            - button "会话操作":
+              - img
+          - button "Spring AOP 实现原理及使用场景 会话操作" [ref=e95] [cursor=pointer]:
+            - generic [ref=e96]: Spring AOP 实现原理及使用场景
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e97] [cursor=pointer]:
+            - generic [ref=e98]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e99] [cursor=pointer]:
+            - generic [ref=e100]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e101] [cursor=pointer]:
+            - generic [ref=e102]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期详细说明 会话操作" [ref=e103] [cursor=pointer]:
+            - generic [ref=e104]: Spring Bean 生命周期详细说明
+            - button "会话操作":
+              - img
+          - button "创建笔记：RAG多路检索内容概述 会话操作" [ref=e105] [cursor=pointer]:
+            - generic [ref=e106]: 创建笔记：RAG多路检索内容概述
+            - button "会话操作":
+              - img
+          - button "MOC-Knowledge笔记内容替换 会话操作" [ref=e107] [cursor=pointer]:
+            - generic [ref=e108]: MOC-Knowledge笔记内容替换
+            - button "会话操作":
+              - img
+          - button "追加RAG系统设计笔记到MOC-Knowledge 会话操作" [ref=e109] [cursor=pointer]:
+            - generic [ref=e110]: 追加RAG系统设计笔记到MOC-Knowledge
+            - button "会话操作":
+              - img
+          - button "MOC-Knowledge 笔记追加 RAG 系统设计笔记 会话操作" [ref=e111] [cursor=pointer]:
+            - generic [ref=e112]: MOC-Knowledge 笔记追加 RAG 系统设计笔记
+            - button "会话操作":
+              - img
+          - button "搜索笔记库中HashMap笔记 会话操作" [ref=e113] [cursor=pointer]:
+            - generic [ref=e114]: 搜索笔记库中HashMap笔记
+            - button "会话操作":
+              - img
+          - button "搜索笔记库中HashMap笔记 会话操作" [ref=e115] [cursor=pointer]:
+            - generic [ref=e116]: 搜索笔记库中HashMap笔记
+            - button "会话操作":
+              - img
+          - button "追加待办：完成RAG系统MCP工具集成测试 会话操作" [ref=e117] [cursor=pointer]:
+            - generic [ref=e118]: 追加待办：完成RAG系统MCP工具集成测试
+            - button "会话操作":
+              - img
+          - button "追加待办：完成RAG系统MCP工具集成测试 会话操作" [ref=e119] [cursor=pointer]:
+            - generic [ref=e120]: 追加待办：完成RAG系统MCP工具集成测试
+            - button "会话操作":
+              - img
+          - button "Spring Boot核心特性简介 会话操作" [ref=e121] [cursor=pointer]:
+            - generic [ref=e122]: Spring Boot核心特性简介
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e123] [cursor=pointer]:
+            - generic [ref=e124]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e125] [cursor=pointer]:
+            - generic [ref=e126]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e127] [cursor=pointer]:
+            - generic [ref=e128]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e129] [cursor=pointer]:
+            - generic [ref=e130]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e131] [cursor=pointer]:
+            - generic [ref=e132]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e133] [cursor=pointer]:
+            - generic [ref=e134]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e135] [cursor=pointer]:
+            - generic [ref=e136]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e137] [cursor=pointer]:
+            - generic [ref=e138]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e139] [cursor=pointer]:
+            - generic [ref=e140]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e141] [cursor=pointer]:
+            - generic [ref=e142]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e143] [cursor=pointer]:
+            - generic [ref=e144]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e145] [cursor=pointer]:
+            - generic [ref=e146]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e147] [cursor=pointer]:
+            - generic [ref=e148]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e149] [cursor=pointer]:
+            - generic [ref=e150]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e151] [cursor=pointer]:
+            - generic [ref=e152]: 新对话
+            - button "会话操作":
+              - img
+      - button "用户菜单" [ref=e154] [cursor=pointer]:
+        - img "admin" [ref=e156]
+        - generic [ref=e157]: admin
+        - img [ref=e158]
+    - generic [ref=e162]:
+      - banner [ref=e163]:
+        - generic [ref=e164]:
+          - paragraph [ref=e166]: 新对话
+          - link "打开 GitHub 仓库" [ref=e168] [cursor=pointer]:
+            - /url: https://github.com/hqy2020/CAgent
+            - img [ref=e169]
+            - generic [ref=e172]: Star
+            - generic [ref=e173]: "3"
+      - main [ref=e174]:
+        - generic [ref=e178]:
+          - generic [ref=e179]:
+            - generic [ref=e180]:
+              - img [ref=e181]
+              - text: RAG 智能问答
+            - heading "把问题变成清晰答案" [level=1] [ref=e184]
+            - paragraph [ref=e185]: 结构化提问、知识检索与深度思考，一次对话给出可执行方案
+          - generic [ref=e186]:
+            - generic [ref=e187]:
+              - textbox "发送消息" [active] [ref=e189]:
+                - /placeholder: 输入你的问题...
+                - text: Spring Bean 的生命周期是什么？请简要回答。
+              - generic [ref=e190]:
+                - button "深度思考" [ref=e191] [cursor=pointer]:
+                  - generic [ref=e192]:
+                    - img [ref=e193]
+                    - text: 深度思考
+                - button "发送消息" [ref=e203] [cursor=pointer]:
+                  - img [ref=e204]
+            - paragraph [ref=e207]: Enter 发送·Shift + Enter 换行
+          - generic [ref=e208]:
+            - generic [ref=e209]: 试试这些开场
+            - generic [ref=e212]:
+              - button "内容总结 提炼 3-5 条关键信息与行动点 推荐问法：请帮我总结以下内容，并列出3-5条要点：" [ref=e213] [cursor=pointer]:
+                - generic [ref=e214]:
+                  - img [ref=e216]
+                  - generic [ref=e218]:
+                    - paragraph [ref=e219]: 内容总结
+                    - paragraph [ref=e220]: 提炼 3-5 条关键信息与行动点
+                - generic [ref=e221]:
+                  - generic [ref=e222]: 推荐问法：请帮我总结以下内容，并列出3-5条要点：
+                  - img [ref=e223]
+              - button "任务拆解 把目标拆成可执行步骤与优先级 推荐问法：请把下面需求拆解为步骤，并给出优先级和里程碑：" [ref=e226] [cursor=pointer]:
+                - generic [ref=e227]:
+                  - img [ref=e229]
+                  - generic [ref=e231]:
+                    - paragraph [ref=e232]: 任务拆解
+                    - paragraph [ref=e233]: 把目标拆成可执行步骤与优先级
+                - generic [ref=e234]:
+                  - generic [ref=e235]: 推荐问法：请把下面需求拆解为步骤，并给出优先级和里程碑：
+                  - img [ref=e236]
+              - button "灵感扩展 给出多个方案并比较优缺点 推荐问法：围绕以下主题给出5-8个方案，并注明优缺点：" [ref=e239] [cursor=pointer]:
+                - generic [ref=e240]:
+                  - img [ref=e242]
+                  - generic [ref=e244]:
+                    - paragraph [ref=e245]: 灵感扩展
+                    - paragraph [ref=e246]: 给出多个方案并比较优缺点
+                - generic [ref=e247]:
+                  - generic [ref=e248]: 推荐问法：围绕以下主题给出5-8个方案，并注明优缺点：
+                  - img [ref=e249]
+  - region "Notifications alt+T"

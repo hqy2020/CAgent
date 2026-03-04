@@ -26,17 +26,21 @@ import java.util.List;
  *
  * @param documentId        文档 ID
  * @param documentName      文档名称
+ * @param knowledgeBaseId   知识库 ID
  * @param knowledgeBaseName 知识库名称
  * @param score             匹配得分（文档级，取所有 chunks 中最高分）
- * @param textPreview       文本摘要（最高分 chunk 前 100 字）
+ * @param documentUrl       完整文档访问地址（优先 sourceLocation，其次 fileUrl）
+ * @param textPreview       文本摘要（最高分 chunk 文本）
  * @param chunks            该文档所有命中片段（按 score 降序）
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ReferenceItem(
         String documentId,
         String documentName,
+        String knowledgeBaseId,
         String knowledgeBaseName,
         Float score,
+        String documentUrl,
         String textPreview,
         List<ChunkDetail> chunks
 ) {

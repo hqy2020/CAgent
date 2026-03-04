@@ -33,6 +33,7 @@ import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeBaseDO;
 import com.nageoffer.ai.ragent.knowledge.dao.entity.KnowledgeDocumentDO;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeBaseMapper;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeDocumentMapper;
+import com.nageoffer.ai.ragent.rag.agent.AgentCommandRouter;
 import com.nageoffer.ai.ragent.rag.aop.ChatRateLimit;
 import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
@@ -63,6 +64,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -96,6 +98,7 @@ public class RAGChatServiceImpl implements RAGChatService {
     private final IntentResolver intentResolver;
     private final RetrievalEngine retrievalEngine;
     private final ConversationService conversationService;
+    private final AgentCommandRouter agentCommandRouter;
     private final KnowledgeDocumentMapper knowledgeDocumentMapper;
     private final KnowledgeBaseMapper knowledgeBaseMapper;
 
@@ -127,6 +130,19 @@ public class RAGChatServiceImpl implements RAGChatService {
             }
 
             List<ChatMessage> history = memoryService.loadAndAppend(actualConversationId, userId, ChatMessage.user(question));
+
+            boolean handledByAgent = agentCommandRouter.tryRoute(
+                    question,
+                    actualConversationId,
+                    userId,
+                    taskId,
+                    emitter,
+                    callback,
+                    token
+            );
+            if (handledByAgent) {
+                return;
+            }
 
             token.throwIfCancelled();
             RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(question, history);
@@ -327,23 +343,63 @@ public class RAGChatServiceImpl implements RAGChatService {
             KnowledgeDocumentDO doc = docMap.get(docIdLong);
 
             String docName = doc != null ? doc.getDocName() : null;
+            String kbId = doc != null && doc.getKbId() != null
+                    ? String.valueOf(doc.getKbId())
+                    : bestChunk.getKbId();
             String kbName = null;
-            if (bestChunk.getKbId() != null) {
-                KnowledgeBaseDO kb = kbMap.get(Long.valueOf(bestChunk.getKbId()));
-                kbName = kb != null ? kb.getName() : null;
+            if (StrUtil.isNotBlank(kbId)) {
+                try {
+                    KnowledgeBaseDO kb = kbMap.get(Long.valueOf(kbId));
+                    kbName = kb != null ? kb.getName() : null;
+                } catch (NumberFormatException ignored) {
+                    // ignore invalid kbId
+                }
             }
 
+            String docUrl = resolveReferenceDocumentUrl(doc);
             String preview = bestChunk.getText();
-            if (preview != null && preview.length() > 100) {
-                preview = preview.substring(0, 100) + "...";
-            }
 
             List<ReferenceItem.ChunkDetail> chunkDetails = docChunks.stream()
                     .map(c -> new ReferenceItem.ChunkDetail(c.getText(), c.getScore()))
                     .toList();
 
-            items.add(new ReferenceItem(entry.getKey(), docName, kbName, bestChunk.getScore(), preview, chunkDetails));
+            items.add(new ReferenceItem(
+                    entry.getKey(),
+                    docName,
+                    kbId,
+                    kbName,
+                    bestChunk.getScore(),
+                    docUrl,
+                    preview,
+                    chunkDetails
+            ));
         }
         return items;
+    }
+
+    private String resolveReferenceDocumentUrl(KnowledgeDocumentDO doc) {
+        if (doc == null) {
+            return null;
+        }
+        if (isHttpUrl(doc.getSourceLocation())) {
+            return doc.getSourceLocation().trim();
+        }
+        if (isHttpUrl(doc.getFileUrl())) {
+            return doc.getFileUrl().trim();
+        }
+        return null;
+    }
+
+    private boolean isHttpUrl(String value) {
+        if (StrUtil.isBlank(value)) {
+            return false;
+        }
+        try {
+            URI uri = URI.create(value.trim());
+            String scheme = uri.getScheme();
+            return "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
+        } catch (Exception e) {
+            return false;
+        }
     }
 }

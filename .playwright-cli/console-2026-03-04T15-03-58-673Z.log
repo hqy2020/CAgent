@@ -1,0 +1,23 @@
+[     818ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED @ https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@500;600;700&display=swap:0
+[    5126ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:5173/node_modules/.vite/deps/react-router-dom.js?v=d0c2e12e:4435
+[    6819ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:5173/node_modules/.vite/deps/react-router-dom.js?v=d0c2e12e:4435
+[    6934ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:5173/api/ragent/user/me:0
+[    6940ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:5173/api/ragent/conversations:0
+[    6960ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:5173/api/ragent/rag/sample-questions:0
+[    6961ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:5173/api/ragent/conversations:0
+[    6969ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:5173/api/ragent/rag/sample-questions:0
+[    6970ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:5173/api/ragent/conversations:0
+[    6977ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:5173/api/ragent/conversations:0
+[    7078ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:5173/api/ragent/rag/sample-questions:0
+[    7091ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:5173/api/ragent/rag/sample-questions:0
+[    8954ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:5173/api/ragent/conversations:0
+[    9005ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:5173/api/ragent/conversations:0
+[    9029ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:5173/api/ragent/conversations:0
+[    9043ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:5173/api/ragent/conversations:0
+[   31711ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:5173/:0
+[   32716ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:5173/:0
+[   33719ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:5173/:0
+[   34723ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:5173/:0
+[   35726ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:5173/:0
+[   36731ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:5173/:0
+[   37733ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:5173/:0

@@ -22,6 +22,7 @@ import com.nageoffer.ai.ragent.infra.convention.ChatRequest;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
 import com.nageoffer.ai.ragent.infra.chat.StreamCallback;
 import com.nageoffer.ai.ragent.infra.chat.StreamCancellationHandle;
+import com.nageoffer.ai.ragent.rag.agent.AgentCommandRouter;
 import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
 import com.nageoffer.ai.ragent.rag.core.guidance.GuidanceDecision;
 import com.nageoffer.ai.ragent.rag.core.guidance.IntentGuidanceService;
@@ -80,6 +81,8 @@ class RAGChatServiceImplTests {
     private RetrievalEngine retrievalEngine;
     @Mock
     private ConversationService conversationService;
+    @Mock
+    private AgentCommandRouter agentCommandRouter;
 
     @InjectMocks
     private RAGChatServiceImpl ragChatService;
@@ -93,6 +96,8 @@ class RAGChatServiceImplTests {
         when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
         when(memoryService.loadAndAppend(anyString(), any(), any()))
                 .thenReturn(List.of(ChatMessage.user("history")));
+        when(agentCommandRouter.tryRoute(anyString(), anyString(), any(), anyString(), any(), same(callback), any(CancellationToken.class)))
+                .thenReturn(false);
         when(queryRewriteService.rewriteWithSplit(anyString(), anyList()))
                 .thenReturn(new RewriteResult("改写问题", List.of("改写问题")));
         when(intentResolver.resolve(any(RewriteResult.class), any(CancellationToken.class)))
@@ -118,6 +123,8 @@ class RAGChatServiceImplTests {
         when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
         when(memoryService.loadAndAppend(anyString(), any(), any()))
                 .thenReturn(List.of(ChatMessage.user("history")));
+        when(agentCommandRouter.tryRoute(anyString(), anyString(), any(), anyString(), any(), same(callback), any(CancellationToken.class)))
+                .thenReturn(false);
         when(queryRewriteService.rewriteWithSplit(anyString(), anyList()))
                 .thenReturn(new RewriteResult("改写问题", List.of("改写问题")));
         when(intentResolver.resolve(any(RewriteResult.class), any(CancellationToken.class)))
@@ -130,6 +137,27 @@ class RAGChatServiceImplTests {
         ragChatService.streamChat("你好", null, false, new SseEmitter(0L));
 
         verify(callback).onError(any(RuntimeException.class));
+        verify(taskManager, never()).bindHandle(anyString(), any());
+    }
+
+    @Test
+    void testAgentRouteShouldShortCircuitRagPipeline() {
+        StreamCallback callback = org.mockito.Mockito.mock(StreamCallback.class);
+
+        when(callbackFactory.createChatEventHandler(any(), anyString(), anyString())).thenReturn(callback);
+        when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
+        when(memoryService.loadAndAppend(anyString(), any(), any()))
+                .thenReturn(List.of(ChatMessage.user("history")));
+        when(agentCommandRouter.tryRoute(anyString(), anyString(), any(), anyString(), any(), same(callback), any(CancellationToken.class)))
+                .thenReturn(true);
+
+        ragChatService.streamChat("/qy-review smoke", null, false, new SseEmitter(0L));
+
+        verify(agentCommandRouter).tryRoute(anyString(), anyString(), any(), anyString(), any(), same(callback), any(CancellationToken.class));
+        verify(queryRewriteService, never()).rewriteWithSplit(anyString(), anyList());
+        verify(intentResolver, never()).resolve(any(RewriteResult.class), any(CancellationToken.class));
+        verify(retrievalEngine, never()).retrieve(anyList(), anyInt(), any(CancellationToken.class));
+        verify(llmService, never()).streamChat(any(ChatRequest.class), any(StreamCallback.class));
         verify(taskManager, never()).bindHandle(anyString(), any());
     }
 }

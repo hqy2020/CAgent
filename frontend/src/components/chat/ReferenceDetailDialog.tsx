@@ -1,5 +1,8 @@
+import { ExternalLink } from "lucide-react";
+
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import {
+  DialogDescription,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -13,6 +16,16 @@ interface ReferenceDetailDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+function buildReferenceDetailHref(reference: ReferenceItem) {
+  if (reference.documentUrl) {
+    return reference.documentUrl;
+  }
+  if (!reference.knowledgeBaseId || !reference.documentId) {
+    return null;
+  }
+  return `/admin/knowledge/${encodeURIComponent(reference.knowledgeBaseId)}/docs/${encodeURIComponent(reference.documentId)}`;
+}
+
 export function ReferenceDetailDialog({
   reference,
   open,
@@ -21,6 +34,7 @@ export function ReferenceDetailDialog({
   if (!reference) return null;
 
   const chunks = reference.chunks ?? [];
+  const detailHref = buildReferenceDetailHref(reference);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -39,6 +53,20 @@ export function ReferenceDetailDialog({
               来自：{reference.knowledgeBaseName}
             </p>
           )}
+          {detailHref ? (
+            <a
+              href={detailHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-sm text-[#16A34A] hover:text-[#15803D] hover:underline"
+            >
+              打开完整文档
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          ) : null}
+          <DialogDescription className="sr-only">
+            参考文档片段详情与完整文档跳转入口
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">

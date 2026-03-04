@@ -1,0 +1,202 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e6]:
+        - generic [ref=e7]: C
+        - generic [ref=e8]:
+          - heading "CAgent 管理后台" [level=1] [ref=e9]
+          - paragraph [ref=e10]: Knowledge Console
+      - navigation [ref=e11]:
+        - generic [ref=e12]:
+          - paragraph [ref=e13]: 导航
+          - generic [ref=e14]:
+            - link "Dashboard" [ref=e15] [cursor=pointer]:
+              - /url: /admin/dashboard
+              - img [ref=e17]
+              - generic [ref=e22]: Dashboard
+            - link "知识库管理" [ref=e23] [cursor=pointer]:
+              - /url: /admin/knowledge
+              - img [ref=e25]
+              - generic [ref=e29]: 知识库管理
+            - generic [ref=e30]:
+              - button "意图管理" [ref=e31] [cursor=pointer]:
+                - img [ref=e33]
+                - generic [ref=e37]: 意图管理
+                - img [ref=e38]
+              - generic [ref=e40]:
+                - link "意图树配置" [ref=e41] [cursor=pointer]:
+                  - /url: /admin/intent-tree
+                  - img [ref=e43]
+                  - generic [ref=e47]: 意图树配置
+                - link "意图列表" [ref=e48] [cursor=pointer]:
+                  - /url: /admin/intent-list
+                  - img [ref=e50]
+                  - generic [ref=e53]: 意图列表
+            - generic [ref=e54]:
+              - button "数据通道" [ref=e55] [cursor=pointer]:
+                - img [ref=e57]
+                - generic [ref=e60]: 数据通道
+                - img [ref=e61]
+              - generic [ref=e63]:
+                - link "流水线管理" [ref=e64] [cursor=pointer]:
+                  - /url: /admin/ingestion?tab=pipelines
+                  - img [ref=e66]
+                  - generic [ref=e68]: 流水线管理
+                - link "流水线任务" [ref=e69] [cursor=pointer]:
+                  - /url: /admin/ingestion?tab=tasks
+                  - img [ref=e71]
+                  - generic [ref=e74]: 流水线任务
+            - link "链路追踪" [ref=e75] [cursor=pointer]:
+              - /url: /admin/traces
+              - img [ref=e77]
+              - generic [ref=e81]: 链路追踪
+        - generic [ref=e82]:
+          - paragraph [ref=e83]: 设置
+          - generic [ref=e84]:
+            - link "用户管理" [ref=e85] [cursor=pointer]:
+              - /url: /admin/users
+              - img [ref=e87]
+              - generic [ref=e92]: 用户管理
+            - link "示例问题" [ref=e93] [cursor=pointer]:
+              - /url: /admin/sample-questions
+              - img [ref=e95]
+              - generic [ref=e97]: 示例问题
+            - link "模型管理" [ref=e98] [cursor=pointer]:
+              - /url: /admin/models
+              - img [ref=e100]
+              - generic [ref=e103]: 模型管理
+            - link "系统设置" [ref=e104] [cursor=pointer]:
+              - /url: /admin/settings
+              - img [ref=e106]
+              - generic [ref=e109]: 系统设置
+      - button "收起侧边栏" [ref=e111] [cursor=pointer]:
+        - img [ref=e112]
+        - generic [ref=e115]: 收起侧边栏
+    - generic [ref=e116]:
+      - banner [ref=e117]:
+        - generic [ref=e118]:
+          - generic [ref=e120]:
+            - img
+            - textbox "筛选知识库..." [ref=e121]
+            - generic [ref=e122]: Ctrl K
+          - generic [ref=e123]:
+            - button "返回聊天" [ref=e124] [cursor=pointer]:
+              - img [ref=e125]
+              - text: 返回聊天
+            - link "打开 GitHub 仓库" [ref=e127] [cursor=pointer]:
+              - /url: https://github.com/hqy2020/CAgent
+              - img [ref=e128]
+              - generic [ref=e131]: Star
+              - generic [ref=e132]: "--"
+            - button "用户菜单" [ref=e133] [cursor=pointer]:
+              - img "admin" [ref=e135]
+              - generic [ref=e136]: admin
+              - img [ref=e137]
+      - generic [ref=e139]:
+        - navigation "面包屑" [ref=e140]:
+          - generic [ref=e141]:
+            - link "首页" [ref=e142] [cursor=pointer]:
+              - /url: /admin/dashboard
+            - generic [ref=e143]: /
+          - generic [ref=e144]:
+            - link "知识库管理" [ref=e145] [cursor=pointer]:
+              - /url: /admin/knowledge
+            - generic [ref=e146]: /
+          - generic [ref=e147]:
+            - generic [ref=e148]: 文档管理
+            - generic [ref=e149]: /
+          - generic [ref=e151]: 切片管理
+        - generic [ref=e152]:
+          - generic [ref=e153]:
+            - generic [ref=e154]:
+              - heading "分块管理" [level=1] [ref=e155]
+              - paragraph [ref=e156]: "Bean的生命周期.md （知识库: 2028771736224321536）"
+            - generic [ref=e157]:
+              - button "返回文档" [ref=e158] [cursor=pointer]
+              - button "重建向量" [ref=e159] [cursor=pointer]
+              - button "新建分块" [ref=e160] [cursor=pointer]:
+                - img [ref=e161]
+                - text: 新建分块
+          - generic [ref=e162]:
+            - generic [ref=e164]:
+              - generic [ref=e165]:
+                - heading "Chunk 列表" [level=3] [ref=e166]
+                - paragraph [ref=e167]: 支持编辑、启停、批量操作
+              - generic [ref=e168]:
+                - combobox [ref=e169] [cursor=pointer]:
+                  - generic: 全部状态
+                  - img [ref=e170]
+                - button "刷新" [ref=e172] [cursor=pointer]:
+                  - img [ref=e173]
+                  - text: 刷新
+                - button "批量启用" [disabled]:
+                  - img
+                  - text: 批量启用
+                - button "批量禁用" [disabled]:
+                  - img
+                  - text: 批量禁用
+                - button "全量启用" [ref=e178] [cursor=pointer]
+                - button "全量禁用" [ref=e179] [cursor=pointer]
+            - generic [ref=e180]:
+              - table [ref=e182]:
+                - rowgroup [ref=e183]:
+                  - row "序号 内容 状态 字符数 Token数 更新时间 操作" [ref=e184]:
+                    - columnheader [ref=e185]:
+                      - checkbox [ref=e186]
+                    - columnheader "序号" [ref=e187]
+                    - columnheader "内容" [ref=e188]
+                    - columnheader "状态" [ref=e189]
+                    - columnheader "字符数" [ref=e190]
+                    - columnheader "Token数" [ref=e191]
+                    - columnheader "更新时间" [ref=e192]
+                    - columnheader "操作" [ref=e193]
+                - rowgroup [ref=e194]:
+                  - 'row "0 --- tags: - type/八股文 - domain/框架 source: \"https://open8gu.com/framework/spring/cssibafmgio4g44c/\" created: 2026-02-1... 启用 1722 633 2026/3/3 18:15:27 编辑 禁用 删除" [ref=e195]':
+                    - cell [ref=e196]:
+                      - checkbox [ref=e197]
+                    - cell "0" [ref=e198]
+                    - 'cell "--- tags: - type/八股文 - domain/框架 source: \"https://open8gu.com/framework/spring/cssibafmgio4g44c/\" created: 2026-02-1..." [ref=e199]'
+                    - cell "启用" [ref=e200]:
+                      - generic [ref=e201]: 启用
+                    - cell "1722" [ref=e202]
+                    - cell "633" [ref=e203]
+                    - cell "2026/3/3 18:15:27" [ref=e204]
+                    - cell "编辑 禁用 删除" [ref=e205]:
+                      - generic [ref=e206]:
+                        - button "编辑" [ref=e207] [cursor=pointer]:
+                          - img [ref=e208]
+                          - text: 编辑
+                        - button "禁用" [ref=e211] [cursor=pointer]:
+                          - img [ref=e212]
+                          - text: 禁用
+                        - button "删除" [ref=e216] [cursor=pointer]:
+                          - img [ref=e217]
+                          - text: 删除
+                  - 'row "1 ```java protected Object initializeBean(String beanName, Object bean, RootBeanDefinition mbd) { // 1. 调用基础Aware接口 ... 启用 1177 413 2026/3/3 18:15:27 编辑 禁用 删除" [ref=e220]':
+                    - cell [ref=e221]:
+                      - checkbox [ref=e222]
+                    - cell "1" [ref=e223]
+                    - 'cell "```java protected Object initializeBean(String beanName, Object bean, RootBeanDefinition mbd) { // 1. 调用基础Aware接口 ..." [ref=e224]'
+                    - cell "启用" [ref=e225]:
+                      - generic [ref=e226]: 启用
+                    - cell "1177" [ref=e227]
+                    - cell "413" [ref=e228]
+                    - cell "2026/3/3 18:15:27" [ref=e229]
+                    - cell "编辑 禁用 删除" [ref=e230]:
+                      - generic [ref=e231]:
+                        - button "编辑" [ref=e232] [cursor=pointer]:
+                          - img [ref=e233]
+                          - text: 编辑
+                        - button "禁用" [ref=e236] [cursor=pointer]:
+                          - img [ref=e237]
+                          - text: 禁用
+                        - button "删除" [ref=e241] [cursor=pointer]:
+                          - img [ref=e242]
+                          - text: 删除
+              - generic [ref=e245]:
+                - generic [ref=e246]: 共 2 条
+                - generic [ref=e247]:
+                  - button "上一页" [disabled]
+                  - generic [ref=e248]: 1 / 1
+                  - button "下一页" [disabled]
+  - region "Notifications alt+T"

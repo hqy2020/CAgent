@@ -223,6 +223,17 @@ obsidian:
   vault-path: /Users/openingcloud/Documents/GardenOfOpeningClouds
   timeout-seconds: 30
 
+video-transcript:
+  enabled: ${VIDEO_TRANSCRIPT_ENABLED:false}
+  base-url: ${VIDEO_TRANSCRIPT_API_BASE_URL:http://localhost:8000}
+  auth-token: ${VIDEO_TRANSCRIPT_API_TOKEN:}
+  submit-timeout-seconds: 30
+  poll-interval-millis: 3000
+  poll-timeout-seconds: 1200
+  default-use-speaker-recognition: false
+  default-note-path: 2-Resource（参考资源）/30_学习输入/视频转录
+  append-if-exists: true
+
 rocketmq:
   name-server: 127.0.0.1:9876
   producer:

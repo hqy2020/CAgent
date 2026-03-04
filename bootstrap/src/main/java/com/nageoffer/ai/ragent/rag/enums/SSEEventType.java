@@ -41,6 +41,11 @@ public enum SSEEventType {
     REFERENCES("references"),
 
     /**
+     * Agent 工作流摘要事件
+     */
+    WORKFLOW("workflow"),
+
+    /**
      * 模型回复完成事件
      */
     FINISH("finish"),

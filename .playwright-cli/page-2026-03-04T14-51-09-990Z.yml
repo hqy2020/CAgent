@@ -1,0 +1,28 @@
+- generic [ref=e2]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - paragraph [ref=e7]: 欢迎回来
+      - paragraph [ref=e8]: 登录后继续你的检索增强对话。
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - text: 用户名
+        - generic [ref=e11]:
+          - img [ref=e12]
+          - textbox "请输入用户名" [ref=e15]
+      - generic [ref=e16]:
+        - text: 密码
+        - generic [ref=e17]:
+          - img [ref=e18]
+          - textbox "请输入密码" [ref=e21]
+          - button "显示或隐藏密码" [ref=e22] [cursor=pointer]:
+            - img [ref=e23]
+      - generic [ref=e26]:
+        - generic [ref=e27]:
+          - checkbox "记住我" [checked] [ref=e28] [cursor=pointer]:
+            - generic:
+              - img
+          - checkbox [checked]
+          - text: 记住我
+        - generic [ref=e29]: 账号由管理员初始化
+      - button "登录" [ref=e30] [cursor=pointer]
+  - region "Notifications alt+T"

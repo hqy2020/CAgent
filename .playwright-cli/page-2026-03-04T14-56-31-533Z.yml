@@ -1,0 +1,134 @@
+- generic:
+  - generic:
+    - generic:
+      - complementary:
+        - generic:
+          - generic:
+            - generic:
+              - img
+            - generic:
+              - paragraph: RAG 智能问答
+              - paragraph: Powered by AI
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic: 快速开始
+                - generic: 新内容
+              - button:
+                - generic:
+                  - img
+                - generic:
+                  - generic: 新建对话
+                  - generic: 从空白开始
+              - button:
+                - img
+                - text: 管理后台
+          - generic:
+            - generic:
+              - generic: 搜索对话
+              - generic: Ctrl / Cmd + K
+            - generic:
+              - generic:
+                - img
+                - textbox:
+                  - /placeholder: 搜索对话...
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - paragraph: 今天
+                - button:
+                  - generic: 测试会话
+                  - button [ref=e183] [cursor=pointer]:
+                    - img [ref=e50]
+        - generic:
+          - button:
+            - generic:
+              - img
+            - generic: admin
+            - img
+      - generic:
+        - banner:
+          - generic:
+            - generic:
+              - paragraph: 测试会话
+            - generic:
+              - link:
+                - /url: https://github.com/hqy2020/CAgent
+                - img
+                - generic: Star
+                - generic: "3"
+        - main:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - paragraph: 测试问题
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - paragraph: 这是回答内容。
+                              - generic:
+                                - button:
+                                  - generic:
+                                    - generic:
+                                      - img
+                                    - generic: 参考文档
+                                    - generic: 1篇
+                                  - img
+                                - generic:
+                                  - list:
+                                    - listitem:
+                                      - generic:
+                                        - generic: 超长文档
+                                        - generic: 91%
+                                      - paragraph: 来自：测试知识库
+                                      - generic:
+                                        - paragraph: 相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。
+                                        - button: 收起
+                              - generic:
+                                - button:
+                                  - img
+                                - button:
+                                  - img
+                                - button:
+                                  - img
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - textbox:
+                        - /placeholder: 输入你的问题...
+                    - generic:
+                      - button:
+                        - generic:
+                          - img
+                          - text: 深度思考
+                      - button [disabled]:
+                        - img
+                  - paragraph: Enter 发送·Shift + Enter 换行
+    - region "Notifications alt+T"
+  - dialog "超长文档 91%" [ref=e185]:
+    - generic [ref=e186]:
+      - heading "超长文档 91%" [level=2] [ref=e187]:
+        - generic [ref=e188]: 超长文档
+        - generic [ref=e189]: 91%
+      - paragraph [ref=e190]: 来自：测试知识库
+    - generic [ref=e192]:
+      - generic [ref=e193]:
+        - generic [ref=e194]: 片段 1
+        - generic [ref=e195]: 91%
+      - paragraph [ref=e198]: 相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。
+    - button [active] [ref=e199] [cursor=pointer]:
+      - img [ref=e200]

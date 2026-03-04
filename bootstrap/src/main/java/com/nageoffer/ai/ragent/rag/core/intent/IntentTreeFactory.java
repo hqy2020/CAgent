@@ -331,7 +331,7 @@ public class IntentTreeFactory {
                 .name("笔记编辑")
                 .level(DOMAIN)
                 .kind(IntentKind.MCP)
-                .description("对 Obsidian 笔记库进行写操作，包括创建、更新和删除笔记")
+                .description("对 Obsidian 笔记库进行写操作，包括创建、更新、删除和视频转录入库")
                 .build();
 
         // --- 创建笔记 ---
@@ -477,7 +477,49 @@ public class IntentTreeFactory {
 
         delete.setChildren(List.of(deleteNote));
 
-        domain.setChildren(List.of(create, update, replace, delete));
+        // --- 视频转录入库 ---
+        IntentNode transcript = IntentNode.builder()
+                .id("obs-edit-video-transcript")
+                .name("视频转录入库")
+                .level(CATEGORY)
+                .parentId(domain.getId())
+                .kind(IntentKind.MCP)
+                .mcpToolId("obsidian_video_transcript")
+                .promptTemplate(OBSIDIAN_MCP_PROMPT_TEMPLATE)
+                .paramPromptTemplate(MCP_PARAMETER_EXTRACT_PROMPT)
+                .description("将视频链接转录为文字并自动写入 Obsidian 笔记")
+                .examples(List.of("把这个 B 站链接转录到 Obsidian", "转录这个 YouTube 视频并保存成笔记", "把小宇宙链接转成文字放进笔记库"))
+                .build();
+
+        IntentNode transcriptBilibili = IntentNode.builder()
+                .id("obs-transcript-bilibili")
+                .name("B站视频转录")
+                .level(TOPIC)
+                .parentId(transcript.getId())
+                .kind(IntentKind.MCP)
+                .mcpToolId("obsidian_video_transcript")
+                .promptTemplate(OBSIDIAN_MCP_PROMPT_TEMPLATE)
+                .paramPromptTemplate(MCP_PARAMETER_EXTRACT_PROMPT)
+                .description("将 Bilibili 视频链接转录并写入指定 Obsidian 目录")
+                .examples(List.of("把 https://www.bilibili.com/video/... 转录成笔记", "B 站这个视频转录后放到学习输入目录", "把这条 b23.tv 链接整理成文字"))
+                .build();
+
+        IntentNode transcriptPodcast = IntentNode.builder()
+                .id("obs-transcript-podcast")
+                .name("播客/长视频转录")
+                .level(TOPIC)
+                .parentId(transcript.getId())
+                .kind(IntentKind.MCP)
+                .mcpToolId("obsidian_video_transcript")
+                .promptTemplate(OBSIDIAN_MCP_PROMPT_TEMPLATE)
+                .paramPromptTemplate(MCP_PARAMETER_EXTRACT_PROMPT)
+                .description("将小宇宙、YouTube 等长内容链接转录并落盘到 Obsidian")
+                .examples(List.of("转录这条小宇宙链接并写入 Obsidian", "把 YouTube 讲座链接转录后新建笔记", "这个视频转录完成后追加到已有笔记"))
+                .build();
+
+        transcript.setChildren(List.of(transcriptBilibili, transcriptPodcast));
+
+        domain.setChildren(List.of(create, update, replace, delete, transcript));
         return domain;
     }
 

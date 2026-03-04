@@ -1,0 +1,501 @@
+- generic:
+  - generic:
+    - generic:
+      - complementary:
+        - generic:
+          - generic:
+            - generic:
+              - img
+            - generic:
+              - paragraph: RAG 智能问答
+              - paragraph: Powered by AI
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - generic: 快速开始
+                - generic: 新内容
+              - button:
+                - generic:
+                  - img
+                - generic:
+                  - generic: 新建对话
+                  - generic: 从空白开始
+              - button:
+                - img
+                - text: 管理后台
+          - generic:
+            - generic:
+              - generic: 搜索对话
+              - generic: Ctrl / Cmd + K
+            - generic:
+              - generic:
+                - img
+                - textbox:
+                  - /placeholder: 搜索对话...
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - paragraph: 今天
+                - button:
+                  - generic: Spring Bean 生命周期简述
+                  - button [ref=e519] [cursor=pointer]:
+                    - img [ref=e325]
+                - button:
+                  - generic: 测试 Enter 发送功能
+                  - button:
+                    - img
+                - button:
+                  - generic: Spring Bean 生命周期解析
+                  - button:
+                    - img
+              - generic:
+                - paragraph: 7天内
+                - button:
+                  - generic: 添加今日待办事项：3.7 答辩
+                  - button:
+                    - img
+                - button:
+                  - generic: 阿里云实习经历回顾
+                  - button:
+                    - img
+                - button:
+                  - generic: geek 的含义
+                  - button:
+                    - img
+                - button:
+                  - generic: Spring Bean 生命周期解析
+                  - button:
+                    - img
+                - button:
+                  - generic: Spring Bean 生命周期解析
+                  - button:
+                    - img
+                - button:
+                  - generic: Spring Bean 生命周期解析
+                  - button:
+                    - img
+                - button:
+                  - generic: Spring Bean 生命周期解析
+                  - button:
+                    - img
+                - button:
+                  - generic: Milvus原理讲解
+                  - button:
+                    - img
+                - button:
+                  - generic: Spring AOP 实现原理及使用场景
+                  - button:
+                    - img
+                - button:
+                  - generic: Spring Bean 生命周期解析
+                  - button:
+                    - img
+                - button:
+                  - generic: Spring Bean 生命周期解析
+                  - button:
+                    - img
+                - button:
+                  - generic: Spring Bean 生命周期解析
+                  - button:
+                    - img
+                - button:
+                  - generic: Spring Bean 生命周期详细说明
+                  - button:
+                    - img
+                - button:
+                  - generic: 创建笔记：RAG多路检索内容概述
+                  - button:
+                    - img
+                - button:
+                  - generic: MOC-Knowledge笔记内容替换
+                  - button:
+                    - img
+                - button:
+                  - generic: 追加RAG系统设计笔记到MOC-Knowledge
+                  - button:
+                    - img
+                - button:
+                  - generic: MOC-Knowledge 笔记追加 RAG 系统设计笔记
+                  - button:
+                    - img
+                - button:
+                  - generic: 搜索笔记库中HashMap笔记
+                  - button:
+                    - img
+                - button:
+                  - generic: 搜索笔记库中HashMap笔记
+                  - button:
+                    - img
+                - button:
+                  - generic: 追加待办：完成RAG系统MCP工具集成测试
+                  - button:
+                    - img
+                - button:
+                  - generic: 追加待办：完成RAG系统MCP工具集成测试
+                  - button:
+                    - img
+                - button:
+                  - generic: Spring Boot核心特性简介
+                  - button:
+                    - img
+                - button:
+                  - generic: 新对话
+                  - button:
+                    - img
+                - button:
+                  - generic: 新对话
+                  - button:
+                    - img
+                - button:
+                  - generic: 新对话
+                  - button:
+                    - img
+                - button:
+                  - generic: 新对话
+                  - button:
+                    - img
+                - button:
+                  - generic: 新对话
+                  - button:
+                    - img
+                - button:
+                  - generic: 新对话
+                  - button:
+                    - img
+                - button:
+                  - generic: 新对话
+                  - button:
+                    - img
+                - button:
+                  - generic: 新对话
+                  - button:
+                    - img
+                - button:
+                  - generic: 新对话
+                  - button:
+                    - img
+                - button:
+                  - generic: 新对话
+                  - button:
+                    - img
+                - button:
+                  - generic: 新对话
+                  - button:
+                    - img
+                - button:
+                  - generic: 新对话
+                  - button:
+                    - img
+                - button:
+                  - generic: 新对话
+                  - button:
+                    - img
+                - button:
+                  - generic: 新对话
+                  - button:
+                    - img
+                - button:
+                  - generic: 新对话
+                  - button:
+                    - img
+        - generic:
+          - button:
+            - generic:
+              - img
+            - generic: admin
+            - img
+      - generic:
+        - banner:
+          - generic:
+            - generic:
+              - paragraph: Spring Bean 生命周期简述
+            - generic:
+              - link:
+                - /url: https://github.com/hqy2020/CAgent
+                - img
+                - generic: Star
+                - generic: "3"
+        - main:
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - paragraph: Spring Bean 的生命周期是什么？请用分点回答
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic:
+                                  - list:
+                                    - listitem:
+                                      - paragraph:
+                                        - strong: 实例化阶段
+                                        - text: ： Spring通过推断Bean类型，采用Supplier接口、工厂方法或构造器三种方式之一创建实例。构造器注入也在此阶段完成。
+                                    - listitem:
+                                      - paragraph:
+                                        - strong: 依赖注入阶段
+                                        - text: ： 在三级缓存设置ObjectFactory处理循环依赖，使用MergedBeanDefinitionPostProcessor解析依赖注入元数据，先完成非注解式依赖注入，再通过InstantiationAwareBeanPostProcessor按注解配置进行注入。
+                                    - listitem:
+                                      - paragraph:
+                                        - strong: 初始化阶段
+                                        - text: ： 触发BeanNameAware等基础Aware接口，执行BeanPostProcessor前置处理（包括@PostConstruct），触发容器级Aware接口（如ApplicationContextAware），调用InitializingBean和自定义init-method，执行BeanPostProcessor后置处理（创建AOP代理对象）。
+                                    - listitem:
+                                      - paragraph:
+                                        - strong: 销毁阶段
+                                        - text: ： 通过DisposableBeanAdapter依次调用DestructionAwareBeanPostProcessor的destroy方法、DisposableBean接口的destroy方法、自定义destroy-method方法。
+                              - generic:
+                                - button:
+                                  - generic:
+                                    - generic:
+                                      - img
+                                    - generic: 参考文档
+                                    - generic: 7篇
+                                  - img
+                                - generic:
+                                  - list:
+                                    - listitem:
+                                      - generic:
+                                        - generic: Bean的生命周期.md
+                                        - generic: 99%
+                                      - paragraph: 来自：八股文备考
+                                      - link:
+                                        - /url: /admin/knowledge/2028771736224321536/docs/2028772190039625728
+                                        - text: 打开完整文档
+                                        - img
+                                      - generic:
+                                        - paragraph: "--- tags: - type/八股文 - domain/框架 source: \"https://open8gu.com/framework/spring/cssibafmgio4g44c/\" created: 2026-02-10 板块: \"Spring\" 已刷: false --- # Bean的生命周期 ## 回答话术 Bean的生命周期分为四个阶段： **1. 实例化阶段**：Spring通过推断Bean类型，采用Supplier接口、工厂方法或构造器三种方式之一创建实例。构造器注入也在此阶段完成。 **2. 依赖注入阶段**：在三级缓存设置ObjectFactory处理循环依赖，使用MergedBeanDefinitionPostProcessor解析依赖注入元数据，先完成非注解式依赖注入，再通过InstantiationAwareBeanPostProcessor按注解配置进行注入。 **3. 初始化阶段**：触发BeanNameAware等基础Aware接口，执行BeanPostProcessor前置处理（包括@PostConstruct），触发容器级Aware接口（如ApplicationContextAware），调用InitializingBean和自定义init-method，执行BeanPostProcessor后置处理（创建AOP代理对象）。 **4. 销毁阶段**：通过DisposableBeanAdapter依次调用DestructionAwareBeanPostProcessor、DisposableBean接口的destroy方法、自定义destroy-method。 ## 问题详解 ### 核心源码入口 ```java protected Object doCreateBean(String beanName, RootBeanDefinition mbd, Object[] args) { // 实例化 BeanWrapper instanceWrapper = createBeanInstance(beanName, mbd, args); // 合并BeanDefinition applyMergedBeanDefinitionPostProcessors(mbd, beanType, beanName); // 三级缓存设置ObjectFactory addSingletonFactory(beanName, () -> getEarlyBeanReference(beanName, mbd, bean)); // 依赖注入 populateBean(beanName, mbd, instanceWrapper); // 初始化 exposedObject = initializeBean(beanName, exposedObject, mbd); // 注册销毁回调 registerDisposableBeanIfNecessary(beanName, bean, mbd); } ``` ### 1. 实例化阶段 优先选择顺序：Supplier函数式接口 -> 工厂方法 -> 有参构造器 -> 无参构造器。 ### 2. 依赖注入阶段 两类注入方式： - **非注解注入**：通过BeanDefinition的PropertyValues按名称或类型注入 - **注解注入**：通过InstantiationAwareBeanPostProcessor的postProcessProperties方法完成 重要后处理器： - `AutowiredAnnotationBeanPostProcessor`：处理@Autowired与@Value - `CommonAnnotationBeanPostProcessor`：处理@Resource、@Inject、@Named ### 3. 初始化阶段"
+                                        - button: 展开全文
+                                    - listitem:
+                                      - generic:
+                                        - generic: Spring八股文核心脉络.md
+                                        - generic: 87%
+                                      - paragraph: 来自：八股文备考
+                                      - link:
+                                        - /url: /admin/knowledge/2028771736224321536/docs/2028772310739111936
+                                        - text: 打开完整文档
+                                        - img
+                                      - generic:
+                                        - paragraph: "# Spring八股文核心脉络 > 面试速查 | 掌握这条主线，所有题目都是变种 ## 主线脉络（一句话串联） IOC/DI → Bean生命周期 → 三级缓存(循环依赖) → AOP → 事务 → 常用注解 → SpringBoot自动装配 ## 知识图谱（面试考频排序） | 优先级 | 主题 | 核心一句话 | 关联题目 | |--------|------|----------|----------| | L1 必问 | IOC/DI | 控制反转=容器管Bean，依赖注入=容器塞依赖 | [[IOC与DI]] | | L1 必问 | Bean生命周期 | 实例化→属性赋值→初始化→使用→销毁，14步 | [[Bean生命周期]] | | L1 必问 | 三级缓存 | 一级成品/二级半成品/三级Factory，解决循环依赖 | [[三级缓存解决循环依赖]] | | L1 必问 | AOP | 切面=切点+通知，JDK代理接口/CGLib代理类 | [[AOP原理]] | | L2 高频 | 事务 | @Transactional声明式，传播行为7种，失效场景 | [[Spring事务]] | | L2 高频 | @Autowired vs @Resource | Autowired按类型(Spring)，Resource按名称(JDK) | [[@Autowired vs @Resource]] | | L2 高频 | 自动装配 | @EnableAutoConfiguration→spring.factories→条件装配 | [[SpringBoot自动装配原理]] | | L2 高频 | Bean作用域 | singleton(默认)/prototype/request/session | [[Bean作用域]] | | L3 加分 | SpringBoot启动流程 | run()→创建Context→加载配置→扫描→实例化→注入→就绪 | [[SpringBoot启动流程]] | | L3 加分 | 循环依赖限制 | 构造器注入和多例Bean无法解决循环依赖 | [[循环依赖限制]] | ## 面试串讲脚本（3分钟版） Spring的核心是IOC和AOP。IOC通过容器管理Bean的创建和依赖注入，本质是工厂模式+反射。Bean生命周期14步，关键节点是实例化、属性赋值、初始化。 循环依赖通过三级缓存解决：一级存成品Bean，二级存半成品，三级存BeanFactory。但构造器注入和多例Bean无法解决。 AOP基于动态代理，有接口用JDK代理，无接口用CGLib。事务用@Transactional，底层就是AOP，注意自调用失效问题。 SpringBoot自动装配靠@EnableAutoConfiguration加载spring.factories中的配置类，配合@Conditional条件装配。 --- > 整理自语雀八股文Spring部分 --- ## 一、IOC与DI ### 1.1 IOC（控制反转） **定义**：对象的创建控制权从程序转移到Spring容器 **本质**：工厂模式 + 反射 + 配置文件 ### 1.2 DI（依赖注入） **注入方式**： | 方式 | 说明 | |------|------| | 构造器注入 | 推荐，final保证 | | setter注入 | 可选注入 | | 字段注入 | 不推荐（反射，违反封装） | ### 1.3 常用注解 **bean定义**： - `@Component`：通用 - `@Service`：业务层 - `@Repository`：持久层 - `@Controller`：控制器 **注入**： - `@Autowired`：按类型注入 - `@Resource`：按名称注入 - `@Qualifier`：指定名称 --- ## 二、Bean生命周期 ### 完整流程（14步）"
+                                        - button: 展开全文
+                                    - listitem:
+                                      - generic:
+                                        - generic: 项目重启或宕机时线程池任务还没处理完.md
+                                        - generic: 74%
+                                      - paragraph: 来自：八股文备考
+                                      - link:
+                                        - /url: /admin/knowledge/2028771736224321536/docs/2028772701346254848
+                                        - text: 打开完整文档
+                                        - img
+                                      - generic:
+                                        - paragraph: "--- category: tech created: 2026-02-10 date: 2026-02-11 description: 优雅关闭线程池和消息队列兜底两种方案保障任务不丢失 source: https://open8gu.com/concurrent/thread-pool/cbrhx6xrc802t8sy/ tags: - type/八股文 - domain/并发编程 title: 项目重启或宕机时线程池任务还没处理完 板块: \"并发\" 已刷: false --- # 项目重启或宕机时线程池任务还没处理完？ ## 回答话术 项目重启或宕机时，线程池中未完成的任务会丢失。两大解决方案： 1. **优雅关闭线程池**：适合任务量不大的场景。实现 Spring `DisposableBean` 接口，在应用关闭时调用 `shutdown()` 和 `awaitTermination()` 方法，等待线程池任务完成后再关闭应用。 2. **消息队列兜底**：适合批量任务场景。将任务投递到消息队列（如 RocketMQ）而非直接投递线程池，在消费端通过线程池处理。这样既能保障消息不丢失，又能提升消费速度。 ## 问题详解 ### 1. 优雅关闭线程池实现 ```java @Slf4j @Service public class TestThreadPoolService implements DisposableBean { private final ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(10, 20, 1000, TimeUnit.MINUTES, new LinkedBlockingQueue<>(4096)); @Override public void destroy() throws Exception { threadPoolExecutor.shutdown(); if (!threadPoolExecutor.awaitTermination(30, TimeUnit.SECONDS)) { log.warn(\"等待超时\"); } log.info(\"线程池优雅关闭成功\"); } } ``` **三个关键技术点**： #### 1.1 DisposableBean 接口作用 - Spring Bean 生命周期中的销毁回调接口 - 当应用收到 `kill -15` 优雅退出指令时被调用 - 触发时机：Tomcat 调用 `ServletContextListener#contextDestroyed()` -> Spring 开始销毁 Bean #### 1.2 awaitTermination 方法机制 - 阻塞主线程，等待线程池中所有任务执行完成，直到等待超时或线程池终止 - 底层实现：通过 ReentrantLock 和条件变量（termination），循环检查线程池运行状态是否达到 TERMINATED #### 1.3 为什么先调 shutdown() 再调 awaitTermination() - 若不先调 `shutdown()`，线程池仍处运行状态，继续接收新任务 - `awaitTermination()` 可能永远无法返回成功 - 先 `shutdown()` 能使线程池进入关闭状态，停止接收新任务，等待已提交任务完成 ### 2. 消息队列保障方案 **消息生产者**："
+                                        - button: 展开全文
+                                    - listitem:
+                                      - generic:
+                                        - generic: Bean的作用域是什么有哪些作用域.md
+                                        - generic: 59%
+                                      - paragraph: 来自：八股文备考
+                                      - link:
+                                        - /url: /admin/knowledge/2028771736224321536/docs/2028772138986557440
+                                        - text: 打开完整文档
+                                        - img
+                                      - generic:
+                                        - paragraph: "--- tags: - type/八股文 - domain/框架 source: \"https://open8gu.com/framework/spring/op4x4xls20ilw8r5/\" created: 2026-02-10 板块: \"Spring\" 已刷: false --- # Bean的作用域是什么有哪些作用域 ## 回答话术 作用域即Bean的Scope，表示被Spring容器管理的Bean的生命周期范围。 **Spring默认支持两种作用域：** - **singleton（单例）**：默认作用域，容器中只有一个实例 - **prototype（原型/多例）**：每次获取都创建新实例 **SpringWeb中支持三种额外作用域：** - **request**：一次HTTP请求内有效 - **session**：一次浏览器Session内有效 - **application**：全局有效 **SpringCloud中支持：** - **refresh**：配置刷新时销毁Bean重新创建 ## 问题详解 ### 如何使用 ```java @Scope(\"singleton\") @Component public class Foo { @Scope(\"prototype\") @Bean public Foo2 foo2() { return new Foo2(); } } ``` ### 作用域与依赖注入 指定非单例作用域又使用依赖注入时需要注意： ```java @Component public class Example { @Autowired private Foo foo; // 除非Example被重新初始化，否则注入的foo不会变 } ``` 如需实现多例效果，可配合`@Lookup`或直接从容器获取： ```java public class Example { @Autowired private ApplicationContext context; public void run() { // 每次获取不同实例 Assert.isNotSame(context.getBean(Foo.class), context.getBean(Foo.class)); } } ``` ### 如何注册自定义作用域 ```java @Component public class Example { @Autowired private ApplicationContext context; public void run() { ConfigurableBeanFactory cbf = (ConfigurableBeanFactory)context.getBeanFactory(); cbf.registerScope(\"thread\", new SimpleThreadScope()); } } ``` 或声明为Bean自动注册： ```java @Configuration public class ScopeConfig { @Bean(\"thread\") public SimpleThreadScope simpleThreadScope() { return new SimpleThreadScope(); } } ``` ## 关键要点 - Spring默认两种作用域：singleton和prototype；Web环境额外支持request、session、application - 单例是默认作用域，容器中只有一个实例 - 多例Bean通过依赖注入后不会自动更新，需要配合@Lookup或手动从容器获取 - SpringCloud的refresh作用域在配置刷新时销毁并重新创建Bean - 可通过`registerScope`方法注册自定义作用域"
+                                        - button: 展开全文
+                                    - listitem:
+                                      - generic:
+                                        - generic: Bean的作用域是什么有哪些作用域.md
+                                        - generic: 59%
+                                      - paragraph: 来自：八股文备考
+                                      - link:
+                                        - /url: /admin/knowledge/2028771736224321536/docs/2028772187846004736
+                                        - text: 打开完整文档
+                                        - img
+                                      - generic:
+                                        - paragraph: "--- tags: - type/八股文 - domain/框架 source: \"https://open8gu.com/framework/spring/op4x4xls20ilw8r5/\" created: 2026-02-10 板块: \"Spring\" 已刷: false --- # Bean的作用域是什么有哪些作用域 ## 回答话术 作用域即Bean的Scope，表示被Spring容器管理的Bean的生命周期范围。 **Spring默认支持两种作用域：** - **singleton（单例）**：默认作用域，容器中只有一个实例 - **prototype（原型/多例）**：每次获取都创建新实例 **SpringWeb中支持三种额外作用域：** - **request**：一次HTTP请求内有效 - **session**：一次浏览器Session内有效 - **application**：全局有效 **SpringCloud中支持：** - **refresh**：配置刷新时销毁Bean重新创建 ## 问题详解 ### 如何使用 ```java @Scope(\"singleton\") @Component public class Foo { @Scope(\"prototype\") @Bean public Foo2 foo2() { return new Foo2(); } } ``` ### 作用域与依赖注入 指定非单例作用域又使用依赖注入时需要注意： ```java @Component public class Example { @Autowired private Foo foo; // 除非Example被重新初始化，否则注入的foo不会变 } ``` 如需实现多例效果，可配合`@Lookup`或直接从容器获取： ```java public class Example { @Autowired private ApplicationContext context; public void run() { // 每次获取不同实例 Assert.isNotSame(context.getBean(Foo.class), context.getBean(Foo.class)); } } ``` ### 如何注册自定义作用域 ```java @Component public class Example { @Autowired private ApplicationContext context; public void run() { ConfigurableBeanFactory cbf = (ConfigurableBeanFactory)context.getBeanFactory(); cbf.registerScope(\"thread\", new SimpleThreadScope()); } } ``` 或声明为Bean自动注册： ```java @Configuration public class ScopeConfig { @Bean(\"thread\") public SimpleThreadScope simpleThreadScope() { return new SimpleThreadScope(); } } ``` ## 关键要点 - Spring默认两种作用域：singleton和prototype；Web环境额外支持request、session、application - 单例是默认作用域，容器中只有一个实例 - 多例Bean通过依赖注入后不会自动更新，需要配合@Lookup或手动从容器获取 - SpringCloud的refresh作用域在配置刷新时销毁并重新创建Bean - 可通过`registerScope`方法注册自定义作用域"
+                                        - button: 展开全文
+                                    - listitem:
+                                      - generic:
+                                        - generic: Spring有哪些常用注解.md
+                                        - generic: 58%
+                                      - paragraph: 来自：八股文备考
+                                      - link:
+                                        - /url: /admin/knowledge/2028771736224321536/docs/2028772257559531520
+                                        - text: 打开完整文档
+                                        - img
+                                      - generic:
+                                        - paragraph: "--- tags: - type/八股文 - domain/框架 source: \"https://open8gu.com/framework/spring/kemtzwgchc3r1dbs/\" created: 2026-02-10 板块: \"Spring\" 已刷: false --- # Spring有哪些常用注解 ## 回答话术 Spring常用注解主要分为以下几类：Bean配置注解、事务注解和事件注解。 **Bean配置注解**包括：`@Component`用于标记类为Bean；`@Configuration`和`@Bean`用于声明配置类和工厂方法；`@Scope`指定作用域；`@Lazy`实现懒加载；`@Order`和`@Priority`指定执行顺序；`@Primary`设置优先注入；`@DependsOn`指定加载依赖顺序；`@PostConstruct`和`@PreDestroy`管理生命周期。 **事务注解**：`@Transactional`开启事务，所有操作要么全部成功，要么全部回滚。 **事件注解**：`@EventListener`注册事件监听器；`@TransactionalEventListener`仅在事务特定阶段响应事件。 ## 问题详解 ### 一、Bean配置注解 #### 1. @Component 用于标记类为Spring Bean。支持指定beanName，未指定时默认使用小写开头的短类名。 ```java @Component(\"foo\") public class Foo { } ``` #### 2. @ManagedBean 和 @Named JSR330规范的注解。`@Named`等价于`@Component`，`@ManagedBean`等价于无法指定beanName的`@Component`。 ```java @Named(\"a\") public class A {} @ManagedBean public class B {} ``` #### 3. @Configuration 和 @Bean `@Configuration`声明配置类，其内的`@Bean`方法返回的对象作为Bean。 ```java @Configuration public class ExampleConfiguration { @Bean(\"foo\") public Foo foo() { return new Foo(); } } ``` `@Bean`属性： - value/name：指定beanName及别名 - autowireCandidate：是否需要依赖注入 - initMethod/destroyMethod：初始化和销毁方法名称 #### 4. @Lookup 将方法变为从Spring容器获取特定类型Bean的工厂方法。 ```java @Component public class Instance { } @Component public class InstanceFactory { @Lookup public Instance get() { return null; } } ``` #### 5. @Scope 指定Bean的作用域。支持的作用域：singleton（单例，默认）、prototype（原型）、request、session、application（Web环境）。 ```java @Scope(\"prototype\") @Component public class Foo { } ``` #### 6. @Lazy 实现懒加载和延迟注入。可用于类、方法或注入属性。 ```java @Lazy @Component public class Foo { } ``` #### 7. @Order 和 @Priority 指定Bean的执行顺序（值越小越靠前）。"
+                                        - button: 展开全文
+                                    - listitem:
+                                      - generic:
+                                        - generic: 什么是BeanFactory.md
+                                        - generic: 52%
+                                      - paragraph: 来自：八股文备考
+                                      - link:
+                                        - /url: /admin/knowledge/2028771736224321536/docs/2028772288043732992
+                                        - text: 打开完整文档
+                                        - img
+                                      - generic:
+                                        - paragraph: "--- tags: - type/八股文 - domain/框架 source: \"https://open8gu.com/framework/spring/czah4zwbmyng0qp7/\" created: 2026-02-10 板块: \"Spring\" 已刷: false --- # 什么是BeanFactory ## 回答话术 `BeanFactory`是Spring中用于管理Bean生命周期的核心组件，Spring官方文档将其称为IOC容器，是\"Spring容器\"的实现。 `BeanFactory`是最顶级的接口，定义了获取和创建Bean的基本方法，下面细分五个接口： - **ListableBeanFactory**：扩展批量操作能力，如`getBeansOfType`方法 - **HierarchicalBeanFactory**：支持层次性结构，实现父子关系 - **AutowireCapableBeanFactory**：提供自动装配支持 - **ConfigurableBeanFactory**：提供Scope管理、类加载器等配置 - **ConfigurableListableBeanFactory**：集全部接口之大成者 最底层实现类是`DefaultListableBeanFactory`，直接或间接实现所有接口，是项目中最常用的实现类。 ## 问题详解 ### BeanFactory接口体系 分为三个层级，五大接口： **第一层**：`BeanFactory`本身，定义针对单个Bean的基本访问和创建方法。 **第二层**：基于`BeanFactory`直接扩展 - `ListableBeanFactory`：批量操作 - `HierarchicalBeanFactory`：父子层级 - `AutowireCapableBeanFactory`：自动装配 **第三层**：进一步扩展 - `ConfigurableBeanFactory`：继承`HierarchicalBeanFactory`和`SingletonBeanRegistry` - `ConfigurableListableBeanFactory`：继承`ConfigurableBeanFactory`和`ListableBeanFactory` ### SingletonBeanRegistry 表示单例Bean的注册表，分两层： - **DefaultSingletonBeanRegistry**：包含三级缓存机制，处理单例Bean销毁 - **FactoryBeanRegistrySupport**：基于前者扩展，为`FactoryBean`提供支持，有`factoryBeanObjectCache` ### BeanDefinitionRegistry 用于注册和管理Bean定义（`BeanDefinition`）。`BeanDefinition`是Bean的元数据，描述属性、方法、依赖和创建方式。 `DefaultListableBeanFactory`和`GenericApplicationContext`都实现了此接口。 ## 关键要点 - `BeanFactory`是Spring IOC容器的核心接口，管理Bean的完整生命周期 - `DefaultListableBeanFactory`是最终实现类，Spring中所有BeanFactory都使用它 - 三级缓存机制在`DefaultSingletonBeanRegistry`中实现，用于解决循环依赖 - `BeanDefinition`是Bean的元数据描述，`BeanDefinitionRegistry`负责管理这些元数据 - 推荐使用`ApplicationContext`（它内部包含`DefaultListableBeanFactory`）而非直接使用BeanFactory"
+                                        - button: 展开全文
+                              - generic:
+                                - button:
+                                  - img
+                                - button:
+                                  - img
+                                - button:
+                                  - img
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - textbox:
+                        - /placeholder: 输入你的问题...
+                    - generic:
+                      - button:
+                        - generic:
+                          - img
+                          - text: 深度思考
+                      - button [disabled]:
+                        - img
+                  - paragraph: Enter 发送·Shift + Enter 换行
+    - region "Notifications alt+T"
+  - dialog "Bean的生命周期.md 99%" [ref=e521]:
+    - generic [ref=e522]:
+      - heading "Bean的生命周期.md 99%" [level=2] [ref=e523]:
+        - generic [ref=e524]: Bean的生命周期.md
+        - generic [ref=e525]: 99%
+      - paragraph [ref=e526]: 来自：八股文备考
+      - link "打开完整文档" [active] [ref=e527] [cursor=pointer]:
+        - /url: /admin/knowledge/2028771736224321536/docs/2028772190039625728
+        - text: 打开完整文档
+        - img [ref=e528]
+      - paragraph [ref=e654]: 参考文档片段详情与完整文档跳转入口
+    - generic [ref=e532]:
+      - generic [ref=e533]:
+        - generic [ref=e534]:
+          - generic [ref=e535]: 片段 1
+          - generic [ref=e536]: 99%
+        - generic [ref=e538]:
+          - separator [ref=e539]
+          - paragraph [ref=e540]: "tags:"
+          - list [ref=e541]:
+            - listitem [ref=e542]: type/八股文
+            - listitem [ref=e543]:
+              - text: "domain/框架 source: \""
+              - link "https://open8gu.com/framework/spring/cssibafmgio4g44c/" [ref=e544] [cursor=pointer]:
+                - /url: https://open8gu.com/framework/spring/cssibafmgio4g44c/
+              - text: "\" created: 2026-02-10 板块: \"Spring\" 已刷: false"
+          - separator [ref=e545]
+          - heading "Bean的生命周期" [level=1] [ref=e546]
+          - heading "回答话术" [level=2] [ref=e547]
+          - paragraph [ref=e548]: Bean的生命周期分为四个阶段：
+          - paragraph [ref=e549]:
+            - strong [ref=e550]: 1. 实例化阶段
+            - text: ：Spring通过推断Bean类型，采用Supplier接口、工厂方法或构造器三种方式之一创建实例。构造器注入也在此阶段完成。
+          - paragraph [ref=e551]:
+            - strong [ref=e552]: 2. 依赖注入阶段
+            - text: ：在三级缓存设置ObjectFactory处理循环依赖，使用MergedBeanDefinitionPostProcessor解析依赖注入元数据，先完成非注解式依赖注入，再通过InstantiationAwareBeanPostProcessor按注解配置进行注入。
+          - paragraph [ref=e553]:
+            - strong [ref=e554]: 3. 初始化阶段
+            - text: ：触发BeanNameAware等基础Aware接口，执行BeanPostProcessor前置处理（包括@PostConstruct），触发容器级Aware接口（如ApplicationContextAware），调用InitializingBean和自定义init-method，执行BeanPostProcessor后置处理（创建AOP代理对象）。
+          - paragraph [ref=e555]:
+            - strong [ref=e556]: 4. 销毁阶段
+            - text: ：通过DisposableBeanAdapter依次调用DestructionAwareBeanPostProcessor、DisposableBean接口的destroy方法、自定义destroy-method。
+          - heading "问题详解" [level=2] [ref=e557]
+          - heading "核心源码入口" [level=3] [ref=e558]
+          - generic [ref=e560]:
+            - generic [ref=e561]:
+              - generic [ref=e562]: java
+              - button "复制代码" [ref=e563] [cursor=pointer]:
+                - img [ref=e564]
+            - code [ref=e569]:
+              - generic [ref=e570]: "protected Object doCreateBean(String beanName, RootBeanDefinition mbd, Object[] args) {"
+              - generic [ref=e571]: // 实例化
+              - generic [ref=e572]: BeanWrapper instanceWrapper = createBeanInstance(beanName, mbd, args);
+              - generic [ref=e573]: // 合并BeanDefinition
+              - generic [ref=e574]: applyMergedBeanDefinitionPostProcessors(mbd, beanType, beanName);
+              - generic [ref=e575]: // 三级缓存设置ObjectFactory
+              - generic [ref=e576]: addSingletonFactory(beanName, () -> getEarlyBeanReference(beanName, mbd, bean));
+              - generic [ref=e577]: // 依赖注入
+              - generic [ref=e578]: populateBean(beanName, mbd, instanceWrapper);
+              - generic [ref=e579]: // 初始化
+              - generic [ref=e580]: exposedObject = initializeBean(beanName, exposedObject, mbd);
+              - generic [ref=e581]: // 注册销毁回调
+              - generic [ref=e582]: registerDisposableBeanIfNecessary(beanName, bean, mbd);
+              - generic [ref=e583]: "}"
+          - heading "1. 实例化阶段" [level=3] [ref=e584]
+          - paragraph [ref=e585]: 优先选择顺序：Supplier函数式接口 -> 工厂方法 -> 有参构造器 -> 无参构造器。
+          - heading "2. 依赖注入阶段" [level=3] [ref=e586]
+          - paragraph [ref=e587]: 两类注入方式：
+          - list [ref=e588]:
+            - listitem [ref=e589]:
+              - strong [ref=e590]: 非注解注入
+              - text: ：通过BeanDefinition的PropertyValues按名称或类型注入
+            - listitem [ref=e591]:
+              - strong [ref=e592]: 注解注入
+              - text: ：通过InstantiationAwareBeanPostProcessor的postProcessProperties方法完成
+          - paragraph [ref=e593]: 重要后处理器：
+          - list [ref=e594]:
+            - listitem [ref=e595]:
+              - code [ref=e596]: "`AutowiredAnnotationBeanPostProcessor`"
+              - text: ：处理@Autowired与@Value
+            - listitem [ref=e597]:
+              - code [ref=e598]: "`CommonAnnotationBeanPostProcessor`"
+              - text: ：处理@Resource、@Inject、@Named
+          - heading "3. 初始化阶段" [level=3] [ref=e599]
+      - generic [ref=e600]:
+        - separator [ref=e601]
+        - generic [ref=e602]:
+          - generic [ref=e603]: 片段 2
+          - generic [ref=e604]: 96%
+        - generic [ref=e606]:
+          - generic [ref=e608]:
+            - generic [ref=e609]:
+              - generic [ref=e610]: java
+              - button "复制代码" [ref=e611] [cursor=pointer]:
+                - img [ref=e612]
+            - code [ref=e617]:
+              - generic [ref=e618]: "protected Object initializeBean(String beanName, Object bean, RootBeanDefinition mbd) {"
+              - generic [ref=e619]: // 1. 调用基础Aware接口
+              - generic [ref=e620]: invokeAwareMethods(beanName, bean);
+              - generic [ref=e621]: // 2. BeanPostProcessor前置处理
+              - generic [ref=e622]: wrappedBean = applyBeanPostProcessorsBeforeInitialization(wrappedBean, beanName);
+              - generic [ref=e623]: // 3. 调用初始化方法
+              - generic [ref=e624]: invokeInitMethods(beanName, wrappedBean, mbd);
+              - generic [ref=e625]: // 4. BeanPostProcessor后置处理
+              - generic [ref=e626]: wrappedBean = applyBeanPostProcessorsAfterInitialization(wrappedBean, beanName);
+              - generic [ref=e627]: return wrappedBean;
+              - generic [ref=e628]: "}"
+          - paragraph [ref=e629]: 基础Aware接口：BeanNameAware、BeanClassLoaderAware、BeanFactoryAware
+          - paragraph [ref=e630]: 前置处理执行内容：
+          - list [ref=e631]:
+            - listitem [ref=e632]: "@PostConstruct、@PreDestroy（通过InitDestroyAnnotationBeanPostProcessor）"
+            - listitem [ref=e633]: 6个容器级Aware（通过ApplicationContextAwareProcessor）
+            - listitem [ref=e634]: ImportAware（通过ImportAwareBeanPostProcessor）
+          - paragraph [ref=e635]: 后置处理关键步骤：AbstractAutoProxyCreator在此创建AOP代理对象。
+          - heading "4. 销毁阶段" [level=3] [ref=e636]
+          - paragraph [ref=e637]: 仅单例Bean会被注册销毁回调，原型Bean由使用者负责清理。
+          - paragraph [ref=e638]: 销毁顺序：
+          - list [ref=e639]:
+            - listitem [ref=e640]: DestructionAwareBeanPostProcessor的destroy方法
+            - listitem [ref=e641]: DisposableBean接口的destroy方法
+            - listitem [ref=e642]: 自定义destroy-method方法
+          - heading "关键要点" [level=2] [ref=e643]
+          - list [ref=e644]:
+            - listitem [ref=e645]: Bean生命周期四阶段：实例化 -> 依赖注入 -> 初始化 -> 销毁
+            - listitem [ref=e646]: 实例化优先级：Supplier -> 工厂方法 -> 有参构造器 -> 无参构造器
+            - listitem [ref=e647]: 初始化阶段的顺序：Aware回调 -> @PostConstruct -> InitializingBean -> init-method -> AOP代理
+            - listitem [ref=e648]: AOP代理在BeanPostProcessor后置处理阶段创建（最后一步）
+            - listitem [ref=e649]: 仅单例Bean会注册销毁回调，原型Bean需使用者自行管理
+    - button [ref=e650] [cursor=pointer]:
+      - img [ref=e651]

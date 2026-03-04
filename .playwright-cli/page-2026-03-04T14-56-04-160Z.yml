@@ -1,0 +1,89 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e6]:
+        - img [ref=e8]
+        - generic [ref=e11]:
+          - paragraph [ref=e12]: RAG 智能问答
+          - paragraph [ref=e13]: Powered by AI
+      - generic [ref=e14]:
+        - generic [ref=e18]:
+          - generic [ref=e19]:
+            - generic [ref=e20]: 快速开始
+            - generic [ref=e21]: 新内容
+          - button "新建对话 从空白开始" [ref=e22] [cursor=pointer]:
+            - img [ref=e24]
+            - generic [ref=e25]:
+              - generic [ref=e26]: 新建对话
+              - generic [ref=e27]: 从空白开始
+          - button "管理后台" [ref=e28] [cursor=pointer]:
+            - img [ref=e29]
+            - text: 管理后台
+        - generic [ref=e32]:
+          - generic [ref=e33]:
+            - generic [ref=e34]: 搜索对话
+            - generic [ref=e35]: Ctrl / Cmd + K
+          - generic [ref=e37]:
+            - img [ref=e38]
+            - textbox "搜索对话..." [ref=e41]
+      - generic [ref=e45]:
+        - paragraph [ref=e46]: 今天
+        - button "测试会话 会话操作" [ref=e47] [cursor=pointer]:
+          - generic [ref=e48]: 测试会话
+          - button "会话操作" [ref=e49]:
+            - img [ref=e50]
+      - button "用户菜单" [ref=e55] [cursor=pointer]:
+        - img "admin" [ref=e57]
+        - generic [ref=e58]: admin
+        - img [ref=e59]
+    - generic [ref=e63]:
+      - banner [ref=e64]:
+        - generic [ref=e65]:
+          - paragraph [ref=e67]: 测试会话
+          - link "打开 GitHub 仓库" [ref=e69] [cursor=pointer]:
+            - /url: https://github.com/hqy2020/CAgent
+            - img [ref=e70]
+            - generic [ref=e73]: Star
+            - generic [ref=e74]: "3"
+      - main [ref=e75]:
+        - generic [ref=e76]:
+          - generic [ref=e80]:
+            - paragraph [ref=e85]: 测试问题
+            - generic [ref=e90]:
+              - paragraph [ref=e93]: 这是回答内容。
+              - generic [ref=e94]:
+                - button "参考文档 1篇" [ref=e95] [cursor=pointer]:
+                  - generic [ref=e96]:
+                    - img [ref=e98]
+                    - generic [ref=e101]: 参考文档
+                    - generic [ref=e102]: 1篇
+                  - img [ref=e103]
+                - list [ref=e173]:
+                  - listitem [ref=e174] [cursor=pointer]:
+                    - generic [ref=e175]:
+                      - generic [ref=e176]: 超长文档
+                      - generic [ref=e177]: 91%
+                    - paragraph [ref=e178]: 来自：测试知识库
+                    - generic [ref=e179]:
+                      - paragraph [ref=e180]: 相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。相关材料完整文本验证段落。
+                      - button "收起" [active] [ref=e182]
+              - generic [ref=e105]:
+                - button "复制内容" [ref=e106] [cursor=pointer]:
+                  - img [ref=e107]
+                - button "点赞" [ref=e110] [cursor=pointer]:
+                  - img [ref=e111]
+                - button "点踩" [ref=e113] [cursor=pointer]:
+                  - img [ref=e114]
+          - generic [ref=e120]:
+            - generic [ref=e121]:
+              - textbox "聊天输入框" [ref=e123]:
+                - /placeholder: 输入你的问题...
+              - generic [ref=e124]:
+                - button "深度思考" [ref=e125] [cursor=pointer]:
+                  - generic [ref=e126]:
+                    - img [ref=e127]
+                    - text: 深度思考
+                - button "发送消息" [disabled] [ref=e137]:
+                  - img [ref=e138]
+            - paragraph [ref=e141]: Enter 发送·Shift + Enter 换行
+  - region "Notifications alt+T"

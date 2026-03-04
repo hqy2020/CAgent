@@ -111,6 +111,7 @@ Browser (localhost:5173)
 - 后处理器链：去重 → Rerank，提升召回质量
 - MCP 工具调用：工具结果与文档上下文统一进入 Prompt
 - **Obsidian MCP 集成**：支持读取和更新 Obsidian 笔记（vault: GardenOfOpeningClouds）
+- **视频转录入库**：可调用 VideoTranscriptAPI 将 B 站/YouTube/小宇宙链接转录并写入 Obsidian
 
 ### 知识沉淀
 
@@ -159,6 +160,7 @@ spring.data.redis.*        # Redis 连接
 milvus.uri                 # 向量库地址
 rustfs.*                   # 对象存储地址
 ai.providers.*.api-key     # 模型 API Key（百炼 / SiliconFlow）
+video-transcript.*         # 视频转录 API 配置（可选）
 ```
 
 初始化数据库：执行 `resources/database/schema_table.sql`
@@ -250,6 +252,20 @@ rag:
   memory:
     max-history: 10                            # 最大记忆轮数
 ```
+
+### 视频转录配置（`video-transcript.*`）
+
+```yaml
+video-transcript:
+  enabled: true
+  base-url: http://localhost:8000
+  auth-token: <YOUR_VIDEO_TRANSCRIPT_API_TOKEN>
+  default-note-path: 2-Resource（参考资源）/30_学习输入/视频转录
+```
+
+配置完成后，你可以直接在对话里说：
+- `把这个 B 站链接转录并写进 Obsidian`
+- `转录这个小宇宙链接，放到视频转录目录`
 
 ---
 

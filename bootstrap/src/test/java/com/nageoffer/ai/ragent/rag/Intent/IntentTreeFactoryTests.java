@@ -53,6 +53,26 @@ class IntentTreeFactoryTests {
         );
     }
 
+    @Test
+    void shouldContainVideoTranscriptMcpLeafNode() {
+        List<IntentNode> roots = IntentTreeFactory.buildIntentTree();
+        List<IntentNode> allNodes = flatten(roots);
+
+        Optional<IntentNode> transcriptNodeOpt = allNodes.stream()
+                .filter(node -> "obsidian_video_transcript".equals(node.getMcpToolId()))
+                .filter(IntentNode::isLeaf)
+                .findFirst();
+
+        assertTrue(transcriptNodeOpt.isPresent(), "意图树应包含 mcpToolId=obsidian_video_transcript 的叶子节点");
+
+        IntentNode transcriptNode = transcriptNodeOpt.get();
+        assertEquals(IntentKind.MCP, transcriptNode.getKind(), "视频转录节点应为 MCP 类型");
+        assertTrue(
+                transcriptNode.getExamples().stream().anyMatch(each -> each.contains("转录")),
+                "视频转录节点应包含转录问句示例"
+        );
+    }
+
     private List<IntentNode> flatten(List<IntentNode> roots) {
         List<IntentNode> result = new ArrayList<>();
         Deque<IntentNode> stack = new ArrayDeque<>(roots);

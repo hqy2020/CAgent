@@ -1,7 +1,15 @@
 import { create } from "zustand";
 import { toast } from "sonner";
 
-import type { CompletionPayload, FeedbackValue, Message, MessageDeltaPayload, ReferenceItem, Session } from "@/types";
+import type {
+  CompletionPayload,
+  FeedbackValue,
+  Message,
+  MessageDeltaPayload,
+  ReferenceItem,
+  Session,
+  WorkflowEventPayload
+} from "@/types";
 import {
   type ConversationMessageVO,
   type ConversationVO,
@@ -309,6 +317,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
           messages: state.messages.map((msg) =>
             msg.id === state.streamingMessageId
               ? { ...msg, references: payload }
+              : msg
+          )
+        }));
+      },
+      onWorkflow: (payload: WorkflowEventPayload) => {
+        if (get().streamingMessageId !== assistantId) return;
+        if (!payload || typeof payload !== "object") return;
+        set((state) => ({
+          messages: state.messages.map((msg) =>
+            msg.id === state.streamingMessageId
+              ? { ...msg, workflow: payload }
               : msg
           )
         }));

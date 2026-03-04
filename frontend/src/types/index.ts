@@ -25,6 +25,7 @@ export interface Message {
   role: Role;
   content: string;
   thinking?: string;
+  workflow?: WorkflowEventPayload;
   thinkingDuration?: number;
   isDeepThinking?: boolean;
   isThinking?: boolean;
@@ -49,6 +50,13 @@ export interface CompletionPayload {
   title?: string | null;
 }
 
+export interface WorkflowEventPayload {
+  workflowId: string;
+  changedFiles?: string[];
+  opsCount?: number;
+  warnings?: string[];
+}
+
 export interface ChunkDetail {
   content: string;
   score?: number;
@@ -57,8 +65,10 @@ export interface ChunkDetail {
 export interface ReferenceItem {
   documentId: string;
   documentName: string;
+  knowledgeBaseId?: string;
   knowledgeBaseName?: string;
   score?: number;
+  documentUrl?: string;
   textPreview?: string;
   chunks?: ChunkDetail[];
 }

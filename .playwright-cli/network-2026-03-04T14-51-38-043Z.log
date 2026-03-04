@@ -1,0 +1,3 @@
+[GET] https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@500;600;700&display=swap => [FAILED] net::ERR_CONNECTION_CLOSED
+[GET] https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@500;600;700&display=swap => [FAILED] net::ERR_CONNECTION_CLOSED
+[POST] http://127.0.0.1:5173/api/ragent/auth/login => [500] Internal Server Error

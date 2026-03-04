@@ -1,0 +1,157 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.nageoffer.ai.ragent.rag.agent;
+
+import com.nageoffer.ai.ragent.infra.chat.StreamCallback;
+import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
+import com.nageoffer.ai.ragent.rag.dto.WorkflowEventPayload;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class AgentCommandRouterTests {
+
+    @Mock
+    private AgentWorkflowRegistry workflowRegistry;
+
+    @Mock
+    private AgentWorkflow workflow;
+
+    @Mock
+    private StreamCallback callback;
+
+    private AgentCommandRouter router;
+
+    @BeforeEach
+    void setUp() {
+        router = new AgentCommandRouter(workflowRegistry);
+    }
+
+    @Test
+    void shouldRouteQyReviewAndSendWorkflowEvent() {
+        when(workflowRegistry.find(any())).thenReturn(Optional.of(workflow));
+        when(workflow.id()).thenReturn("/qy-review");
+        when(workflow.execute(any())).thenReturn(AgentWorkflowResult.builder()
+                .reply("ok")
+                .changedFiles(List.of())
+                .opsCount(0)
+                .warnings(List.of())
+                .build());
+
+        CapturingSseEmitter emitter = new CapturingSseEmitter();
+        boolean routed = router.tryRoute(
+                "/qy-review smoke",
+                "c1",
+                "u1",
+                "t1",
+                emitter,
+                callback,
+                CancellationToken.NONE
+        );
+
+        assertTrue(routed);
+        verify(callback).onContent("ok");
+        verify(callback).onComplete();
+        assertTrue(emitter.eventNames.contains("workflow"));
+        assertTrue(emitter.rawPayloads.stream().anyMatch(each -> each instanceof WorkflowEventPayload));
+    }
+
+    @Test
+    void shouldReturnFalseForNonCommandInput() {
+        CapturingSseEmitter emitter = new CapturingSseEmitter();
+        boolean routed = router.tryRoute(
+                "hello world",
+                "c1",
+                "u1",
+                "t1",
+                emitter,
+                callback,
+                CancellationToken.NONE
+        );
+
+        assertFalse(routed);
+        verifyNoInteractions(workflowRegistry, callback, workflow);
+        assertTrue(emitter.eventNames.isEmpty());
+    }
+
+    @Test
+    void shouldFallbackWhenWorkflowThrows() {
+        when(workflowRegistry.find(any())).thenReturn(Optional.of(workflow));
+        when(workflow.id()).thenReturn("/qy-review");
+        when(workflow.execute(any())).thenThrow(new RuntimeException("boom"));
+
+        CapturingSseEmitter emitter = new CapturingSseEmitter();
+        boolean routed = router.tryRoute(
+                "/qy-review crash",
+                "c1",
+                "u1",
+                "t1",
+                emitter,
+                callback,
+                CancellationToken.NONE
+        );
+
+        assertFalse(routed);
+        verify(callback, never()).onComplete();
+        assertTrue(emitter.eventNames.isEmpty());
+    }
+
+    private static final class CapturingSseEmitter extends SseEmitter {
+
+        private final List<String> eventNames = new ArrayList<>();
+        private final List<Object> rawPayloads = new ArrayList<>();
+
+        @Override
+        public synchronized void send(SseEventBuilder builder) throws IOException {
+            Set<ResponseBodyEmitter.DataWithMediaType> parts = builder.build();
+            eventNames.add(extractEventName(parts));
+            for (ResponseBodyEmitter.DataWithMediaType each : parts) {
+                rawPayloads.add(each.getData());
+            }
+        }
+
+        private String extractEventName(Set<ResponseBodyEmitter.DataWithMediaType> parts) {
+            for (ResponseBodyEmitter.DataWithMediaType each : parts) {
+                Object data = each.getData();
+                if (data instanceof String line && line.startsWith("event:")) {
+                    return line.substring("event:".length()).trim();
+                }
+            }
+            return "";
+        }
+    }
+}

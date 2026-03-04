@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Brain, ChevronDown, FileText } from "lucide-react";
+import { Brain, ChevronDown, ExternalLink, FileText, Wrench } from "lucide-react";
 
 import { FeedbackButtons } from "@/components/chat/FeedbackButtons";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
@@ -14,7 +14,18 @@ interface MessageItemProps {
   isLast?: boolean;
 }
 
+function buildReferenceDetailHref(reference: ReferenceItem) {
+  if (reference.documentUrl) {
+    return reference.documentUrl;
+  }
+  if (!reference.knowledgeBaseId || !reference.documentId) {
+    return null;
+  }
+  return `/admin/knowledge/${encodeURIComponent(reference.knowledgeBaseId)}/docs/${encodeURIComponent(reference.documentId)}`;
+}
+
 export const MessageItem = React.memo(function MessageItem({ message, isLast }: MessageItemProps) {
+  const PREVIEW_TOGGLE_THRESHOLD = 140;
   const isUser = message.role === "user";
   const isStreamingMsg = message.status === "streaming";
   const showFeedback =
@@ -25,11 +36,28 @@ export const MessageItem = React.memo(function MessageItem({ message, isLast }: 
   const isThinking = Boolean(message.isThinking);
   const [thinkingExpanded, setThinkingExpanded] = React.useState(false);
   const [refsExpanded, setRefsExpanded] = React.useState(false);
+  const [expandedPreviewKeys, setExpandedPreviewKeys] = React.useState<Set<string>>(new Set());
   const [selectedRef, setSelectedRef] = React.useState<ReferenceItem | null>(null);
   const hasThinking = Boolean(message.thinking && message.thinking.trim().length > 0);
   const animatedContent = useAnimatedText(message.content, isStreamingMsg && !isThinking);
   const hasContent = animatedContent.trim().length > 0;
   const isWaiting = isStreamingMsg && !isThinking && !hasContent;
+
+  React.useEffect(() => {
+    setExpandedPreviewKeys(new Set());
+  }, [message.id]);
+
+  const togglePreview = React.useCallback((key: string) => {
+    setExpandedPreviewKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
 
   if (isUser) {
     return (
@@ -97,6 +125,49 @@ export const MessageItem = React.memo(function MessageItem({ message, isLast }: 
               <MarkdownRenderer content={animatedContent} />
             </div>
           ) : null}
+          {message.workflow ? (
+            <div className="overflow-hidden rounded-lg border border-[#FDE68A] bg-[#FEF3C7]">
+              <div className="flex items-center gap-2 px-4 py-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#FDE68A]">
+                  <Wrench className="h-4 w-4 text-[#B45309]" />
+                </div>
+                <span className="text-sm font-medium text-[#B45309]">工作流执行</span>
+                <span className="rounded-full bg-[#FDE68A] px-2 py-0.5 text-xs text-[#92400E]">
+                  {message.workflow.workflowId || "-"}
+                </span>
+              </div>
+              <div className="border-t border-[#FDE68A] px-4 pb-3 pt-2 text-xs text-[#92400E]">
+                <p>
+                  操作数：
+                  <span className="ml-1 font-medium">{message.workflow.opsCount ?? 0}</span>
+                </p>
+                <div className="mt-2">
+                  <p className="text-[#B45309]">变更文件：</p>
+                  {message.workflow.changedFiles && message.workflow.changedFiles.length > 0 ? (
+                    <ul className="mt-1 list-disc space-y-1 pl-4">
+                      {message.workflow.changedFiles.map((file) => (
+                        <li key={file} className="break-all">
+                          {file}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1">无文件变更</p>
+                  )}
+                </div>
+                {message.workflow.warnings && message.workflow.warnings.length > 0 ? (
+                  <div className="mt-2">
+                    <p className="text-[#B45309]">告警：</p>
+                    <ul className="mt-1 list-disc space-y-1 pl-4">
+                      {message.workflow.warnings.map((warning, index) => (
+                        <li key={`${warning}-${index}`}>{warning}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           {message.status === "error" ? (
             <p className="text-xs text-rose-500">生成已中断。</p>
           ) : null}
@@ -126,34 +197,77 @@ export const MessageItem = React.memo(function MessageItem({ message, isLast }: 
               {refsExpanded ? (
                 <div className="border-t border-[#BBF7D0] px-4 pb-3">
                   <ul className="mt-2 space-y-2">
-                    {message.references.map((ref) => (
-                      <li
-                        key={ref.documentId}
-                        className="cursor-pointer rounded-md bg-white/60 px-3 py-2 text-sm transition-colors hover:bg-white/90"
-                        onClick={() => setSelectedRef(ref)}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium text-gray-800 truncate">
-                            {ref.documentName || "未知文档"}
-                          </span>
-                          {ref.score != null ? (
-                            <span className="shrink-0 rounded bg-[#BBF7D0] px-1.5 py-0.5 text-xs text-[#16A34A]">
-                              {Math.round(ref.score * 100)}%
+                    {message.references.map((ref) => {
+                      const previewKey = ref.documentId;
+                      const previewText = ref.textPreview?.trim() || "";
+                      const canTogglePreview = previewText.length > PREVIEW_TOGGLE_THRESHOLD;
+                      const previewExpanded = expandedPreviewKeys.has(previewKey);
+                      const detailHref = buildReferenceDetailHref(ref);
+
+                      return (
+                        <li
+                          key={ref.documentId}
+                          className="cursor-pointer rounded-md bg-white/60 px-3 py-2 text-sm transition-colors hover:bg-white/90"
+                          onClick={() => setSelectedRef(ref)}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium text-gray-800 truncate">
+                              {ref.documentName || "未知文档"}
                             </span>
+                            {ref.score != null ? (
+                              <span className="shrink-0 rounded bg-[#BBF7D0] px-1.5 py-0.5 text-xs text-[#16A34A]">
+                                {Math.round(ref.score * 100)}%
+                              </span>
+                            ) : null}
+                          </div>
+                          {ref.knowledgeBaseName ? (
+                            <p className="mt-0.5 text-xs text-gray-500">
+                              来自：{ref.knowledgeBaseName}
+                            </p>
                           ) : null}
-                        </div>
-                        {ref.knowledgeBaseName ? (
-                          <p className="mt-0.5 text-xs text-gray-500">
-                            来自：{ref.knowledgeBaseName}
-                          </p>
-                        ) : null}
-                        {ref.textPreview ? (
-                          <p className="mt-1 text-xs leading-relaxed text-gray-500 line-clamp-2">
-                            {ref.textPreview}
-                          </p>
-                        ) : null}
-                      </li>
-                    ))}
+                          {detailHref ? (
+                            <a
+                              href={detailHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-1 inline-flex items-center gap-1 text-xs text-[#16A34A] hover:text-[#15803D] hover:underline"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                              }}
+                            >
+                              打开完整文档
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : null}
+                          {previewText ? (
+                            <div className="mt-1">
+                              <p
+                                data-testid={`reference-preview-${previewKey}`}
+                                className={cn(
+                                  "text-xs leading-relaxed text-gray-500",
+                                  !previewExpanded && "line-clamp-2"
+                                )}
+                              >
+                                {previewText}
+                              </p>
+                              {canTogglePreview ? (
+                                <button
+                                  type="button"
+                                  data-testid={`reference-preview-toggle-${previewKey}`}
+                                  className="mt-1 text-xs text-[#16A34A] hover:text-[#15803D]"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    togglePreview(previewKey);
+                                  }}
+                                >
+                                  {previewExpanded ? "收起" : "展开全文"}
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               ) : null}
