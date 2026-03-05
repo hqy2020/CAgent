@@ -65,6 +65,11 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MULTI_CHANNEL_KEY
 @RequiredArgsConstructor
 public class RetrievalEngine {
 
+    /**
+     * MCP 意图最低置信度阈值（高于通用意图阈值），用于抑制误触发工具调用。
+     */
+    private static final double MCP_INTENT_MIN_SCORE = 0.60D;
+
     private final ContextFormatter contextFormatter;
     private final MCPService mcpService;
     private final MCPParameterExtractor mcpParameterExtractor;
@@ -155,7 +160,8 @@ public class RetrievalEngine {
         List<NodeScore> kbIntents = filterKbIntents(intent.nodeScores());
         List<NodeScore> mcpIntents = filterMCPIntents(intent.nodeScores());
 
-        KbResult kbResult = CollUtil.isNotEmpty(kbIntents)
+        // 仅在“强 MCP-only”时跳过 KB 检索；其余场景（含无意图）都允许 KB 通道兜底。
+        KbResult kbResult = shouldRetrieveKb(kbIntents, mcpIntents)
                 ? retrieveAndRerank(intent, kbIntents, topK, token)
                 : KbResult.empty();
 
@@ -191,7 +197,7 @@ public class RetrievalEngine {
 
     private List<NodeScore> filterMCPIntents(List<NodeScore> nodeScores) {
         return nodeScores.stream()
-                .filter(ns -> ns.getScore() >= INTENT_MIN_SCORE)
+                .filter(ns -> ns.getScore() >= MCP_INTENT_MIN_SCORE)
                 .filter(ns -> ns.getNode() != null && ns.getNode().getKind() == IntentKind.MCP)
                 .filter(ns -> StrUtil.isNotBlank(ns.getNode().getMcpToolId()))
                 .toList();
@@ -228,10 +234,6 @@ public class RetrievalEngine {
 
     private KbResult retrieveAndRerank(SubQuestionIntent intent, List<NodeScore> kbIntents, int topK,
                                         CancellationToken token) {
-        if (CollUtil.isEmpty(kbIntents)) {
-            return KbResult.empty();
-        }
-
         // 使用多通道检索引擎（是否启用全局检索由置信度阈值决定）
         List<SubQuestionIntent> subIntents = List.of(intent);
         List<RetrievedChunk> chunks = multiChannelRetrievalEngine.retrieveKnowledgeChannels(subIntents, topK, token);
@@ -258,6 +260,13 @@ public class RetrievalEngine {
 
         String groupedContext = contextFormatter.formatKbContext(kbIntents, intentChunks, topK);
         return new KbResult(groupedContext, intentChunks);
+    }
+
+    private boolean shouldRetrieveKb(List<NodeScore> kbIntents, List<NodeScore> mcpIntents) {
+        if (CollUtil.isNotEmpty(kbIntents)) {
+            return true;
+        }
+        return CollUtil.isEmpty(mcpIntents);
     }
 
     private List<MCPResponse> executeMcpTools(String question, List<NodeScore> mcpIntentScores,

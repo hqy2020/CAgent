@@ -49,6 +49,7 @@ public class NodeOutputExtractor {
             case CHUNKER -> chunkerOutput(context);
             case ENRICHER -> enricherOutput(context);
             case INDEXER -> indexerOutput(context, config);
+            case GRAPH_EXTRACTOR -> genericOutput(context);
         };
     }
 

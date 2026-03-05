@@ -42,7 +42,7 @@ run_case() {
 
 run_case "MCP_ONLY" "华东区这个月销售额多少？" "1" "" "0" "0"
 run_case "KB_ONLY" "公司数据安全规范里，敏感字段脱敏要求是什么？" "0" "0" "1" ""
-run_case "MIXED" "华东区这个月销售额多少，并说明销售口径定义。" "1" "" "1" ""
+run_case "MIXED" "华东区这个月销售额多少，并说明 HashMap 的底层原理。" "1" "" "1" ""
 
 echo "=================================================="
 echo "[integration] PASS: MCP/KB integration matrix passed"

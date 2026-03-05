@@ -135,6 +135,37 @@ class RetrievalEngineTests {
     }
 
     @Test
+    void testLowConfidenceMcpIntentShouldFallbackToKbRetrieval() {
+        String question = "公司数据安全规范里，敏感字段脱敏要求是什么？";
+        IntentNode mcpNode = IntentNode.builder()
+                .id("sales-intent")
+                .kind(IntentKind.MCP)
+                .mcpToolId("sales_query")
+                .build();
+        SubQuestionIntent subIntent = new SubQuestionIntent(
+                question,
+                List.of(NodeScore.builder().node(mcpNode).score(0.45D).build())
+        );
+
+        RetrievedChunk kbChunk = RetrievedChunk.builder()
+                .id("chunk-1")
+                .text("敏感字段必须脱敏后展示。")
+                .score(0.78F)
+                .build();
+        when(multiChannelRetrievalEngine.retrieveKnowledgeChannels(anyList(), eq(5), any(CancellationToken.class)))
+                .thenReturn(List.of(kbChunk));
+        when(contextFormatter.formatKbContext(anyList(), anyMap(), eq(5))).thenReturn("kb-fallback-context");
+
+        RetrievalContext context = retrievalEngine.retrieve(List.of(subIntent), 5, CancellationToken.NONE);
+
+        assertTrue(context.hasKb());
+        assertFalse(context.hasMcp());
+        assertTrue(context.getKbContext().contains("kb-fallback-context"));
+        verify(multiChannelRetrievalEngine).retrieveKnowledgeChannels(anyList(), eq(5), any(CancellationToken.class));
+        verify(mcpService, never()).executeBatch(anyList(), any(CancellationToken.class));
+    }
+
+    @Test
     void testMixedIntentShouldMergeKbAndMcpContext() {
         String question = "华东区这个月销售额多少，并说明销售口径定义";
         IntentNode kbNode = IntentNode.builder()

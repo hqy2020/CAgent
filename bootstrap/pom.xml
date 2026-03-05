@@ -22,5 +22,11 @@
             <artifactId>infra-ai</artifactId>
             <version>${project.version}</version>
         </dependency>
+
+        <dependency>
+            <groupId>org.neo4j.driver</groupId>
+            <artifactId>neo4j-java-driver</artifactId>
+            <optional>true</optional>
+        </dependency>
     </dependencies>
 </project>

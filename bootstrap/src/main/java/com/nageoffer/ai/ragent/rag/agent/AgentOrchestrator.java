@@ -28,8 +28,13 @@ import com.nageoffer.ai.ragent.infra.convention.ChatMessage;
 import com.nageoffer.ai.ragent.infra.convention.ChatRequest;
 import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.infra.util.LLMResponseCleaner;
+import com.nageoffer.ai.ragent.knowledge.graph.GraphEntityExtractor;
+import com.nageoffer.ai.ragent.knowledge.graph.GraphRepository;
+import com.nageoffer.ai.ragent.knowledge.graph.GraphTriple;
+import com.nageoffer.ai.ragent.rag.config.KnowledgeGraphProperties;
 import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
+import com.nageoffer.ai.ragent.rag.core.graph.GraphTripleFormatter;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentResolver;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
@@ -54,8 +59,8 @@ import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import com.nageoffer.ai.ragent.rag.enums.IntentKind;
 import com.nageoffer.ai.ragent.rag.enums.SSEEventType;
 import lombok.Builder;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -66,6 +71,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.DEFAULT_TOP_K;
 
@@ -74,8 +80,9 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.DEFAULT_TOP_K;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class AgentOrchestrator {
+
+    private static final double MCP_EXECUTION_MIN_INTENT_SCORE = 0.60D;
 
     private static final Set<String> WRITE_TOOL_IDS = Set.of(
             "obsidian_create",
@@ -90,13 +97,17 @@ public class AgentOrchestrator {
             {
               "goal":"目标",
               "steps":[
-                {"type":"KB_RETRIEVE|MCP_CALL|SYNTHESIZE","instruction":"步骤说明","query":"检索/工具查询词","toolId":"可选工具ID","params":{}}
+                {"type":"KB_RETRIEVE|GRAPH_QUERY|MCP_CALL|SYNTHESIZE","instruction":"步骤说明","query":"检索/工具查询词","toolId":"可选工具ID","params":{}}
               ]
             }
             规则：
             1) steps 不超过 6 步；
             2) 必须至少包含 1 个可执行步骤；
-            3) JSON 之外不要输出额外文本。
+            3) KB_RETRIEVE：知识库向量检索，适合语义相似性匹配；
+            4) GRAPH_QUERY：知识图谱查询，适合实体关系推断、多跳关联查询；
+            5) MCP_CALL：调用外部工具；
+            6) SYNTHESIZE：汇总已有证据；
+            7) JSON 之外不要输出额外文本。
             """;
 
     private static final String REFLECTOR_SYSTEM_PROMPT = """
@@ -105,7 +116,7 @@ public class AgentOrchestrator {
               "done": true/false,
               "reason": "判断原因",
               "nextSteps":[
-                {"type":"KB_RETRIEVE|MCP_CALL|SYNTHESIZE","instruction":"步骤说明","query":"查询词","toolId":"可选工具ID","params":{}}
+                {"type":"KB_RETRIEVE|GRAPH_QUERY|MCP_CALL|SYNTHESIZE","instruction":"步骤说明","query":"查询词","toolId":"可选工具ID","params":{}}
               ]
             }
             规则：
@@ -124,6 +135,40 @@ public class AgentOrchestrator {
     private final MCPParameterExtractor mcpParameterExtractor;
     private final PendingProposalStore pendingProposalStore;
     private final ObjectMapper objectMapper;
+
+    @Autowired(required = false)
+    private GraphRepository graphRepository;
+
+    @Autowired(required = false)
+    private GraphEntityExtractor graphEntityExtractor;
+
+    @Autowired(required = false)
+    private GraphTripleFormatter graphTripleFormatter;
+
+    @Autowired(required = false)
+    private KnowledgeGraphProperties knowledgeGraphProperties;
+
+    public AgentOrchestrator(LLMService llmService,
+                             RAGConfigProperties ragConfigProperties,
+                             QueryRewriteService queryRewriteService,
+                             IntentResolver intentResolver,
+                             RetrievalEngine retrievalEngine,
+                             MCPService mcpService,
+                             MCPToolRegistry mcpToolRegistry,
+                             MCPParameterExtractor mcpParameterExtractor,
+                             PendingProposalStore pendingProposalStore,
+                             ObjectMapper objectMapper) {
+        this.llmService = llmService;
+        this.ragConfigProperties = ragConfigProperties;
+        this.queryRewriteService = queryRewriteService;
+        this.intentResolver = intentResolver;
+        this.retrievalEngine = retrievalEngine;
+        this.mcpService = mcpService;
+        this.mcpToolRegistry = mcpToolRegistry;
+        this.mcpParameterExtractor = mcpParameterExtractor;
+        this.pendingProposalStore = pendingProposalStore;
+        this.objectMapper = objectMapper;
+    }
 
     @RagTraceNode(name = "agent-plan", type = "AGENT_PLAN")
     public boolean execute(AgentExecuteRequest request) {
@@ -239,6 +284,7 @@ public class AgentOrchestrator {
         String type = normalizeStepType(step.type());
         return switch (type) {
             case "KB_RETRIEVE" -> executeKbRetrieve(step, request, evidence);
+            case "GRAPH_QUERY" -> executeGraphQuery(step, request, evidence);
             case "MCP_CALL" -> executeMcpCall(step, request, evidence);
             case "SYNTHESIZE" -> executeSynthesize(step, request, evidence);
             default -> StepExecutionResult.failed("不支持的步骤类型：" + type, "unsupported-step-type");
@@ -391,6 +437,70 @@ public class AgentOrchestrator {
         return StepExecutionResult.success("KB 检索完成，已获得相关证据", references);
     }
 
+    private StepExecutionResult executeGraphQuery(AgentPlanStep step,
+                                                   AgentExecuteRequest request,
+                                                   StringBuilder evidence) {
+        // 图谱未启用时降级为 KB 检索
+        if (graphRepository == null || graphEntityExtractor == null || graphTripleFormatter == null) {
+            log.info("图谱未启用，GRAPH_QUERY 降级为 KB_RETRIEVE");
+            return executeKbRetrieve(step, request, evidence);
+        }
+
+        String query = StrUtil.blankToDefault(step.query(), request.question());
+
+        // 1. 实体识别
+        List<String> entities = graphEntityExtractor.extractEntities(query);
+        if (entities.isEmpty()) {
+            return StepExecutionResult.failed("未从查询中识别出实体", "graph-no-entities");
+        }
+
+        // 2. 获取所有知识库 collection 进行图遍历
+        int maxHops = knowledgeGraphProperties != null ? knowledgeGraphProperties.getTraversalMaxHops() : 2;
+        int maxNodes = knowledgeGraphProperties != null ? knowledgeGraphProperties.getTraversalMaxNodes() : 20;
+
+        List<GraphTriple> allTriples = new ArrayList<>();
+        // 使用意图中的 kbId 或全量遍历
+        List<String> kbIds = resolveKbIdsFromIntents(request);
+        if (kbIds.isEmpty()) {
+            // 降级：尝试全量（此处简化，取第一跳即可）
+            kbIds = List.of("_all");
+        }
+        for (String kbId : kbIds) {
+            List<GraphTriple> triples = graphRepository.traverseByEntities(kbId, entities, maxHops, maxNodes);
+            allTriples.addAll(triples);
+        }
+
+        if (allTriples.isEmpty()) {
+            return StepExecutionResult.failed("图谱查询无结果", "graph-empty");
+        }
+
+        // 3. 格式化证据
+        List<RetrievedChunk> chunks = graphTripleFormatter.toRetrievedChunks(allTriples);
+        String graphEvidence = chunks.stream()
+                .map(RetrievedChunk::getText)
+                .collect(Collectors.joining("\n"));
+        appendEvidence(evidence, "graph-step", graphEvidence, null);
+        return StepExecutionResult.success("图谱查询完成，发现 " + allTriples.size() + " 条关系", List.of());
+    }
+
+    private List<String> resolveKbIdsFromIntents(AgentExecuteRequest request) {
+        if (request.subIntents() == null) {
+            return List.of();
+        }
+        List<String> kbIds = new ArrayList<>();
+        for (SubQuestionIntent sub : request.subIntents()) {
+            if (sub.nodeScores() == null) {
+                continue;
+            }
+            for (NodeScore ns : sub.nodeScores()) {
+                if (ns != null && ns.getNode() != null && ns.getNode().getCollectionName() != null) {
+                    kbIds.add(ns.getNode().getCollectionName());
+                }
+            }
+        }
+        return kbIds.stream().distinct().toList();
+    }
+
     private StepExecutionResult executeMcpCall(AgentPlanStep step,
                                                AgentExecuteRequest request,
                                                StringBuilder evidence) {
@@ -405,6 +515,9 @@ public class AgentOrchestrator {
             return StepExecutionResult.failed("MCP 工具不存在：" + toolId, "tool-not-found");
         }
         MCPTool tool = executorOpt.get().getToolDefinition();
+        if (!isMcpExecutionAllowed(toolId, request)) {
+            return StepExecutionResult.failed("MCP 执行已跳过：缺少高置信度意图支持", "mcp-confidence-low");
+        }
 
         Map<String, Object> params = new LinkedHashMap<>();
         if (step.params() != null && !step.params().isEmpty()) {
@@ -489,6 +602,25 @@ public class AgentOrchestrator {
             }
         }
         return StrUtil.isBlank(candidateToolId) ? null : candidateToolId;
+    }
+
+    private boolean isMcpExecutionAllowed(String toolId, AgentExecuteRequest request) {
+        if (StrUtil.isBlank(toolId)) {
+            return false;
+        }
+        if (CollUtil.isEmpty(request.subIntents())) {
+            return true;
+        }
+        double bestScore = request.subIntents().stream()
+                .filter(subIntent -> CollUtil.isNotEmpty(subIntent.nodeScores()))
+                .flatMap(subIntent -> subIntent.nodeScores().stream())
+                .filter(nodeScore -> nodeScore != null && nodeScore.getNode() != null)
+                .filter(nodeScore -> nodeScore.getNode().getKind() == IntentKind.MCP)
+                .filter(nodeScore -> StrUtil.equals(toolId, nodeScore.getNode().getMcpToolId()))
+                .mapToDouble(NodeScore::getScore)
+                .max()
+                .orElse(0D);
+        return bestScore >= MCP_EXECUTION_MIN_INTENT_SCORE;
     }
 
     private String resolveTargetPath(Map<String, Object> params) {
@@ -675,6 +807,7 @@ public class AgentOrchestrator {
         String normalized = type.trim().toUpperCase(Locale.ROOT);
         return switch (normalized) {
             case "KB", "KB_RETRIEVE" -> "KB_RETRIEVE";
+            case "GRAPH_QUERY", "GRAPH", "KG_QUERY" -> "GRAPH_QUERY";
             case "MCP", "MCP_CALL" -> "MCP_CALL";
             case "SYNTHESIZE", "SUMMARY" -> "SYNTHESIZE";
             default -> normalized;

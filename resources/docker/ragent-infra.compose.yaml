@@ -201,6 +201,24 @@ services:
       rocketmq-broker:
         condition: service_healthy
 
+  # ==================== Neo4j (知识图谱) ====================
+  neo4j:
+    container_name: ragent-neo4j
+    image: neo4j:5.26-community
+    environment:
+      NEO4J_AUTH: neo4j/ragent123
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
 volumes:
   mysql-data:
   redis-data:
@@ -209,6 +227,7 @@ volumes:
   milvus-data:
   rocketmq-namesrv-data:
   rocketmq-broker-data:
+  neo4j-data:
 
 networks:
   default:

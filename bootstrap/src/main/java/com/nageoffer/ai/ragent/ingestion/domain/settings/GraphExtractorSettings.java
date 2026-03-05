@@ -15,40 +15,36 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.core.retrieve.channel;
+package com.nageoffer.ai.ragent.ingestion.domain.settings;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 /**
- * 检索通道类型枚举
+ * 图谱抽取节点配置
  */
-public enum SearchChannelType {
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class GraphExtractorSettings {
 
     /**
-     * 向量全局检索
-     * 在所有知识库中进行向量检索
+     * 使用的 LLM 模型 ID，为空则使用默认模型
      */
-    VECTOR_GLOBAL,
+    private String model;
 
     /**
-     * 意图定向检索
-     * 基于意图识别结果，在特定知识库中检索
+     * 每篇文档最多抽取的三元组数量
      */
-    INTENT_DIRECTED,
+    @Builder.Default
+    private int maxTriples = 30;
 
     /**
-     * ES 关键词检索
-     * 基于 Elasticsearch 的关键词分词检索
+     * 是否在插入前先删除旧数据
      */
-    KEYWORD_ES,
-
-    /**
-     * 混合检索
-     * 结合多种检索策略
-     */
-    HYBRID,
-
-    /**
-     * 知识图谱检索
-     * 基于实体关系的图遍历检索
-     */
-    KNOWLEDGE_GRAPH
+    @Builder.Default
+    private boolean deleteBeforeInsert = true;
 }

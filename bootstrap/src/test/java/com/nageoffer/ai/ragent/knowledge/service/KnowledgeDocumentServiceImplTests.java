@@ -30,9 +30,13 @@ import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeBaseMapper;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeDocumentChunkLogMapper;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeDocumentMapper;
 import com.nageoffer.ai.ragent.knowledge.enums.DocumentStatus;
+import com.nageoffer.ai.ragent.framework.mq.constant.MQConstant;
+import com.nageoffer.ai.ragent.framework.mq.event.DocumentChunkEvent;
 import com.nageoffer.ai.ragent.knowledge.service.impl.KnowledgeDocumentServiceImpl;
 import com.nageoffer.ai.ragent.rag.core.vector.VectorStoreService;
 import com.nageoffer.ai.ragent.rag.service.FileStorageService;
+import org.apache.rocketmq.client.producer.SendCallback;
+import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -95,6 +99,8 @@ class KnowledgeDocumentServiceImplTests {
     private Executor knowledgeChunkExecutor;
     @Mock
     private PlatformTransactionManager transactionManager;
+    @Mock
+    private RocketMQTemplate rocketMQTemplate;
 
     @InjectMocks
     private KnowledgeDocumentServiceImpl service;
@@ -126,6 +132,7 @@ class KnowledgeDocumentServiceImplTests {
 
         verify(docMapper, atLeastOnce()).updateById(org.mockito.ArgumentMatchers.<KnowledgeDocumentDO>argThat(doc ->
                 DocumentStatus.FAILED.getCode().equals(doc.getStatus())));
-        verify(knowledgeChunkExecutor).execute(any(Runnable.class));
+        verify(rocketMQTemplate).asyncSend(org.mockito.ArgumentMatchers.eq(MQConstant.TOPIC_KNOWLEDGE_CHUNK),
+                any(DocumentChunkEvent.class), any(SendCallback.class));
     }
 }

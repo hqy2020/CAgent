@@ -25,6 +25,7 @@
         <transmittable-thread-local.version>2.14.5</transmittable-thread-local.version>
         <redisson.version>4.0.0</redisson.version>
         <okhttp.version>4.12.0</okhttp.version>
+        <neo4j-java-driver.version>5.28.5</neo4j-java-driver.version>
         <spotless-maven-plugin.version>2.22.1</spotless-maven-plugin.version>
         <rocketmq-spring-boot-starter.version>2.3.1</rocketmq-spring-boot-starter.version>
         <excludeTags>live</excludeTags>
@@ -59,6 +60,12 @@
                 <groupId>org.apache.rocketmq</groupId>
                 <artifactId>rocketmq-spring-boot-starter</artifactId>
                 <version>${rocketmq-spring-boot-starter.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.neo4j.driver</groupId>
+                <artifactId>neo4j-java-driver</artifactId>
+                <version>${neo4j-java-driver.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

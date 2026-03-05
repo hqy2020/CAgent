@@ -30,7 +30,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
+import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.PROGRESSIVE_PROMPT_CORE_PATH;
+import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.PROGRESSIVE_PROMPT_DETAILED_MODE_PATH;
+import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.PROGRESSIVE_PROMPT_LINK_MEDIA_PATH;
+import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.PROGRESSIVE_PROMPT_MULTI_QUESTION_PATH;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MCP_KB_MIXED_PROMPT_PATH;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MCP_ONLY_PROMPT_PATH;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.RAG_ENTERPRISE_PROMPT_PATH;
@@ -46,6 +51,10 @@ public class RAGPromptService {
 
     private static final String MCP_CONTEXT_HEADER = "## 动态数据片段";
     private static final String KB_CONTEXT_HEADER = "## 文档内容";
+    private static final Pattern DETAIL_REQUEST_PATTERN = Pattern.compile(
+            "详细|具体|展开|深入|原理|实现细节|逐步|举例|完整说明|深度分析"
+    );
+    private static final Pattern LINK_OR_IMAGE_PATTERN = Pattern.compile("(https?://|www\\.|!\\[)");
 
     private final PromptTemplateLoader promptTemplateLoader;
 
@@ -53,11 +62,37 @@ public class RAGPromptService {
      * 生成系统提示词，并对模板格式做清理
      */
     public String buildSystemPrompt(PromptContext context) {
+        return buildSystemPrompt(context, 1);
+    }
+
+    /**
+     * 生成系统提示词（渐进式披露）
+     * 第一层：核心规则；第二层：场景规则；第三层：按需细则
+     */
+    public String buildSystemPrompt(PromptContext context, int subQuestionCount) {
         PromptBuildPlan plan = plan(context);
-        String template = StrUtil.isNotBlank(plan.getBaseTemplate())
+        String sceneTemplate = StrUtil.isNotBlank(plan.getBaseTemplate())
                 ? plan.getBaseTemplate()
                 : defaultTemplate(plan.getScene());
-        return StrUtil.isBlank(template) ? "" : PromptTemplateUtils.cleanupPrompt(template);
+        if (StrUtil.isBlank(sceneTemplate)) {
+            return "";
+        }
+
+        List<String> sections = new ArrayList<>(5);
+        sections.add(promptTemplateLoader.load(PROGRESSIVE_PROMPT_CORE_PATH));
+        sections.add(sceneTemplate);
+
+        if (subQuestionCount > 1) {
+            sections.add(promptTemplateLoader.load(PROGRESSIVE_PROMPT_MULTI_QUESTION_PATH));
+        }
+        if (hasLinkOrImageEvidence(context)) {
+            sections.add(promptTemplateLoader.load(PROGRESSIVE_PROMPT_LINK_MEDIA_PATH));
+        }
+        if (isDetailedRequest(context.getQuestion())) {
+            sections.add(promptTemplateLoader.load(PROGRESSIVE_PROMPT_DETAILED_MODE_PATH));
+        }
+
+        return PromptTemplateUtils.cleanupPrompt(String.join("\n\n", sections));
     }
 
     /**
@@ -68,7 +103,8 @@ public class RAGPromptService {
                                                      String question,
                                                      List<String> subQuestions) {
         List<ChatMessage> messages = new ArrayList<>();
-        String systemPrompt = buildSystemPrompt(context);
+        int subQuestionCount = CollUtil.isEmpty(subQuestions) ? 1 : subQuestions.size();
+        String systemPrompt = buildSystemPrompt(context, subQuestionCount);
         if (StrUtil.isNotBlank(systemPrompt)) {
             messages.add(ChatMessage.system(systemPrompt));
         }
@@ -197,6 +233,19 @@ public class RAGPromptService {
 
     private String formatEvidence(String header, String body) {
         return header + "\n" + body.trim();
+    }
+
+    private boolean hasLinkOrImageEvidence(PromptContext context) {
+        String mcp = StrUtil.emptyIfNull(context.getMcpContext());
+        String kb = StrUtil.emptyIfNull(context.getKbContext());
+        return LINK_OR_IMAGE_PATTERN.matcher(mcp).find() || LINK_OR_IMAGE_PATTERN.matcher(kb).find();
+    }
+
+    private boolean isDetailedRequest(String question) {
+        if (StrUtil.isBlank(question)) {
+            return false;
+        }
+        return DETAIL_REQUEST_PATTERN.matcher(question).find();
     }
 
     // === 工具方法 ===

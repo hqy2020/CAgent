@@ -134,7 +134,7 @@ public class RAGConstant {
      * 默认 RAG 问答提示词模板路径
      * 用于指导大模型基于检索到的文档内容进行准确回答，包含严格的事实性约束和链接处理规则
      */
-    public static final String RAG_ENTERPRISE_PROMPT_PATH = "prompt/answer-chat-kb.st";
+    public static final String RAG_ENTERPRISE_PROMPT_PATH = "prompt/progressive/scene-kb.st";
 
     /**
      * MCP 工具参数提取提示词模板路径
@@ -143,14 +143,43 @@ public class RAGConstant {
     public static final String MCP_PARAMETER_EXTRACT_PROMPT_PATH = "prompt/mcp-parameter-extract.st";
 
     /**
+     * MCP 参数二次纠偏提示词模板路径
+     * 用于在首轮提取缺失必填参数时进行定向补全
+     */
+    public static final String MCP_PARAMETER_REPAIR_PROMPT_PATH = "prompt/mcp-parameter-repair.st";
+
+    /**
      * MCP-only 场景提示词模板路径
      * 仅动态数据片段时使用
      */
-    public static final String MCP_ONLY_PROMPT_PATH = "prompt/answer-chat-mcp.st";
+    public static final String MCP_ONLY_PROMPT_PATH = "prompt/progressive/scene-mcp.st";
 
     /**
      * MCP + KB 混合场景提示词模板路径
      * 兼顾动态数据片段与知识库内容的综合回答
      */
-    public static final String MCP_KB_MIXED_PROMPT_PATH = "prompt/answer-chat-mcp-kb-mixed.st";
+    public static final String MCP_KB_MIXED_PROMPT_PATH = "prompt/progressive/scene-mixed.st";
+
+    /**
+     * 渐进式披露：基础层提示词（始终加载）
+     */
+    public static final String PROGRESSIVE_PROMPT_CORE_PATH = "prompt/progressive/core.st";
+
+    /**
+     * 渐进式披露：多子问题细则（按需加载）
+     */
+    public static final String PROGRESSIVE_PROMPT_MULTI_QUESTION_PATH =
+            "prompt/progressive/optional-multi-question.st";
+
+    /**
+     * 渐进式披露：链接/图片约束（按需加载）
+     */
+    public static final String PROGRESSIVE_PROMPT_LINK_MEDIA_PATH =
+            "prompt/progressive/optional-links-and-media.st";
+
+    /**
+     * 渐进式披露：详细回答模式（按需加载）
+     */
+    public static final String PROGRESSIVE_PROMPT_DETAILED_MODE_PATH =
+            "prompt/progressive/optional-detailed-mode.st";
 }

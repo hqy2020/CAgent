@@ -69,6 +69,7 @@ import com.nageoffer.ai.ragent.ingestion.dao.mapper.IngestionPipelineMapper;
 import com.nageoffer.ai.ragent.ingestion.domain.context.IngestionContext;
 import com.nageoffer.ai.ragent.ingestion.domain.pipeline.PipelineDefinition;
 import cn.hutool.core.util.IdUtil;
+import com.nageoffer.ai.ragent.knowledge.graph.GraphRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.producer.SendCallback;
@@ -85,6 +86,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.util.StringUtils;
+
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.io.InputStream;
 import java.util.Collections;
@@ -123,6 +126,9 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     private final Executor knowledgeChunkExecutor;
     private final PlatformTransactionManager transactionManager;
     private final RocketMQTemplate rocketMQTemplate;
+
+    @Autowired(required = false)
+    private GraphRepository graphRepository;
 
     @Value("${kb.chunk.semantic.targetChars:1400}")
     private int targetChars;
@@ -561,6 +567,15 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
         docMapper.deleteById(documentDO);
 
         vectorStoreService.deleteDocumentVectors(String.valueOf(documentDO.getKbId()), docId);
+
+        // 清理知识图谱中的文档三元组
+        if (graphRepository != null) {
+            try {
+                graphRepository.deleteByDocId(String.valueOf(documentDO.getKbId()), docId);
+            } catch (Exception e) {
+                log.warn("清理文档图谱数据失败，docId={}，继续执行: {}", docId, e.getMessage());
+            }
+        }
     }
 
     @Override

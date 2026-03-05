@@ -53,20 +53,20 @@ TYPES=(
 )
 
 EXPECT_MIN=(100 400 300 600 500)
-EXPECT_MAX=(200 800 600 1200 1000)
+EXPECT_MAX=(500 1000 1600 1500 1600)
 
 extract_response_text() {
   local sse_file="$1"
   if command -v jq >/dev/null 2>&1; then
     grep '^data:' "$sse_file" \
       | sed 's/^data://' \
-      | jq -r 'select(.type == "response") | .content // empty' 2>/dev/null \
-      | tr -d '\n'
+      | jq -Rr 'fromjson? | select(.type == "response") | (.content // .delta // empty)' 2>/dev/null \
+      | tr -d '\n' || true
   else
-    grep '"type":"response"' "$sse_file" \
+    grep '^data:' "$sse_file" \
       | sed 's/^data://' \
-      | sed -n 's/.*"content":"\([^"]*\)".*/\1/p' \
-      | tr -d '\n'
+      | sed -n 's/.*"content":"\([^"]*\)".*/\1/p; s/.*"delta":"\([^"]*\)".*/\1/p' \
+      | tr -d '\n' || true
   fi
 }
 

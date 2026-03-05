@@ -78,6 +78,7 @@ public class MultiChannelRetrievalEngine {
      * @param token      取消令牌
      * @return 检索到的 Chunk 列表
      */
+    @RagTraceNode(name = "multi-channel-retrieval", type = "RETRIEVE_CHANNEL")
     public List<RetrievedChunk> retrieveKnowledgeChannels(List<SubQuestionIntent> subIntents, int topK,
                                                            CancellationToken token) {
         token.throwIfCancelled();

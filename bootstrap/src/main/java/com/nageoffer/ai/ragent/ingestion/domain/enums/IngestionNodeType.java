@@ -57,7 +57,12 @@ public enum IngestionNodeType {
     /**
      * 索引节点 - 将文本块向量化并存储到向量数据库
      */
-    INDEXER("indexer");
+    INDEXER("indexer"),
+
+    /**
+     * 图谱抽取节点 - 从文档中抽取实体关系三元组写入知识图谱
+     */
+    GRAPH_EXTRACTOR("graph_extractor");
 
     /**
      * 节点类型的字符串值（小写 snake_case）

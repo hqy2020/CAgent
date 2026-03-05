@@ -15,40 +15,15 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.core.retrieve.channel;
+package com.nageoffer.ai.ragent.knowledge.graph;
 
 /**
- * 检索通道类型枚举
+ * 知识图谱三元组
+ *
+ * @param subject  主体实体
+ * @param relation 关系
+ * @param object   客体实体
+ * @param docId    来源文档 ID
  */
-public enum SearchChannelType {
-
-    /**
-     * 向量全局检索
-     * 在所有知识库中进行向量检索
-     */
-    VECTOR_GLOBAL,
-
-    /**
-     * 意图定向检索
-     * 基于意图识别结果，在特定知识库中检索
-     */
-    INTENT_DIRECTED,
-
-    /**
-     * ES 关键词检索
-     * 基于 Elasticsearch 的关键词分词检索
-     */
-    KEYWORD_ES,
-
-    /**
-     * 混合检索
-     * 结合多种检索策略
-     */
-    HYBRID,
-
-    /**
-     * 知识图谱检索
-     * 基于实体关系的图遍历检索
-     */
-    KNOWLEDGE_GRAPH
+public record GraphTriple(String subject, String relation, String object, String docId) {
 }
