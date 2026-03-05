@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Star } from "lucide-react";
+import { Plus, Pencil, Trash2, Star, FlaskConical } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -47,6 +48,7 @@ import type {
   ModelProviderPayload,
   ModelCandidate,
   ModelCandidatePayload,
+  ModelTestResult,
 } from "@/services/modelService";
 import {
   getProviders,
@@ -59,6 +61,7 @@ import {
   deleteCandidate,
   setDefaultModel,
   setDeepThinkingModel,
+  testModelCandidate,
 } from "@/services/modelService";
 
 // ─── Tab 定义 ───
@@ -117,6 +120,16 @@ export function ModelManagementPage() {
 
   // Delete
   const [deleteTarget, setDeleteTarget] = useState<{ type: "provider" | "candidate"; id: string } | null>(null);
+
+  // Test
+  const [testDialogOpen, setTestDialogOpen] = useState(false);
+  const [testingCandidate, setTestingCandidate] = useState<ModelCandidate | null>(null);
+  const [testInput, setTestInput] = useState("");
+  const [testQuery, setTestQuery] = useState("");
+  const [testCandidatesText, setTestCandidatesText] = useState("");
+  const [testThinking, setTestThinking] = useState(false);
+  const [testRunning, setTestRunning] = useState(false);
+  const [testResult, setTestResult] = useState<ModelTestResult | null>(null);
 
   const modelType = activeTab === "providers" ? null : activeTab;
 
@@ -277,6 +290,53 @@ export function ModelManagementPage() {
     }
   };
 
+  // ─── 模型测试 ───
+
+  const openTestDialog = (candidate: ModelCandidate) => {
+    setTestingCandidate(candidate);
+    setTestResult(null);
+    setTestInput("请回复“测试成功”");
+    setTestQuery("Spring Boot 默认端口是多少");
+    setTestCandidatesText(
+      "Spring Boot 默认端口是 8080。\nRedis 是高性能内存数据库。\n@Transactional 常见失效原因包括方法非 public、自调用等。"
+    );
+    setTestThinking(false);
+    setTestDialogOpen(true);
+  };
+
+  const handleRunModelTest = async () => {
+    if (!testingCandidate) return;
+    setTestRunning(true);
+    try {
+      const payload =
+        testingCandidate.modelType === "rerank"
+          ? {
+              query: testQuery,
+              candidates: testCandidatesText
+                .split("\n")
+                .map((line) => line.trim())
+                .filter(Boolean),
+              topN: 3,
+            }
+          : {
+              input: testInput,
+              thinking: testingCandidate.modelType === "chat" ? testThinking : undefined,
+            };
+      const result = await testModelCandidate(testingCandidate.id, payload);
+      setTestResult(result);
+      if (result.success) {
+        toast.success("模型测试成功");
+      } else {
+        toast.error(result.errorMessage || "模型测试失败");
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error, "模型测试失败"));
+      setTestResult(null);
+    } finally {
+      setTestRunning(false);
+    }
+  };
+
   // ─── 删除 ───
 
   const handleDelete = async () => {
@@ -358,6 +418,7 @@ export function ModelManagementPage() {
               onDelete={(id) => setDeleteTarget({ type: "candidate", id })}
               onSetDefault={handleSetDefault}
               onSetDeepThinking={handleSetDeepThinking}
+              onTest={openTestDialog}
             />
           )}
         </CardContent>
@@ -586,6 +647,112 @@ export function ModelManagementPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Test Dialog */}
+      <Dialog open={testDialogOpen} onOpenChange={setTestDialogOpen}>
+        <DialogContent className="sm:max-w-[640px]">
+          <DialogHeader>
+            <DialogTitle>模型测试</DialogTitle>
+          </DialogHeader>
+          {testingCandidate ? (
+            <div className="space-y-4">
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                <div>
+                  模型：<span className="font-medium text-slate-800">{testingCandidate.modelId}</span>
+                </div>
+                <div>
+                  类型：{testingCandidate.modelType} / Provider：{testingCandidate.providerKey}
+                </div>
+              </div>
+
+              {testingCandidate.modelType === "rerank" ? (
+                <>
+                  <div className="space-y-2">
+                    <Label>Query</Label>
+                    <Input value={testQuery} onChange={(e) => setTestQuery(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>候选文本（每行一条）</Label>
+                    <Textarea
+                      value={testCandidatesText}
+                      onChange={(e) => setTestCandidatesText(e.target.value)}
+                      rows={6}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <Label>{testingCandidate.modelType === "chat" ? "测试问题" : "测试文本"}</Label>
+                  <Textarea value={testInput} onChange={(e) => setTestInput(e.target.value)} rows={4} />
+                </div>
+              )}
+
+              {testingCandidate.modelType === "chat" && (
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="test-thinking"
+                    checked={testThinking}
+                    onCheckedChange={(v) => setTestThinking(Boolean(v))}
+                  />
+                  <Label htmlFor="test-thinking">启用思考模式</Label>
+                </div>
+              )}
+
+              {testResult && (
+                <div
+                  className={cn(
+                    "space-y-2 rounded-md border p-3 text-sm",
+                    testResult.success
+                      ? "border-emerald-200 bg-emerald-50/60"
+                      : "border-rose-200 bg-rose-50/60"
+                  )}
+                >
+                  <div className="font-medium">
+                    {testResult.success ? "测试成功" : "测试失败"}
+                    {typeof testResult.elapsedMs === "number" ? ` · ${testResult.elapsedMs}ms` : ""}
+                  </div>
+                  <div className="text-slate-700">
+                    {testResult.success
+                      ? testResult.message || "调用成功"
+                      : testResult.errorMessage || testResult.message || "调用失败"}
+                  </div>
+                  {testResult.responsePreview && (
+                    <div className="rounded border border-slate-200 bg-white p-2 text-xs text-slate-700">
+                      {testResult.responsePreview}
+                    </div>
+                  )}
+                  {typeof testResult.vectorDimension === "number" && (
+                    <div className="text-xs text-slate-700">
+                      向量维度：{testResult.vectorDimension}
+                      {testResult.vectorPreview && testResult.vectorPreview.length > 0
+                        ? `，预览：${testResult.vectorPreview.join(", ")}`
+                        : ""}
+                    </div>
+                  )}
+                  {testResult.rerankResults && testResult.rerankResults.length > 0 && (
+                    <div className="space-y-1">
+                      {testResult.rerankResults.map((item) => (
+                        <div key={`${item.rank}-${item.text}`} className="rounded border border-slate-200 bg-white p-2 text-xs text-slate-700">
+                          #{item.rank}
+                          {typeof item.score === "number" ? ` · score=${item.score}` : ""} · {item.text}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTestDialogOpen(false)}>
+              关闭
+            </Button>
+            <Button onClick={handleRunModelTest} disabled={!testingCandidate || testRunning}>
+              {testRunning ? "测试中..." : "开始测试"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Delete Dialog */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
@@ -678,6 +845,7 @@ function CandidateTable({
   onDelete,
   onSetDefault,
   onSetDeepThinking,
+  onTest,
 }: {
   candidates: ModelCandidate[];
   modelType: string;
@@ -685,6 +853,7 @@ function CandidateTable({
   onDelete: (id: string) => void;
   onSetDefault: (id: string) => void;
   onSetDeepThinking: (id: string) => void;
+  onTest: (c: ModelCandidate) => void;
 }) {
   if (candidates.length === 0) {
     return <div className="py-8 text-center text-sm text-slate-400">暂无模型配置，点击右上角添加</div>;
@@ -755,6 +924,9 @@ function CandidateTable({
             </TableCell>
             <TableCell>
               <div className="flex gap-1">
+                <Button variant="ghost" size="icon" onClick={() => onTest(c)} title="测试模型">
+                  <FlaskConical className="h-4 w-4 text-indigo-500" />
+                </Button>
                 <Button variant="ghost" size="icon" onClick={() => onEdit(c)}>
                   <Pencil className="h-4 w-4" />
                 </Button>

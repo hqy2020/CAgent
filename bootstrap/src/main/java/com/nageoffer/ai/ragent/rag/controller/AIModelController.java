@@ -23,11 +23,14 @@ import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
 import com.nageoffer.ai.ragent.rag.controller.request.ModelCandidateRequest;
 import com.nageoffer.ai.ragent.rag.controller.request.ModelProviderRequest;
+import com.nageoffer.ai.ragent.rag.controller.request.ModelTestRequest;
 import com.nageoffer.ai.ragent.rag.controller.vo.AIModelCandidateVO;
 import com.nageoffer.ai.ragent.rag.controller.vo.AIModelProviderVO;
+import com.nageoffer.ai.ragent.rag.controller.vo.AIModelTestResultVO;
 import com.nageoffer.ai.ragent.rag.dao.entity.AIModelCandidateDO;
 import com.nageoffer.ai.ragent.rag.dao.entity.AIModelProviderDO;
 import com.nageoffer.ai.ragent.rag.service.AIModelManagementService;
+import com.nageoffer.ai.ragent.rag.service.AIModelTestService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -53,6 +56,7 @@ import java.util.stream.Collectors;
 public class AIModelController {
 
     private final AIModelManagementService modelService;
+    private final AIModelTestService modelTestService;
     private final ObjectMapper objectMapper;
 
     private static final String API_KEY_MASK_PATTERN = "****";
@@ -115,6 +119,13 @@ public class AIModelController {
     public Result<Void> setDeepThinkingModel(@PathVariable String id) {
         modelService.setDeepThinkingModel(Long.parseLong(id));
         return Results.success();
+    }
+
+    @PostMapping("/ai/models/{id}/test")
+    public Result<AIModelTestResultVO> testModel(@PathVariable String id,
+                                                  @RequestBody(required = false) ModelTestRequest request) {
+        AIModelTestResultVO result = modelTestService.testModel(Long.parseLong(id), request);
+        return Results.success(result);
     }
 
     private AIModelProviderVO toProviderVO(AIModelProviderDO entity) {

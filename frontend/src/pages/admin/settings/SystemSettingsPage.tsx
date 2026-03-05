@@ -17,6 +17,7 @@ import { getErrorMessage } from "@/utils/error";
 const GROUP_META: Record<string, { title: string; description: string }> = {
   "rag.default": { title: "RAG 默认配置", description: "向量空间与检索基础参数" },
   "rag.query-rewrite": { title: "查询改写", description: "历史上下文压缩与改写策略" },
+  "rag.prompt-progressive": { title: "渐进式披露", description: "控制 core/场景/按需规则层的拼装策略" },
   "rag.rate-limit": { title: "全局限流", description: "并发与租约控制" },
   "rag.memory": { title: "记忆管理", description: "摘要与上下文保留策略" },
   "ai.selection": { title: "模型选择策略", description: "熔断与选择阈值" },

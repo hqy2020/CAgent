@@ -59,6 +59,7 @@ public class SystemConfigServiceImpl implements SystemConfigService {
     private static final Map<String, String> GROUP_LABELS = new LinkedHashMap<>() {{
         put("rag.default", "RAG 默认配置");
         put("rag.query-rewrite", "查询改写");
+        put("rag.prompt-progressive", "渐进式披露");
         put("rag.rate-limit", "全局限流");
         put("rag.memory", "记忆管理");
         put("ai.selection", "模型选择策略");
@@ -147,6 +148,18 @@ public class SystemConfigServiceImpl implements SystemConfigService {
         addConfig(configs, "rag.query-rewrite", "maxHistoryChars",
                 str(ragConfigProperties.getQueryRewriteMaxHistoryChars()), "INTEGER", "改写最大历史字符数");
 
+        // rag.prompt-progressive
+        addConfig(configs, "rag.prompt-progressive", "enabled",
+                str(ragConfigProperties.getPromptProgressiveEnabled()), "BOOLEAN", "渐进式披露总开关");
+        addConfig(configs, "rag.prompt-progressive", "coreEnabled",
+                str(ragConfigProperties.getPromptProgressiveCoreEnabled()), "BOOLEAN", "核心规则层开关");
+        addConfig(configs, "rag.prompt-progressive", "optionalMultiQuestionEnabled",
+                str(ragConfigProperties.getPromptProgressiveOptionalMultiQuestionEnabled()), "BOOLEAN", "多子问题规则开关");
+        addConfig(configs, "rag.prompt-progressive", "optionalLinkMediaEnabled",
+                str(ragConfigProperties.getPromptProgressiveOptionalLinkMediaEnabled()), "BOOLEAN", "链接/图片规则开关");
+        addConfig(configs, "rag.prompt-progressive", "optionalDetailedModeEnabled",
+                str(ragConfigProperties.getPromptProgressiveOptionalDetailedModeEnabled()), "BOOLEAN", "详细回答规则开关");
+
         // rag.rate-limit
         addConfig(configs, "rag.rate-limit", "enabled",
                 str(rateLimitProperties.getGlobalEnabled()), "BOOLEAN", "全局限流开关");
@@ -204,6 +217,13 @@ public class SystemConfigServiceImpl implements SystemConfigService {
                 items.add(configItem("enabled", dbKV, str(ragConfigProperties.getQueryRewriteEnabled()), "BOOLEAN", "查询重写开关"));
                 items.add(configItem("maxHistoryMessages", dbKV, str(ragConfigProperties.getQueryRewriteMaxHistoryMessages()), "INTEGER", "改写最大历史消息数"));
                 items.add(configItem("maxHistoryChars", dbKV, str(ragConfigProperties.getQueryRewriteMaxHistoryChars()), "INTEGER", "改写最大历史字符数"));
+            }
+            case "rag.prompt-progressive" -> {
+                items.add(configItem("enabled", dbKV, str(ragConfigProperties.getPromptProgressiveEnabled()), "BOOLEAN", "渐进式披露总开关"));
+                items.add(configItem("coreEnabled", dbKV, str(ragConfigProperties.getPromptProgressiveCoreEnabled()), "BOOLEAN", "核心规则层开关"));
+                items.add(configItem("optionalMultiQuestionEnabled", dbKV, str(ragConfigProperties.getPromptProgressiveOptionalMultiQuestionEnabled()), "BOOLEAN", "多子问题规则开关"));
+                items.add(configItem("optionalLinkMediaEnabled", dbKV, str(ragConfigProperties.getPromptProgressiveOptionalLinkMediaEnabled()), "BOOLEAN", "链接/图片规则开关"));
+                items.add(configItem("optionalDetailedModeEnabled", dbKV, str(ragConfigProperties.getPromptProgressiveOptionalDetailedModeEnabled()), "BOOLEAN", "详细回答规则开关"));
             }
             case "rag.rate-limit" -> {
                 items.add(configItem("enabled", dbKV, str(rateLimitProperties.getGlobalEnabled()), "BOOLEAN", "全局限流开关"));

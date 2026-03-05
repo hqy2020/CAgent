@@ -56,6 +56,13 @@ rag:
     max-history-messages: 4
     max-history-chars: 500
 
+  prompt-progressive:
+    enabled: true
+    core-enabled: true
+    optional-multi-question-enabled: true
+    optional-link-media-enabled: true
+    optional-detailed-mode-enabled: true
+
   rate-limit:
     global:
       enabled: true

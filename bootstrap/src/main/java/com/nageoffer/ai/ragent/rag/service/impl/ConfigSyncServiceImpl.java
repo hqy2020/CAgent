@@ -156,6 +156,7 @@ public class ConfigSyncServiceImpl implements ConfigSyncService {
 
         applyRagDefault(grouped.getOrDefault("rag.default", Map.of()));
         applyQueryRewrite(grouped.getOrDefault("rag.query-rewrite", Map.of()));
+        applyPromptProgressive(grouped.getOrDefault("rag.prompt-progressive", Map.of()));
         applyRateLimit(grouped.getOrDefault("rag.rate-limit", Map.of()));
         applyMemory(grouped.getOrDefault("rag.memory", Map.of()));
         applyAISelection(grouped.getOrDefault("ai.selection", Map.of()));
@@ -174,6 +175,22 @@ public class ConfigSyncServiceImpl implements ConfigSyncService {
             ragConfigProperties.setQueryRewriteMaxHistoryMessages(parseInt(kv.get("maxHistoryMessages")));
         if (kv.containsKey("maxHistoryChars"))
             ragConfigProperties.setQueryRewriteMaxHistoryChars(parseInt(kv.get("maxHistoryChars")));
+    }
+
+    private void applyPromptProgressive(Map<String, String> kv) {
+        if (kv.containsKey("enabled"))
+            ragConfigProperties.setPromptProgressiveEnabled(parseBool(kv.get("enabled")));
+        if (kv.containsKey("coreEnabled"))
+            ragConfigProperties.setPromptProgressiveCoreEnabled(parseBool(kv.get("coreEnabled")));
+        if (kv.containsKey("optionalMultiQuestionEnabled"))
+            ragConfigProperties.setPromptProgressiveOptionalMultiQuestionEnabled(
+                    parseBool(kv.get("optionalMultiQuestionEnabled")));
+        if (kv.containsKey("optionalLinkMediaEnabled"))
+            ragConfigProperties.setPromptProgressiveOptionalLinkMediaEnabled(
+                    parseBool(kv.get("optionalLinkMediaEnabled")));
+        if (kv.containsKey("optionalDetailedModeEnabled"))
+            ragConfigProperties.setPromptProgressiveOptionalDetailedModeEnabled(
+                    parseBool(kv.get("optionalDetailedModeEnabled")));
     }
 
     private void applyRateLimit(Map<String, String> kv) {

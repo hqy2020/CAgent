@@ -21,6 +21,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.infra.convention.ChatMessage;
 import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import lombok.RequiredArgsConstructor;
@@ -57,6 +58,7 @@ public class RAGPromptService {
     private static final Pattern LINK_OR_IMAGE_PATTERN = Pattern.compile("(https?://|www\\.|!\\[)");
 
     private final PromptTemplateLoader promptTemplateLoader;
+    private final RAGConfigProperties ragConfigProperties;
 
     /**
      * 生成系统提示词，并对模板格式做清理
@@ -78,17 +80,26 @@ public class RAGPromptService {
             return "";
         }
 
+        if (!Boolean.TRUE.equals(ragConfigProperties.getPromptProgressiveEnabled())) {
+            return PromptTemplateUtils.cleanupPrompt(sceneTemplate);
+        }
+
         List<String> sections = new ArrayList<>(5);
-        sections.add(promptTemplateLoader.load(PROGRESSIVE_PROMPT_CORE_PATH));
+        if (Boolean.TRUE.equals(ragConfigProperties.getPromptProgressiveCoreEnabled())) {
+            sections.add(promptTemplateLoader.load(PROGRESSIVE_PROMPT_CORE_PATH));
+        }
         sections.add(sceneTemplate);
 
-        if (subQuestionCount > 1) {
+        if (subQuestionCount > 1
+                && Boolean.TRUE.equals(ragConfigProperties.getPromptProgressiveOptionalMultiQuestionEnabled())) {
             sections.add(promptTemplateLoader.load(PROGRESSIVE_PROMPT_MULTI_QUESTION_PATH));
         }
-        if (hasLinkOrImageEvidence(context)) {
+        if (Boolean.TRUE.equals(ragConfigProperties.getPromptProgressiveOptionalLinkMediaEnabled())
+                && hasLinkOrImageEvidence(context)) {
             sections.add(promptTemplateLoader.load(PROGRESSIVE_PROMPT_LINK_MEDIA_PATH));
         }
-        if (isDetailedRequest(context.getQuestion())) {
+        if (Boolean.TRUE.equals(ragConfigProperties.getPromptProgressiveOptionalDetailedModeEnabled())
+                && isDetailedRequest(context.getQuestion())) {
             sections.add(promptTemplateLoader.load(PROGRESSIVE_PROMPT_DETAILED_MODE_PATH));
         }
 

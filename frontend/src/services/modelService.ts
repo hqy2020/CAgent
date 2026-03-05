@@ -56,6 +56,32 @@ export interface ModelCandidatePayload {
   supportsThinking?: number;
 }
 
+export interface ModelTestPayload {
+  input?: string;
+  query?: string;
+  candidates?: string[];
+  topN?: number;
+  thinking?: boolean;
+}
+
+export interface ModelTestResult {
+  success: boolean;
+  modelType: string;
+  modelId: string;
+  providerKey: string;
+  elapsedMs: number;
+  message: string;
+  responsePreview?: string | null;
+  vectorDimension?: number | null;
+  vectorPreview?: number[] | null;
+  rerankResults?: Array<{
+    rank: number;
+    score?: number | null;
+    text: string;
+  }> | null;
+  errorMessage?: string | null;
+}
+
 // ─── Provider API ───
 
 export async function getProviders(): Promise<ModelProvider[]> {
@@ -99,4 +125,8 @@ export async function setDefaultModel(id: string): Promise<void> {
 
 export async function setDeepThinkingModel(id: string): Promise<void> {
   return api.put(`/ai/models/${id}/deep-thinking`);
+}
+
+export async function testModelCandidate(id: string, data: ModelTestPayload): Promise<ModelTestResult> {
+  return api.post<ModelTestResult, ModelTestResult>(`/ai/models/${id}/test`, data);
 }

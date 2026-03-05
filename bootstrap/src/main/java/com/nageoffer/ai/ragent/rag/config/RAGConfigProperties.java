@@ -61,6 +61,37 @@ public class RAGConfigProperties {
     @Value("${rag.query-rewrite.max-history-chars:500}")
     private Integer queryRewriteMaxHistoryChars;
 
+    /**
+     * 渐进式披露总开关
+     * false 时仅加载场景模板，不叠加 core/optional 规则层
+     */
+    @Value("${rag.prompt-progressive.enabled:true}")
+    private Boolean promptProgressiveEnabled;
+
+    /**
+     * 渐进式披露：core 规则层开关
+     */
+    @Value("${rag.prompt-progressive.core-enabled:true}")
+    private Boolean promptProgressiveCoreEnabled;
+
+    /**
+     * 渐进式披露：多子问题附加规则开关
+     */
+    @Value("${rag.prompt-progressive.optional-multi-question-enabled:true}")
+    private Boolean promptProgressiveOptionalMultiQuestionEnabled;
+
+    /**
+     * 渐进式披露：链接/图片规则开关
+     */
+    @Value("${rag.prompt-progressive.optional-link-media-enabled:true}")
+    private Boolean promptProgressiveOptionalLinkMediaEnabled;
+
+    /**
+     * 渐进式披露：详细回答模式规则开关
+     */
+    @Value("${rag.prompt-progressive.optional-detailed-mode-enabled:true}")
+    private Boolean promptProgressiveOptionalDetailedModeEnabled;
+
     @Value("${rag.chat.kb-temperature:0.3}")
     private Double chatKbTemperature;
 

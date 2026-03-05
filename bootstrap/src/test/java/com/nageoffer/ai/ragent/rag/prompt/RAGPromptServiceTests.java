@@ -19,12 +19,14 @@ package com.nageoffer.ai.ragent.rag.prompt;
 
 import com.nageoffer.ai.ragent.infra.convention.ChatMessage;
 import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptContext;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.rag.core.prompt.RAGPromptService;
 import com.nageoffer.ai.ragent.rag.enums.IntentKind;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -42,6 +44,7 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.PROGRESSIVE_PROMP
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.RAG_ENTERPRISE_PROMPT_PATH;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -52,8 +55,20 @@ class RAGPromptServiceTests {
     @Mock
     private PromptTemplateLoader promptTemplateLoader;
 
+    @Mock
+    private RAGConfigProperties ragConfigProperties;
+
     @InjectMocks
     private RAGPromptService ragPromptService;
+
+    @BeforeEach
+    void setUp() {
+        lenient().when(ragConfigProperties.getPromptProgressiveEnabled()).thenReturn(true);
+        lenient().when(ragConfigProperties.getPromptProgressiveCoreEnabled()).thenReturn(true);
+        lenient().when(ragConfigProperties.getPromptProgressiveOptionalMultiQuestionEnabled()).thenReturn(true);
+        lenient().when(ragConfigProperties.getPromptProgressiveOptionalLinkMediaEnabled()).thenReturn(true);
+        lenient().when(ragConfigProperties.getPromptProgressiveOptionalDetailedModeEnabled()).thenReturn(true);
+    }
 
     @Test
     void shouldAssembleCoreAndSceneForKbOnly() {
