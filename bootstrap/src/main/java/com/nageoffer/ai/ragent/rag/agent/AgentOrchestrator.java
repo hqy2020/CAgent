@@ -467,8 +467,10 @@ public class AgentOrchestrator {
     }
 
     private String resolveToolId(AgentPlanStep step, AgentExecuteRequest request) {
-        if (StrUtil.isNotBlank(step.toolId())) {
-            return step.toolId();
+        String candidateToolId = StrUtil.trim(step.toolId());
+        if (StrUtil.isNotBlank(candidateToolId)
+                && mcpToolRegistry.getExecutor(candidateToolId).isPresent()) {
+            return candidateToolId;
         }
         if (request.subIntents() != null) {
             for (SubQuestionIntent subQuestionIntent : request.subIntents()) {
@@ -486,7 +488,7 @@ public class AgentOrchestrator {
                 }
             }
         }
-        return null;
+        return StrUtil.isBlank(candidateToolId) ? null : candidateToolId;
     }
 
     private String resolveTargetPath(Map<String, Object> params) {

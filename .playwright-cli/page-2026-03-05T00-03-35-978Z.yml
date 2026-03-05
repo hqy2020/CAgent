@@ -1,0 +1,58 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e6]:
+        - img [ref=e8]
+        - generic [ref=e11]:
+          - paragraph [ref=e12]: RAG 智能问答
+          - paragraph [ref=e13]: Powered by AI
+      - generic [ref=e14]:
+        - generic [ref=e18]:
+          - generic [ref=e19]:
+            - generic [ref=e20]: 快速开始
+            - generic [ref=e21]: 新内容
+          - button "新建对话 从空白开始" [ref=e22] [cursor=pointer]:
+            - img [ref=e24]
+            - generic [ref=e25]:
+              - generic [ref=e26]: 新建对话
+              - generic [ref=e27]: 从空白开始
+          - button "管理后台" [ref=e28] [cursor=pointer]:
+            - img [ref=e29]
+            - text: 管理后台
+        - generic [ref=e32]:
+          - generic [ref=e33]:
+            - generic [ref=e34]: 搜索对话
+            - generic [ref=e35]: Ctrl / Cmd + K
+          - generic [ref=e37]:
+            - img [ref=e38]
+            - textbox "搜索对话..." [ref=e41]
+      - generic [ref=e45]:
+        - img [ref=e46]
+        - generic [ref=e48]: 加载会话中
+      - button "用户菜单" [ref=e50] [cursor=pointer]:
+        - img "admin" [ref=e52]
+        - generic [ref=e53]: admin
+        - img [ref=e54]
+    - generic [ref=e58]:
+      - banner [ref=e59]:
+        - generic [ref=e60]:
+          - paragraph [ref=e62]: 新对话
+          - link "打开 GitHub 仓库" [ref=e64] [cursor=pointer]:
+            - /url: https://github.com/hqy2020/CAgent
+            - img [ref=e65]
+            - generic [ref=e68]: Star
+            - generic [ref=e69]: "--"
+      - main [ref=e70]:
+        - generic [ref=e76]:
+          - generic [ref=e77]:
+            - textbox "聊天输入框" [ref=e79]:
+              - /placeholder: 输入你的问题...
+            - generic [ref=e80]:
+              - button "深度思考" [ref=e81] [cursor=pointer]:
+                - generic [ref=e82]:
+                  - img [ref=e83]
+                  - text: 深度思考
+              - button "发送消息" [disabled] [ref=e93]:
+                - img [ref=e94]
+          - paragraph [ref=e97]: Enter 发送·Shift + Enter 换行
+  - region "Notifications alt+T"

@@ -59,6 +59,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -211,6 +212,7 @@ class RAGChatServiceImplTests {
 
         ragChatService.streamChat("请帮我先检索再整理", null, false, new SseEmitter(0L));
 
+        verify(agentModeDecider).decide(eq("请帮我先检索再整理"), anyList(), any());
         verify(agentOrchestrator).execute(any());
         verify(llmService, never()).streamChat(any(ChatRequest.class), any(StreamCallback.class));
     }

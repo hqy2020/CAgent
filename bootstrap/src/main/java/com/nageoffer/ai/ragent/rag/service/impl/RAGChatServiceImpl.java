@@ -194,8 +194,9 @@ public class RAGChatServiceImpl implements RAGChatService {
                         : ctx.getKbContext();
                 log.info("kbContext preview:\n{}", preview);
             }
+            // Keep original user intent for Agent-mode detection/planning.
             AgentModeDecision agentModeDecision = agentModeDecider.decide(
-                    rewriteResult.rewrittenQuestion(),
+                    question,
                     subIntents,
                     ctx
             );
@@ -203,7 +204,7 @@ public class RAGChatServiceImpl implements RAGChatService {
                 log.info("进入 Agentic RAG 模式，reason={}, confidence={}, conversationId={}, taskId={}",
                         agentModeDecision.reason(), agentModeDecision.confidence(), actualConversationId, taskId);
                 boolean handled = agentOrchestrator.execute(AgentOrchestrator.AgentExecuteRequest.builder()
-                        .question(rewriteResult.rewrittenQuestion())
+                        .question(question)
                         .conversationId(actualConversationId)
                         .userId(userId)
                         .history(history)
