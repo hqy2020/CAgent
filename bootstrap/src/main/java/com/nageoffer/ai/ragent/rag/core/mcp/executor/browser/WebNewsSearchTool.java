@@ -46,11 +46,14 @@ import org.springframework.stereotype.Component;
                 "搜索今天的 AI 热点并给出处链接"
         },
         requireUserId = false,
+        operationType = MCPTool.OperationType.READ,
         sceneKeywords = {"联网", "实时新闻", "热点"},
         timeoutSeconds = 15,
         maxRetries = 1,
         sensitivity = MCPTool.Sensitivity.MEDIUM,
         fallbackMessage = "联网检索暂时不可用，请稍后重试。",
+        cacheableFallback = true,
+        fallbackCacheTtlSeconds = 300,
         parameters = {
                 @MCPParam(name = "query", description = "新闻检索关键词，应包含主题或领域", type = "string",
                         required = true, example = "AI 大模型"),

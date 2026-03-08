@@ -55,10 +55,12 @@ import java.util.Map;
                 "转录这个小宇宙链接，存到视频转录目录",
                 "把这个 YouTube 视频转录后追加到现有笔记"
         },
-        requireUserId = false,
+        requireUserId = true,
+        operationType = MCPTool.OperationType.WRITE,
         confirmationRequired = true,
         timeoutSeconds = 30,
         sensitivity = MCPTool.Sensitivity.HIGH,
+        sensitiveParams = {"sourceUrl", "url"},
         fallbackMessage = "视频转录写入暂时不可用，本次不会执行写入。",
         parameters = {
                 @MCPParam(name = "url", description = "视频或播客链接（必填）", type = "string",

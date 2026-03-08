@@ -68,7 +68,12 @@ public @interface MCPToolDeclare {
     /**
      * 是否需要用户身份
      */
-    boolean requireUserId() default true;
+    boolean requireUserId() default false;
+
+    /**
+     * 工具操作类型
+     */
+    MCPTool.OperationType operationType() default MCPTool.OperationType.READ;
 
     /**
      * 场景关键词
@@ -96,9 +101,24 @@ public @interface MCPToolDeclare {
     MCPTool.Sensitivity sensitivity() default MCPTool.Sensitivity.MEDIUM;
 
     /**
+     * 需要脱敏的参数名
+     */
+    String[] sensitiveParams() default {};
+
+    /**
      * 降级提示文案
      */
     String fallbackMessage() default "";
+
+    /**
+     * 是否允许使用缓存降级
+     */
+    boolean cacheableFallback() default false;
+
+    /**
+     * 缓存降级 TTL（秒）
+     */
+    int fallbackCacheTtlSeconds() default 300;
 
     /**
      * 是否对模型暴露

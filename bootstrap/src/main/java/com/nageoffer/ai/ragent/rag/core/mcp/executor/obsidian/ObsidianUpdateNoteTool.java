@@ -23,6 +23,7 @@ import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPExecute;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPParam;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPToolDeclare;
+import com.nageoffer.ai.ragent.rag.core.mcp.governance.MCPErrorClassifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -47,11 +48,13 @@ import java.util.regex.Pattern;
         avoidWhen = "不要用于新建笔记、全文替换文本、删除笔记或仅仅读取笔记内容。",
         examples = {"在日记里追加一条待办", "往 README 笔记末尾添加内容", "在笔记开头插入摘要"},
         sceneKeywords = {"Obsidian", "笔记更新", "日记写入"},
-        requireUserId = false,
+        requireUserId = true,
+        operationType = MCPTool.OperationType.WRITE,
         confirmationRequired = true,
         timeoutSeconds = 15,
         maxRetries = 0,
         sensitivity = MCPTool.Sensitivity.HIGH,
+        sensitiveParams = {"content"},
         fallbackMessage = "Obsidian 写入暂时不可用，本次不会执行更新。",
         parameters = {
                 @MCPParam(name = "content", description = "要追加或前插的 Markdown 内容", type = "string",
@@ -71,6 +74,11 @@ import java.util.regex.Pattern;
 public class ObsidianUpdateNoteTool {
 
     private final ObsidianCliExecutor cliExecutor;
+    private final MCPErrorClassifier errorClassifier;
+
+    public ObsidianUpdateNoteTool(ObsidianCliExecutor cliExecutor) {
+        this(cliExecutor, new MCPErrorClassifier());
+    }
 
     private static final Pattern TODAY_DAILY_PATTERN = Pattern.compile("今日日记|今天(?:的)?日记|今日(?:的)?日记");
     private static final Pattern TARGET_DAILY_ISO_PATTERN =
@@ -135,10 +143,10 @@ public class ObsidianUpdateNoteTool {
 
         ObsidianCliExecutor.CliResult result = cliExecutor.execute(command, args);
         if (result == null) {
-            return MCPResponse.error("obsidian_update", "CLI_ERROR", "Obsidian 更新执行器未返回结果");
+            return MCPResponse.error("obsidian_update", "EXECUTION_ERROR", "Obsidian 更新执行器未返回结果");
         }
         if (!result.isSuccess()) {
-            return MCPResponse.error("obsidian_update", "CLI_ERROR", result.stderr());
+            return errorClassifier.classifyCliFailure("obsidian_update", result.stderr());
         }
         MCPResponse response = MCPResponse.success("obsidian_update", "笔记更新成功。\n" + result.stdout());
         response.setFallbackUsed(result.stdout().contains("[fallback]"));

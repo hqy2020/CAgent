@@ -60,6 +60,25 @@ public class ThreadPoolExecutorConfig {
     }
 
     /**
+     * MCP 单工具执行线程池
+     */
+    @Bean
+    public Executor mcpExecutionThreadPoolExecutor() {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                Math.max(2, CPU_COUNT >> 1),
+                Math.max(4, CPU_COUNT),
+                60,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(200),
+                ThreadFactoryBuilder.create()
+                        .setNamePrefix("mcp_execution_executor_")
+                        .build(),
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
+        return TtlExecutors.getTtlExecutor(executor);
+    }
+
+    /**
      * RAG上下文处理线程池
      */
     @Bean

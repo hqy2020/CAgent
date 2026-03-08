@@ -183,9 +183,80 @@ public class DefaultContextFormatter implements ContextFormatter {
                         block.append("#### 意图规则\n").append(snippet).append("\n");
                     }
                     block.append("#### 动态数据片段\n").append(body);
+
+                    List<String> statuses = buildStatusLines(toolResponses);
+                    if (!statuses.isEmpty()) {
+                        block.append("\n#### 执行状态\n");
+                        statuses.forEach(line -> block.append("- ").append(line).append("\n"));
+                    }
+
+                    List<String> references = extractReferences(toolResponses);
+                    if (!references.isEmpty()) {
+                        block.append("#### 引用来源\n");
+                        references.forEach(line -> block.append(line).append("\n"));
+                    }
                     return block.toString();
                 })
                 .filter(StrUtil::isNotBlank)
                 .collect(Collectors.joining("\n\n"));
+    }
+
+    private List<String> buildStatusLines(List<MCPResponse> toolResponses) {
+        List<String> lines = new ArrayList<>();
+        boolean hasFallback = toolResponses.stream().anyMatch(MCPResponse::isFallbackUsed);
+        if (hasFallback) {
+            lines.add("工具发生降级，以下结果包含 fallback 输出。");
+        }
+
+        List<String> failures = toolResponses.stream()
+                .filter(response -> !response.isSuccess())
+                .map(response -> {
+                    String code = StrUtil.blankToDefault(response.getErrorCode(), "UNKNOWN");
+                    String message = StrUtil.blankToDefault(response.getErrorMessage(), "未知错误");
+                    return code + ": " + message;
+                })
+                .distinct()
+                .toList();
+        lines.addAll(failures);
+        return lines;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> extractReferences(List<MCPResponse> toolResponses) {
+        List<String> references = new ArrayList<>();
+        for (MCPResponse response : toolResponses) {
+            if (response == null || response.getData() == null) {
+                continue;
+            }
+            Object items = response.getData().get("items");
+            if (!(items instanceof List<?> itemList)) {
+                continue;
+            }
+            for (Object item : itemList) {
+                if (!(item instanceof Map<?, ?> map)) {
+                    continue;
+                }
+                String title = StrUtil.blankToDefault(stringValue(map.get("title")), "未命名来源");
+                String url = stringValue(map.get("url"));
+                String source = stringValue(map.get("source"));
+                String date = stringValue(map.get("date"));
+                StringBuilder line = new StringBuilder("- ").append(title);
+                if (StrUtil.isNotBlank(source)) {
+                    line.append(" | ").append(source);
+                }
+                if (StrUtil.isNotBlank(date)) {
+                    line.append(" | ").append(date);
+                }
+                if (StrUtil.isNotBlank(url)) {
+                    line.append(" | ").append(url);
+                }
+                references.add(line.toString());
+            }
+        }
+        return references.stream().distinct().toList();
+    }
+
+    private String stringValue(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 }

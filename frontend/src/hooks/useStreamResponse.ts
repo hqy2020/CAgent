@@ -1,5 +1,6 @@
 import type {
   AgentConfirmPayload,
+  AgentObservePayload,
   AgentPlanPayload,
   AgentReplanPayload,
   AgentStepPayload,
@@ -16,6 +17,7 @@ export interface StreamHandlers {
   onThinking?: (payload: MessageDeltaPayload) => void;
   onReferences?: (payload: ReferenceItem[]) => void;
   onWorkflow?: (payload: WorkflowEventPayload) => void;
+  onAgentObserve?: (payload: AgentObservePayload) => void;
   onAgentPlan?: (payload: AgentPlanPayload) => void;
   onAgentStep?: (payload: AgentStepPayload) => void;
   onAgentReplan?: (payload: AgentReplanPayload) => void;
@@ -101,6 +103,9 @@ async function readSseStream(response: Response, handlers: StreamHandlers, signa
         break;
       case "workflow":
         handlers.onWorkflow?.(payload as WorkflowEventPayload);
+        break;
+      case "agent_observe":
+        handlers.onAgentObserve?.(payload as AgentObservePayload);
         break;
       case "agent_plan":
         handlers.onAgentPlan?.(payload as AgentPlanPayload);

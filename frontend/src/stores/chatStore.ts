@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 import type {
   AgentConfirmPayload,
+  AgentObservePayload,
   AgentPlanPayload,
   AgentReplanPayload,
   AgentStepPayload,
@@ -326,13 +327,34 @@ export const useChatStore = create<ChatState>((set, get) => ({
           )
         }));
       },
-  onWorkflow: (payload: WorkflowEventPayload) => {
+      onWorkflow: (payload: WorkflowEventPayload) => {
         if (get().streamingMessageId !== assistantId) return;
         if (!payload || typeof payload !== "object") return;
         set((state) => ({
           messages: state.messages.map((msg) =>
             msg.id === state.streamingMessageId
               ? { ...msg, workflow: payload }
+              : msg
+          )
+        }));
+      },
+      onAgentObserve: (payload: AgentObservePayload) => {
+        if (get().streamingMessageId !== assistantId) return;
+        if (!payload || typeof payload !== "object") return;
+        set((state) => ({
+          messages: state.messages.map((msg) =>
+            msg.id === state.streamingMessageId
+              ? {
+                  ...msg,
+                  agentTimeline: [
+                    ...(msg.agentTimeline ?? []),
+                    {
+                      kind: "observe",
+                      at: Date.now(),
+                      payload
+                    } satisfies AgentTimelineItem
+                  ]
+                }
               : msg
           )
         }));

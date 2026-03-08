@@ -141,6 +141,25 @@ export const MessageItem = React.memo(function MessageItem({ message, isLast }: 
               <div className="border-t border-[#C7D2FE] px-4 py-3">
                 <ul className="space-y-2 text-xs text-[#3730A3]">
                   {message.agentTimeline.map((item, index) => {
+                    if (item.kind === "observe") {
+                      return (
+                        <li key={`observe-${index}`} className="rounded bg-white/70 px-2 py-1">
+                          <p className="font-medium">
+                            观察（loop {item.payload.loop} / step {item.payload.stepIndex}）
+                          </p>
+                          {"summary" in item.payload && item.payload.summary ? (
+                            <p className="mt-1">{item.payload.summary}</p>
+                          ) : null}
+                          {"items" in item.payload && item.payload.items && item.payload.items.length > 0 ? (
+                            <p className="mt-1">
+                              {item.payload.items
+                                .map((observe) => `${observe.source}[${observe.status}]`)
+                                .join(" | ")}
+                            </p>
+                          ) : null}
+                        </li>
+                      );
+                    }
                     if (item.kind === "plan") {
                       return (
                         <li key={`plan-${index}`} className="rounded bg-white/70 px-2 py-1">

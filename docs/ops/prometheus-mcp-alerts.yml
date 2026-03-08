@@ -1,0 +1,52 @@
+groups:
+  - name: ragent-mcp
+    rules:
+      - alert: RagentMcpToolSuccessRateLow
+        expr: |
+          (
+            sum by (tool) (rate(ragent_mcp_tool_calls_total{success="true"}[5m]))
+            /
+            sum by (tool) (rate(ragent_mcp_tool_calls_total[5m]))
+          ) < 0.95
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MCP tool success rate below 95%"
+          description: "Tool {{ $labels.tool }} has 5-minute success rate below 95%."
+
+      - alert: RagentMcpToolLatencyP95High
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, tool, source) (rate(ragent_mcp_tool_call_duration_seconds_bucket[5m]))
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MCP tool P95 latency above 2s"
+          description: "Tool {{ $labels.tool }} P95 latency is above 2 seconds."
+
+      - alert: RagentMcpToolFailureRateHigh
+        expr: |
+          (
+            sum by (tool) (rate(ragent_mcp_tool_calls_total{success="false"}[5m]))
+            /
+            sum by (tool) (rate(ragent_mcp_tool_calls_total[5m]))
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MCP tool failure rate above 50%"
+          description: "Tool {{ $labels.tool }} has a 5-minute failure rate above 50%."
+
+      - alert: RagentMcpCircuitOpen
+        expr: ragent_mcp_tool_circuit_open > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MCP circuit breaker is open"
+          description: "Tool {{ $labels.tool }} circuit breaker is currently open."

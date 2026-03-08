@@ -1,0 +1,17 @@
+[
+  {
+    "id": "rag_intro",
+    "question": "什么是 RAG？请用 3 句话解释清楚。",
+    "min_chars": 60
+  },
+  {
+    "id": "spring_lifecycle",
+    "question": "Spring Bean 的生命周期是怎样的？请按步骤说明。",
+    "min_chars": 120
+  },
+  {
+    "id": "perf_triage",
+    "question": "如果线上接口突然变慢，你会怎么排查？给我一个简洁方案。",
+    "min_chars": 100
+  }
+]

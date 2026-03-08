@@ -31,13 +31,17 @@ import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
 import com.nageoffer.ai.ragent.rag.core.guidance.GuidanceDecision;
 import com.nageoffer.ai.ragent.rag.core.guidance.IntentGuidanceService;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentResolver;
+import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
+import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryService;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.rag.core.prompt.RAGPromptService;
 import com.nageoffer.ai.ragent.rag.core.retrieve.RetrievalEngine;
 import com.nageoffer.ai.ragent.rag.core.rewrite.QueryRewriteService;
 import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
+import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
+import com.nageoffer.ai.ragent.rag.enums.IntentKind;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeBaseMapper;
 import com.nageoffer.ai.ragent.knowledge.dao.mapper.KnowledgeDocumentMapper;
 import com.nageoffer.ai.ragent.rag.service.handler.StreamCallbackFactory;
@@ -214,6 +218,105 @@ class RAGChatServiceImplTests {
 
         verify(agentModeDecider).decide(eq("请帮我先检索再整理"), anyList(), any());
         verify(agentOrchestrator).execute(any());
+        verify(llmService, never()).streamChat(any(ChatRequest.class), any(StreamCallback.class));
+    }
+
+    @Test
+    void testDateTimeQuestionShouldBypassRagPipeline() {
+        StreamCallback callback = org.mockito.Mockito.mock(StreamCallback.class);
+        when(callbackFactory.createChatEventHandler(any(), anyString(), anyString())).thenReturn(callback);
+        when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
+        when(memoryService.loadAndAppend(anyString(), any(), any()))
+                .thenReturn(List.of(ChatMessage.user("history")));
+        when(agentCommandRouter.tryRoute(anyString(), anyString(), any(), anyString(), any(), same(callback), any(CancellationToken.class)))
+                .thenReturn(false);
+
+        ragChatService.streamChat("今天几号", null, false, new SseEmitter(0L));
+
+        verify(callback).onContent(contains("今天是"));
+        verify(callback).onComplete();
+        verify(queryRewriteService, never()).rewriteWithSplit(anyString(), anyList());
+        verify(intentResolver, never()).resolve(any(RewriteResult.class), any(CancellationToken.class));
+        verify(retrievalEngine, never()).retrieve(anyList(), anyInt(), any(CancellationToken.class));
+        verify(llmService, never()).streamChat(any(ChatRequest.class), any(StreamCallback.class));
+    }
+
+    @Test
+    void testDateMutationQuestionShouldNotUseDateTimeShortcut() {
+        StreamCallback callback = org.mockito.Mockito.mock(StreamCallback.class);
+        when(callbackFactory.createChatEventHandler(any(), anyString(), anyString())).thenReturn(callback);
+        mockChatConfig();
+        when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
+        when(memoryService.loadAndAppend(anyString(), any(), any()))
+                .thenReturn(List.of(ChatMessage.user("history")));
+        when(agentCommandRouter.tryRoute(anyString(), anyString(), any(), anyString(), any(), same(callback), any(CancellationToken.class)))
+                .thenReturn(false);
+        when(queryRewriteService.rewriteWithSplit(anyString(), anyList()))
+                .thenReturn(new RewriteResult("帮我创建今天的日记", List.of("帮我创建今天的日记")));
+        when(intentResolver.resolve(any(RewriteResult.class), any(CancellationToken.class)))
+                .thenReturn(List.of(new SubQuestionIntent("帮我创建今天的日记", List.of())));
+        when(guidanceService.detectAmbiguity(anyString(), anyList()))
+                .thenReturn(GuidanceDecision.prompt("请补充笔记标题"));
+
+        ragChatService.streamChat("帮我创建今天的日记", null, false, new SseEmitter(0L));
+
+        verify(queryRewriteService).rewriteWithSplit(eq("帮我创建今天的日记"), anyList());
+        verify(callback).onContent("请补充笔记标题");
+        verify(callback).onComplete();
+    }
+
+    @Test
+    void testWebNewsMcpContextShouldDirectReplyWithoutLlmRewrite() {
+        StreamCallback callback = org.mockito.Mockito.mock(StreamCallback.class);
+        when(callbackFactory.createChatEventHandler(any(), anyString(), anyString())).thenReturn(callback);
+        mockChatConfig();
+        when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
+        when(memoryService.loadAndAppend(anyString(), any(), any()))
+                .thenReturn(List.of(ChatMessage.user("history")));
+        when(agentCommandRouter.tryRoute(anyString(), anyString(), any(), anyString(), any(), same(callback), any(CancellationToken.class)))
+                .thenReturn(false);
+        when(queryRewriteService.rewriteWithSplit(anyString(), anyList()))
+                .thenReturn(new RewriteResult("帮我联网搜索一下今天 AI 领域的 3 条新闻", List.of("帮我联网搜索一下今天 AI 领域的 3 条新闻")));
+        IntentNode webNewsNode = IntentNode.builder()
+                .id("web-search-news")
+                .kind(IntentKind.MCP)
+                .mcpToolId("web_news_search")
+                .build();
+        when(intentResolver.resolve(any(RewriteResult.class), any(CancellationToken.class)))
+                .thenReturn(List.of(new SubQuestionIntent(
+                        "帮我联网搜索一下今天 AI 领域的 3 条新闻",
+                        List.of(NodeScore.builder().node(webNewsNode).score(0.91D).build())
+                )));
+        when(guidanceService.detectAmbiguity(anyString(), anyList())).thenReturn(GuidanceDecision.none());
+        when(intentResolver.isSystemOnly(anyList())).thenReturn(false);
+        when(retrievalEngine.retrieve(anyList(), anyInt(), any(CancellationToken.class)))
+                .thenReturn(RetrievalContext.builder()
+                        .kbContext("")
+                        .mcpContext("""
+                                ---
+                                **子问题**：帮我联网搜索一下今天 AI 领域的 3 条新闻
+
+                                **相关文档**：
+                                #### 动态数据片段
+                                联网检索结果（关键词：AI）：
+                                1. 标题：A
+                                   来源链接：https://example.com/a
+                                   发布日期：2026-03-05
+                                2. 标题：B
+                                   来源链接：https://example.com/b
+                                   发布日期：2026-03-05
+                                3. 标题：C
+                                   来源链接：https://example.com/c
+                                   发布日期：2026-03-05
+                                """)
+                        .intentChunks(java.util.Map.of())
+                        .build());
+
+        ragChatService.streamChat("帮我联网搜索一下今天 AI 领域的 3 条新闻", null, false, new SseEmitter(0L));
+
+        verify(callback).onContent(contains("联网检索结果（关键词：AI）"));
+        verify(callback).onContent(contains("来源链接：https://example.com/a"));
+        verify(callback).onComplete();
         verify(llmService, never()).streamChat(any(ChatRequest.class), any(StreamCallback.class));
     }
 

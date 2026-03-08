@@ -23,6 +23,7 @@ import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPExecute;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPParam;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPToolDeclare;
+import com.nageoffer.ai.ragent.rag.core.mcp.governance.MCPErrorClassifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -45,6 +46,7 @@ import java.util.List;
         examples = {"搜索关于 RAG 的笔记", "在笔记库中查找 Spring Boot", "搜索包含 TODO 的笔记"},
         sceneKeywords = {"Obsidian", "笔记搜索", "全文检索"},
         requireUserId = false,
+        operationType = MCPTool.OperationType.READ,
         timeoutSeconds = 12,
         maxRetries = 1,
         sensitivity = MCPTool.Sensitivity.LOW,
@@ -62,6 +64,7 @@ import java.util.List;
 public class ObsidianSearchNotesTool {
 
     private final ObsidianCliExecutor cliExecutor;
+    private final MCPErrorClassifier errorClassifier;
 
     @MCPExecute
     public MCPResponse handle(MCPRequest request) {
@@ -88,10 +91,10 @@ public class ObsidianSearchNotesTool {
 
         ObsidianCliExecutor.CliResult result = cliExecutor.execute(command, args);
         if (result == null) {
-            return MCPResponse.error("obsidian_search", "CLI_ERROR", "Obsidian 搜索执行器未返回结果");
+            return MCPResponse.error("obsidian_search", "EXECUTION_ERROR", "Obsidian 搜索执行器未返回结果");
         }
         if (!result.isSuccess()) {
-            return MCPResponse.error("obsidian_search", "CLI_ERROR", result.stderr());
+            return errorClassifier.classifyCliFailure("obsidian_search", result.stderr());
         }
         MCPResponse response = MCPResponse.success("obsidian_search", result.stdout());
         response.setFallbackUsed(result.stdout().contains("[fallback]"));

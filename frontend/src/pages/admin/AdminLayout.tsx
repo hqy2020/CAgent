@@ -22,7 +22,8 @@ import {
   Upload,
   Users,
   FolderKanban,
-  Workflow
+  Workflow,
+  Flame
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/components/ui/button";
@@ -75,6 +76,11 @@ const menuGroups: MenuGroup[] = [
         path: "/admin/dashboard",
         label: "Dashboard",
         icon: LayoutDashboard
+      },
+      {
+        path: "/admin/hotspots",
+        label: "热点追踪",
+        icon: Flame
       },
       {
         path: "/admin/knowledge",
@@ -155,6 +161,7 @@ const menuGroups: MenuGroup[] = [
 
 const breadcrumbMap: Record<string, string> = {
   dashboard: "Dashboard",
+  hotspots: "热点追踪",
   knowledge: "知识库管理",
   "intent-tree": "意图树配置",
   "intent-list": "意图列表",

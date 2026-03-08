@@ -19,12 +19,27 @@ package com.nageoffer.ai.ragent.rag.core.mcp;
 
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
-import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
-import com.nageoffer.ai.ragent.rag.exception.TaskCancelledException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nageoffer.ai.ragent.framework.context.UserContext;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceContext;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
-import lombok.RequiredArgsConstructor;
+import com.nageoffer.ai.ragent.rag.config.RagMcpExecutionProperties;
+import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
+import com.nageoffer.ai.ragent.rag.core.mcp.governance.MCPAuditRecorder;
+import com.nageoffer.ai.ragent.rag.core.mcp.governance.MCPErrorClassifier;
+import com.nageoffer.ai.ragent.rag.core.mcp.governance.MCPFallbackCache;
+import com.nageoffer.ai.ragent.rag.core.mcp.governance.MCPFallbackResolver;
+import com.nageoffer.ai.ragent.rag.core.mcp.governance.MCPMetricsRecorder;
+import com.nageoffer.ai.ragent.rag.core.mcp.governance.MCPPayloadSanitizer;
+import com.nageoffer.ai.ragent.rag.core.mcp.governance.MCPToolHealthStore;
+import com.nageoffer.ai.ragent.rag.core.mcp.governance.MCPToolSecurityGuard;
+import com.nageoffer.ai.ragent.rag.exception.TaskCancelledException;
+import com.nageoffer.ai.ragent.rag.service.RagTraceRecordService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -32,10 +47,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -43,21 +58,70 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * MCP 服务协调器
- * <p>
- * 提供 MCP 工具调用的核心逻辑
+ * MCP 服务协调器。
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class MCPServiceOrchestrator implements MCPService {
-
-    private static final int CIRCUIT_FAILURE_THRESHOLD = 3;
-    private static final long CIRCUIT_OPEN_MILLIS = TimeUnit.SECONDS.toMillis(45);
 
     private final MCPToolRegistry toolRegistry;
     private final Executor mcpBatchThreadPoolExecutor;
-    private final Map<String, CircuitBreakerState> circuitStates = new ConcurrentHashMap<>();
+    private final Executor mcpExecutionThreadPoolExecutor;
+    private final RagMcpExecutionProperties properties;
+    private final MCPToolHealthStore healthStore;
+    private final MCPErrorClassifier errorClassifier;
+    private final MCPMetricsRecorder metricsRecorder;
+    private final MCPFallbackResolver fallbackResolver;
+    private final MCPToolSecurityGuard securityGuard;
+    private final MCPAuditRecorder auditRecorder;
+
+    public MCPServiceOrchestrator(MCPToolRegistry toolRegistry,
+                                  @Qualifier("mcpBatchThreadPoolExecutor") Executor mcpBatchThreadPoolExecutor,
+                                  @Qualifier("mcpExecutionThreadPoolExecutor") Executor mcpExecutionThreadPoolExecutor,
+                                  RagMcpExecutionProperties properties,
+                                  MCPToolHealthStore healthStore,
+                                  MCPErrorClassifier errorClassifier,
+                                  MCPMetricsRecorder metricsRecorder,
+                                  MCPFallbackResolver fallbackResolver,
+                                  MCPToolSecurityGuard securityGuard,
+                                  MCPAuditRecorder auditRecorder) {
+        this.toolRegistry = toolRegistry;
+        this.mcpBatchThreadPoolExecutor = mcpBatchThreadPoolExecutor;
+        this.mcpExecutionThreadPoolExecutor = mcpExecutionThreadPoolExecutor;
+        this.properties = properties;
+        this.healthStore = healthStore;
+        this.errorClassifier = errorClassifier;
+        this.metricsRecorder = metricsRecorder;
+        this.fallbackResolver = fallbackResolver;
+        this.securityGuard = securityGuard;
+        this.auditRecorder = auditRecorder;
+    }
+
+    /**
+     * 测试辅助构造，保留直接 new 的兼容路径。
+     */
+    public MCPServiceOrchestrator(MCPToolRegistry toolRegistry, Executor mcpBatchThreadPoolExecutor) {
+        RagMcpExecutionProperties defaultProperties = new RagMcpExecutionProperties();
+        ObjectMapper objectMapper = new ObjectMapper();
+        MCPPayloadSanitizer payloadSanitizer = new MCPPayloadSanitizer(defaultProperties);
+        this.toolRegistry = toolRegistry;
+        this.mcpBatchThreadPoolExecutor = mcpBatchThreadPoolExecutor;
+        this.mcpExecutionThreadPoolExecutor = mcpBatchThreadPoolExecutor;
+        this.properties = defaultProperties;
+        this.healthStore = new MCPToolHealthStore(defaultProperties);
+        this.errorClassifier = new MCPErrorClassifier();
+        this.metricsRecorder = new MCPMetricsRecorder(new SimpleMeterRegistry());
+        this.fallbackResolver = new MCPFallbackResolver(
+                new MCPFallbackCache((StringRedisTemplate) null, objectMapper, defaultProperties)
+        );
+        this.securityGuard = new MCPToolSecurityGuard();
+        this.auditRecorder = new MCPAuditRecorder(
+                objectMapper,
+                payloadSanitizer,
+                new EmptyObjectProvider<>(),
+                new EmptyObjectProvider<>()
+        );
+    }
 
     @Override
     @RagTraceNode(name = "mcp-execute", type = "MCP")
@@ -76,92 +140,114 @@ public class MCPServiceOrchestrator implements MCPService {
         Optional<MCPToolExecutor> executorOpt = toolRegistry.getExecutor(toolId);
         if (executorOpt.isEmpty()) {
             log.warn("MCP 工具执行失败, 工具不存在, toolId: {}", toolId);
-            return finalizeResponse(
+            return finalizeAndRecord(
                     request,
+                    null,
                     startTime,
-                    MCPResponse.error(toolId, "TOOL_NOT_FOUND", "工具不存在: " + toolId, MCPResponse.ErrorType.VALIDATION, false)
+                    MCPResponse.error(toolId, "TOOL_NOT_FOUND", "工具不存在: " + toolId, MCPResponse.ErrorType.VALIDATION, false),
+                    0,
+                    0
             );
         }
 
         MCPToolExecutor executor = executorOpt.get();
         MCPTool tool = executor.getToolDefinition();
+
+        MCPResponse securityError = securityGuard.validate(request, tool);
+        if (securityError != null) {
+            log.warn("MCP 工具安全校验失败, toolId: {}, requestId: {}, errorCode: {}",
+                    toolId, request.getRequestId(), securityError.getErrorCode());
+            return finalizeAndRecord(request, tool, startTime, securityError, 0, 0);
+        }
+
         MCPResponse validationError = validateRequest(request, tool);
         if (validationError != null) {
             log.warn("MCP 工具执行前校验失败, toolId: {}, requestId: {}, errorCode: {}",
                     toolId, request.getRequestId(), validationError.getErrorCode());
-            return finalizeResponse(request, startTime, validationError);
+            return finalizeAndRecord(request, tool, startTime, validationError, 0, 0);
         }
 
-        if (isCircuitOpen(toolId)) {
-            String message = StrUtil.blankToDefault(tool.getFallbackMessage(), "工具暂时不可用，请稍后重试。");
-            return finalizeResponse(
-                    request,
-                    startTime,
-                    MCPResponse.builder()
-                            .success(false)
-                            .toolId(toolId)
-                            .errorCode("CIRCUIT_OPEN")
-                            .errorMessage(message)
-                            .errorType(MCPResponse.ErrorType.TRANSIENT)
-                            .retryable(true)
-                            .fallbackUsed(true)
-                            .build()
+        if (!healthStore.allowCall(toolId)) {
+            metricsRecorder.syncCircuitState(toolId, healthStore.currentState(toolId));
+            MCPResponse circuitOpenResponse = buildErrorResponse(
+                    toolId,
+                    "CIRCUIT_OPEN",
+                    StrUtil.blankToDefault(tool.getFallbackMessage(), "工具暂时不可用，请稍后重试。"),
+                    MCPResponse.ErrorType.TRANSIENT,
+                    true,
+                    "SYSTEM_ERROR",
+                    Map.of("toolId", toolId, "circuitState", healthStore.currentState(toolId)),
+                    "系统暂时不可用，请稍后重试。"
             );
+            return finalizeAndRecord(request, tool, startTime,
+                    resolveFallbackIfNeeded(request, tool, circuitOpenResponse), 0, 0);
         }
 
         int maxAttempts = Math.max(1, tool.getMaxRetries() + 1);
-        MCPResponse lastResponse = null;
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                MCPResponse response = invokeWithTimeout(executor, request, tool);
-                normalizeResponse(toolId, response);
-                if (response.isSuccess()) {
-                    resetCircuit(toolId);
-                    log.info("MCP 工具执行完成, toolId: {}, requestId: {}, attempt: {}, success: true",
-                            toolId, request.getRequestId(), attempt);
-                    return finalizeResponse(request, startTime, response);
-                }
+        int retryCount = 0;
 
-                response.setErrorType(resolveErrorType(response.getErrorCode(), response.getErrorType()));
-                response.setRetryable(response.isRetryable() || isRetryableResponse(response));
-                lastResponse = response;
-                if (response.isRetryable() && attempt < maxAttempts) {
-                    log.warn("MCP 工具执行失败，准备重试, toolId: {}, requestId: {}, attempt: {}, errorCode: {}",
-                            toolId, request.getRequestId(), attempt, response.getErrorCode());
-                    continue;
-                }
-                recordFailure(toolId, response.isRetryable());
-                log.warn("MCP 工具执行失败, toolId: {}, requestId: {}, attempt: {}, errorCode: {}",
-                        toolId, request.getRequestId(), attempt, response.getErrorCode());
-                return finalizeResponse(request, startTime, response);
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            MCPResponse currentResponse;
+            try {
+                currentResponse = invokeWithTimeout(executor, request, tool);
             } catch (TimeoutException e) {
-                lastResponse = MCPResponse.error(
+                currentResponse = MCPResponse.error(
                         toolId,
                         "TIMEOUT",
-                        "工具调用超时: " + tool.getTimeoutSeconds() + "s",
+                        "工具调用超时: " + resolveTimeoutSeconds(tool) + "s",
                         MCPResponse.ErrorType.TIMEOUT,
                         true
                 );
             } catch (Exception e) {
                 log.error("MCP 工具执行异常, toolId: {}, requestId: {}, attempt: {}",
                         toolId, request.getRequestId(), attempt, e);
-                lastResponse = MCPResponse.error(
-                        toolId,
-                        "EXECUTION_ERROR",
-                        "工具调用异常: " + e.getMessage(),
-                        resolveExceptionType(e),
-                        false
-                );
+                currentResponse = buildExecutionExceptionResponse(toolId, e);
             }
 
-            if (lastResponse == null || !lastResponse.isRetryable() || attempt >= maxAttempts) {
-                recordFailure(toolId, lastResponse != null && lastResponse.isRetryable());
-                return finalizeResponse(request, startTime, lastResponse);
+            normalizeResponse(toolId, currentResponse);
+            if (currentResponse.isSuccess()) {
+                recordCircuitSuccess(toolId);
+                fallbackResolver.cacheSuccess(request, tool, currentResponse);
+                log.info("MCP 工具执行完成, toolId: {}, requestId: {}, attempt: {}, success: true",
+                        toolId, request.getRequestId(), attempt);
+                return finalizeAndRecord(request, tool, startTime, currentResponse, attempt, retryCount);
             }
+
+            boolean retryable = currentResponse.isRetryable() || errorClassifier.isRetryable(currentResponse);
+            currentResponse.setRetryable(retryable);
+            if (errorClassifier.isCircuitBreakerEligible(currentResponse)) {
+                recordCircuitFailure(toolId);
+            } else {
+                recordCircuitNeutral(toolId);
+            }
+
+            if (retryable && attempt < maxAttempts) {
+                retryCount++;
+                metricsRecorder.recordRetry(toolId, request.getRequestSource().name());
+                log.warn("MCP 工具执行失败，准备重试, toolId: {}, requestId: {}, attempt: {}, errorCode: {}",
+                        toolId, request.getRequestId(), attempt, currentResponse.getErrorCode());
+                if (!pauseBeforeRetry(retryCount)) {
+                    return finalizeAndRecord(request, tool, startTime,
+                            resolveFallbackIfNeeded(request, tool, currentResponse), attempt, retryCount);
+                }
+                continue;
+            }
+
+            log.warn("MCP 工具执行失败, toolId: {}, requestId: {}, attempt: {}, errorCode: {}",
+                    toolId, request.getRequestId(), attempt, currentResponse.getErrorCode());
+            return finalizeAndRecord(request, tool, startTime,
+                    resolveFallbackIfNeeded(request, tool, currentResponse), attempt, retryCount);
         }
 
-        recordFailure(toolId, lastResponse != null && lastResponse.isRetryable());
-        return finalizeResponse(request, startTime, lastResponse);
+        MCPResponse exhaustedResponse = MCPResponse.error(
+                toolId,
+                "PROCESS_ERROR",
+                "工具调用失败，且已达到最大重试次数",
+                MCPResponse.ErrorType.TRANSIENT,
+                true
+        );
+        return finalizeAndRecord(request, tool, startTime,
+                resolveFallbackIfNeeded(request, tool, exhaustedResponse), maxAttempts, retryCount);
     }
 
     @Override
@@ -175,12 +261,10 @@ public class MCPServiceOrchestrator implements MCPService {
             log.info("MCP 工具批量执行开始, 共 {} 个工具", requests.size());
         }
 
-        // 并行执行所有请求
         List<CompletableFuture<MCPResponse>> futures = requests.stream()
                 .map(request -> CompletableFuture.supplyAsync(() -> execute(request), mcpBatchThreadPoolExecutor))
                 .toList();
 
-        // 等待所有任务完成并收集结果
         return futures.stream()
                 .map(CompletableFuture::join)
                 .collect(Collectors.toList());
@@ -270,26 +354,29 @@ public class MCPServiceOrchestrator implements MCPService {
         }
 
         StringBuilder sb = new StringBuilder();
-
         if (!successResults.isEmpty()) {
             for (String result : successResults) {
                 sb.append(result).append("\n\n");
             }
         }
-
         if (!errorResults.isEmpty()) {
             sb.append("【部分查询失败】\n");
             for (String error : errorResults) {
                 sb.append("- ").append(error).append("\n");
             }
         }
-
         return sb.toString().trim();
     }
 
     private void prepareRequest(MCPRequest request) {
         if (request.getParameters() == null) {
             request.setParameters(new LinkedHashMap<>());
+        }
+        if (request.getRequestSource() == null) {
+            request.setRequestSource(MCPRequestSource.DIRECT);
+        }
+        if (StrUtil.isBlank(request.getUserId())) {
+            request.setUserId(UserContext.getUserId());
         }
         if (StrUtil.isBlank(request.getRequestId())) {
             request.setRequestId(IdUtil.getSnowflakeNextIdStr());
@@ -375,13 +462,23 @@ public class MCPServiceOrchestrator implements MCPService {
     }
 
     private MCPResponse invokeWithTimeout(MCPToolExecutor executor, MCPRequest request, MCPTool tool) throws Exception {
-        CompletableFuture<MCPResponse> future = CompletableFuture.supplyAsync(() -> executor.execute(request));
+        CompletableFuture<MCPResponse> future = CompletableFuture.supplyAsync(
+                () -> executor.execute(request),
+                mcpExecutionThreadPoolExecutor
+        );
         try {
-            return future.get(Math.max(1, tool.getTimeoutSeconds()), TimeUnit.SECONDS);
+            return future.get(resolveTimeoutSeconds(tool), TimeUnit.SECONDS);
         } catch (TimeoutException e) {
             future.cancel(true);
             throw e;
         }
+    }
+
+    private int resolveTimeoutSeconds(MCPTool tool) {
+        if (tool == null || tool.getTimeoutSeconds() <= 0) {
+            return Math.max(1, properties.getDefaultTimeoutSeconds());
+        }
+        return tool.getTimeoutSeconds();
     }
 
     private void normalizeResponse(String toolId, MCPResponse response) {
@@ -392,13 +489,18 @@ public class MCPServiceOrchestrator implements MCPService {
             response.setToolId(toolId);
         }
         if (!response.isSuccess()) {
-            response.setErrorType(resolveErrorType(response.getErrorCode(), response.getErrorType()));
-            response.setRetryable(response.isRetryable() || isRetryableResponse(response));
+            response.setErrorType(errorClassifier.resolveErrorType(response.getErrorCode(), response.getErrorType()));
+            response.setRetryable(response.isRetryable() || errorClassifier.isRetryable(response));
             enrichErrorResponse(response);
         }
     }
 
-    private MCPResponse finalizeResponse(MCPRequest request, long startTime, MCPResponse response) {
+    private MCPResponse finalizeAndRecord(MCPRequest request,
+                                          MCPTool tool,
+                                          long startTime,
+                                          MCPResponse response,
+                                          int attemptCount,
+                                          int retryCount) {
         MCPResponse finalResponse = response == null
                 ? MCPResponse.error(request.getToolId(), "EMPTY_RESPONSE", "工具未返回有效结果", MCPResponse.ErrorType.EXECUTION, false)
                 : response;
@@ -406,54 +508,79 @@ public class MCPServiceOrchestrator implements MCPService {
             enrichErrorResponse(finalResponse);
         }
         finalResponse.setCostMs(System.currentTimeMillis() - startTime);
+        metricsRecorder.recordCall(request, finalResponse);
+        auditRecorder.record(request, tool, finalResponse, startTime, attemptCount, retryCount,
+                healthStore.currentState(request == null ? null : request.getToolId()));
         return finalResponse;
     }
 
-    private boolean isRetryableResponse(MCPResponse response) {
-        if (response == null) {
-            return false;
+    private MCPResponse resolveFallbackIfNeeded(MCPRequest request, MCPTool tool, MCPResponse response) {
+        if (tool == null || response == null || tool.getOperationType() == MCPTool.OperationType.WRITE) {
+            return response;
         }
-        if (response.getErrorType() == MCPResponse.ErrorType.TIMEOUT || response.getErrorType() == MCPResponse.ErrorType.TRANSIENT) {
-            return true;
+        if (!response.isRetryable() && !"CIRCUIT_OPEN".equalsIgnoreCase(response.getErrorCode())) {
+            return response;
         }
-        String errorCode = StrUtil.blankToDefault(response.getErrorCode(), "").toUpperCase();
-        return errorCode.contains("TIMEOUT")
-                || errorCode.contains("429")
-                || errorCode.contains("503")
-                || errorCode.contains("TRANSIENT")
-                || errorCode.contains("EXTENSION_NOT_CONNECTED")
-                || errorCode.contains("BRIDGE")
-                || errorCode.contains("PROCESS_ERROR");
+        return fallbackResolver.resolve(request, tool, response);
     }
 
-    private MCPResponse.ErrorType resolveErrorType(String errorCode, MCPResponse.ErrorType fallbackType) {
-        if (fallbackType != null) {
-            return fallbackType;
+    private void recordCircuitSuccess(String toolId) {
+        String beforeState = healthStore.currentState(toolId);
+        healthStore.markSuccess(toolId);
+        syncCircuitMetrics(toolId, beforeState);
+    }
+
+    private void recordCircuitFailure(String toolId) {
+        String beforeState = healthStore.currentState(toolId);
+        healthStore.markFailure(toolId);
+        syncCircuitMetrics(toolId, beforeState);
+    }
+
+    private void recordCircuitNeutral(String toolId) {
+        String beforeState = healthStore.currentState(toolId);
+        healthStore.markNeutral(toolId);
+        syncCircuitMetrics(toolId, beforeState);
+    }
+
+    private void syncCircuitMetrics(String toolId, String beforeState) {
+        String afterState = healthStore.currentState(toolId);
+        if (!Objects.equals(beforeState, afterState)) {
+            metricsRecorder.recordCircuitTransition(toolId, afterState);
+        } else {
+            metricsRecorder.syncCircuitState(toolId, afterState);
         }
-        String normalized = StrUtil.blankToDefault(errorCode, "").toUpperCase();
-        if (normalized.contains("MISSING_PARAM") || normalized.contains("INVALID") || normalized.contains("PATTERN")) {
-            return MCPResponse.ErrorType.VALIDATION;
+    }
+
+    private boolean pauseBeforeRetry(int retryCount) {
+        long initialDelay = Math.max(1L, properties.getRetry().getInitialDelayMs());
+        long maxDelay = Math.max(initialDelay, properties.getRetry().getMaxDelayMs());
+        int exponent = Math.min(Math.max(0, retryCount - 1), 30);
+        long delayMs = Math.min(initialDelay * (1L << exponent), maxDelay);
+        try {
+            TimeUnit.MILLISECONDS.sleep(delayMs);
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
         }
-        if (normalized.contains("USER_ID") || normalized.contains("CONFIRM")) {
-            return MCPResponse.ErrorType.PERMISSION;
-        }
-        if (normalized.contains("SECURITY") || normalized.contains("PATH")) {
-            return MCPResponse.ErrorType.SECURITY;
-        }
-        if (normalized.contains("TIMEOUT")) {
-            return MCPResponse.ErrorType.TIMEOUT;
-        }
-        if (normalized.contains("429")
-                || normalized.contains("503")
-                || normalized.contains("TRANSIENT")
-                || normalized.contains("BRIDGE")
-                || normalized.contains("PROCESS")) {
-            return MCPResponse.ErrorType.TRANSIENT;
-        }
-        if (normalized.contains("CONFLICT")) {
-            return MCPResponse.ErrorType.BUSINESS;
-        }
-        return MCPResponse.ErrorType.EXECUTION;
+    }
+
+    private MCPResponse buildExecutionExceptionResponse(String toolId, Exception exception) {
+        MCPResponse.ErrorType errorType = errorClassifier.resolveExceptionType(exception);
+        String errorCode = switch (errorType) {
+            case SECURITY -> "SECURITY_VIOLATION";
+            case VALIDATION -> "INVALID_REQUEST";
+            default -> "PROCESS_ERROR";
+        };
+        MCPResponse response = MCPResponse.error(
+                toolId,
+                errorCode,
+                "工具调用异常: " + StrUtil.blankToDefault(exception.getMessage(), exception.getClass().getSimpleName()),
+                errorType,
+                false
+        );
+        response.setRetryable(errorClassifier.isRetryable(response));
+        return response;
     }
 
     private void enrichErrorResponse(MCPResponse response) {
@@ -615,8 +742,7 @@ public class MCPServiceOrchestrator implements MCPService {
                                               String paramName,
                                               MCPTool.ParameterDef def,
                                               Object actualValue) {
-        String hint = "请将参数 " + paramName + " 设置为以下值之一："
-                + String.join("、", def.getEnumValues()) + "。";
+        String hint = "请将参数 " + paramName + " 设置为以下值之一：" + String.join("、", def.getEnumValues()) + "。";
         return buildErrorResponse(
                 tool.getToolId(),
                 "INVALID_PARAM_ENUM",
@@ -703,57 +829,26 @@ public class MCPServiceOrchestrator implements MCPService {
                 .build();
     }
 
-    private MCPResponse.ErrorType resolveExceptionType(Exception exception) {
-        if (exception instanceof TimeoutException) {
-            return MCPResponse.ErrorType.TIMEOUT;
+    private static final class EmptyObjectProvider<T> implements ObjectProvider<T> {
+
+        @Override
+        public T getObject(Object... args) {
+            return null;
         }
-        if (exception instanceof IllegalArgumentException || exception instanceof IllegalStateException) {
-            return MCPResponse.ErrorType.VALIDATION;
+
+        @Override
+        public T getIfAvailable() {
+            return null;
         }
-        if (exception instanceof SecurityException) {
-            return MCPResponse.ErrorType.SECURITY;
+
+        @Override
+        public T getIfUnique() {
+            return null;
         }
-        return MCPResponse.ErrorType.EXECUTION;
-    }
 
-    private boolean isCircuitOpen(String toolId) {
-        CircuitBreakerState state = circuitStates.get(toolId);
-        return state != null && state.isOpen();
-    }
-
-    private void resetCircuit(String toolId) {
-        circuitStates.remove(toolId);
-    }
-
-    private void recordFailure(String toolId, boolean transientFailure) {
-        if (!transientFailure) {
-            circuitStates.remove(toolId);
-            return;
-        }
-        circuitStates.compute(toolId, (key, state) -> {
-            CircuitBreakerState next = state == null ? new CircuitBreakerState() : state;
-            next.failureCount++;
-            if (next.failureCount >= CIRCUIT_FAILURE_THRESHOLD) {
-                next.openUntilEpochMs = System.currentTimeMillis() + CIRCUIT_OPEN_MILLIS;
-            }
-            return next;
-        });
-    }
-
-    private static final class CircuitBreakerState {
-        private int failureCount;
-        private long openUntilEpochMs;
-
-        private boolean isOpen() {
-            if (openUntilEpochMs <= 0L) {
-                return false;
-            }
-            if (System.currentTimeMillis() >= openUntilEpochMs) {
-                failureCount = 0;
-                openUntilEpochMs = 0L;
-                return false;
-            }
-            return true;
+        @Override
+        public T getObject() {
+            return null;
         }
     }
 }

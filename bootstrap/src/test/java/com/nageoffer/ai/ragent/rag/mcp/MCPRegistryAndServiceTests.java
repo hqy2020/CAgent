@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.rag.mcp;
 
 import com.nageoffer.ai.ragent.rag.core.mcp.DefaultMCPToolRegistry;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPRequest;
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPRequestSource;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPResponse;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPServiceOrchestrator;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -366,5 +368,60 @@ class MCPRegistryAndServiceTests {
         assertEquals("PARAM_PATTERN_MISMATCH", response.getErrorCode());
         assertEquals("INVALID_PARAMETER", response.getStandardErrorCode());
         assertEquals("^\\d{4}-\\d{2}-\\d{2}$", response.getErrorDetails().get("pattern"));
+    }
+
+    @Test
+    void testServiceShouldFillDefaultRequestSourceAndTraceIdentifiers() {
+        MCPToolExecutor exec = createExecutor("web_news_search", "Web Search");
+        DefaultMCPToolRegistry registry = new DefaultMCPToolRegistry(List.of(exec));
+        registry.init();
+        MCPServiceOrchestrator service = new MCPServiceOrchestrator(registry, Runnable::run);
+
+        MCPRequest request = MCPRequest.builder().toolId("web_news_search").build();
+        MCPResponse response = service.execute(request);
+
+        assertTrue(response.isSuccess());
+        assertEquals(MCPRequestSource.DIRECT, request.getRequestSource());
+        assertNotNull(request.getRequestId());
+        assertNotNull(request.getTraceId());
+        assertNotNull(request.getIdempotencyKey());
+    }
+
+    @Test
+    void testRetrievalSourceShouldBlockWriteToolExecution() {
+        AtomicInteger executionCount = new AtomicInteger();
+        MCPToolExecutor exec = new MCPToolExecutor() {
+            @Override
+            public MCPTool getToolDefinition() {
+                return MCPTool.builder()
+                        .toolId("obsidian_update")
+                        .name("Update Note")
+                        .description("update")
+                        .operationType(MCPTool.OperationType.WRITE)
+                        .confirmationRequired(true)
+                        .requireUserId(false)
+                        .build();
+            }
+
+            @Override
+            public MCPResponse execute(MCPRequest request) {
+                executionCount.incrementAndGet();
+                return MCPResponse.success("obsidian_update", "updated");
+            }
+        };
+
+        DefaultMCPToolRegistry registry = new DefaultMCPToolRegistry(List.of(exec));
+        registry.init();
+        MCPServiceOrchestrator service = new MCPServiceOrchestrator(registry, Runnable::run);
+
+        MCPResponse response = service.execute(MCPRequest.builder()
+                .toolId("obsidian_update")
+                .requestSource(MCPRequestSource.RETRIEVAL)
+                .confirmed(true)
+                .build());
+
+        assertFalse(response.isSuccess());
+        assertEquals("RETRIEVAL_WRITE_BLOCKED", response.getErrorCode());
+        assertEquals(0, executionCount.get());
     }
 }

@@ -23,6 +23,7 @@ import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPExecute;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPParam;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPToolDeclare;
+import com.nageoffer.ai.ragent.rag.core.mcp.governance.MCPErrorClassifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -43,7 +44,8 @@ import java.util.List;
         useWhen = "当用户明确要求删除某篇草稿、测试笔记或指定路径笔记时使用。",
         avoidWhen = "不要用于更新笔记内容、替换文本、读取笔记或仅列出目录。",
         examples = {"删除草稿笔记", "把 temp 笔记删掉", "永久删除 test 笔记"},
-        requireUserId = false,
+        requireUserId = true,
+        operationType = MCPTool.OperationType.WRITE,
         confirmationRequired = true,
         timeoutSeconds = 15,
         sensitivity = MCPTool.Sensitivity.HIGH,
@@ -60,6 +62,7 @@ import java.util.List;
 public class ObsidianDeleteNoteTool {
 
     private final ObsidianCliExecutor cliExecutor;
+    private final MCPErrorClassifier errorClassifier;
 
     @MCPExecute
     public MCPResponse handle(MCPRequest request) {
@@ -84,10 +87,10 @@ public class ObsidianDeleteNoteTool {
 
         ObsidianCliExecutor.CliResult result = cliExecutor.execute("delete", args);
         if (result == null) {
-            return MCPResponse.error("obsidian_delete", "CLI_ERROR", "Obsidian 删除执行器未返回结果");
+            return MCPResponse.error("obsidian_delete", "EXECUTION_ERROR", "Obsidian 删除执行器未返回结果");
         }
         if (!result.isSuccess()) {
-            return MCPResponse.error("obsidian_delete", "CLI_ERROR", result.stderr());
+            return errorClassifier.classifyCliFailure("obsidian_delete", result.stderr());
         }
         MCPResponse response = MCPResponse.success("obsidian_delete", "笔记已删除。\n" + result.stdout());
         response.setFallbackUsed(result.stdout().contains("[fallback]"));

@@ -32,12 +32,37 @@ spring:
       port: 6379
       password: 123456
 
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS:true}
+
 milvus:
   uri: http://localhost:19530
   connect-timeout-ms: 3000
   rpc-deadline-ms: 8000
 
 rag:
+  mcp:
+    execution:
+      default-timeout-seconds: 15
+      default-fallback-cache-ttl-seconds: 300
+      audit-payload-max-chars: 2000
+      retry:
+        initial-delay-ms: 1000
+        max-delay-ms: 4000
+      circuit-breaker:
+        failure-threshold: 3
+        open-duration-ms: 45000
+        max-open-duration-ms: 300000
+
   chat:
     kb-temperature: 0.3
     kb-top-p: 0.85
@@ -108,6 +133,31 @@ rag:
         score-threshold: 0.3
         min-content-length: 10
 
+  hotspot:
+    enabled: true
+    timeout-seconds: 12
+    max-results-per-source: 8
+    monitor-enabled: true
+    scan-delay-ms: 10000
+    scan-batch-size: 10
+    lock-seconds: 300
+    monitor-result-limit: 12
+    report-analyze-enabled: true
+    analysis-top-n: 8
+    analysis-enabled: true
+    websocket-enabled: true
+    twitter-api-key: ${TWITTER_API_KEY:}
+    default-sources:
+      - twitter
+      - bing
+      - hackernews
+      - sogou
+      - bilibili
+      - weibo
+      - baidu
+      - duckduckgo
+      - reddit
+
   intent:
     bootstrap:
       enabled: true
@@ -124,6 +174,33 @@ rag:
     max-steps-per-loop: 6
     low-confidence-threshold: 0.55
     confirmation-ttl-minutes: 30
+
+  external-mcp:
+    bridge-script-path: scripts/mcp-bridge/call.mjs
+    bridge-working-dir: scripts/mcp-bridge
+    auto-install-bridge-deps: true
+    bridge-install-timeout-seconds: 120
+    obsidian:
+      enabled: true
+      mode: external-first
+      command: uvx
+      args:
+        - mcp-obsidian
+      env:
+        OBSIDIAN_API_KEY: ${OBSIDIAN_API_KEY:}
+        OBSIDIAN_HOST: ${OBSIDIAN_HOST:127.0.0.1}
+        OBSIDIAN_PORT: ${OBSIDIAN_PORT:27124}
+      timeout-seconds: 30
+    browsermcp:
+      enabled: true
+      mode: external-first
+      command: npx
+      args:
+        - -y
+        - '@browsermcp/mcp'
+      env: {}
+      timeout-seconds: 30
+      fallback-policy: llm
 
   knowledge-graph:
     enabled: false
@@ -275,3 +352,12 @@ sa-token:
   token-style: simple-uuid
   is-log: false
   is-print: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: never

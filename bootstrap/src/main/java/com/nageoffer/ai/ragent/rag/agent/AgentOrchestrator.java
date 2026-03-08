@@ -40,6 +40,7 @@ import com.nageoffer.ai.ragent.rag.core.intent.IntentResolver;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPParameterExtractor;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPRequest;
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPRequestSource;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPResponse;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPService;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
@@ -50,6 +51,7 @@ import com.nageoffer.ai.ragent.rag.core.rewrite.QueryRewriteService;
 import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
 import com.nageoffer.ai.ragent.rag.exception.TaskCancelledException;
 import com.nageoffer.ai.ragent.rag.dto.AgentConfirmPayload;
+import com.nageoffer.ai.ragent.rag.dto.AgentObservePayload;
 import com.nageoffer.ai.ragent.rag.dto.AgentPlanPayload;
 import com.nageoffer.ai.ragent.rag.dto.AgentReplanPayload;
 import com.nageoffer.ai.ragent.rag.dto.AgentStepPayload;
@@ -58,6 +60,7 @@ import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import com.nageoffer.ai.ragent.rag.enums.IntentKind;
 import com.nageoffer.ai.ragent.rag.enums.SSEEventType;
+import com.nageoffer.ai.ragent.rag.util.NoteWriteIntentHelper;
 import lombok.Builder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -65,64 +68,61 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.DEFAULT_TOP_K;
 
 /**
- * Agent 编排器（Planner -> Executor -> Replan）
+ * Agent 编排器（ReAct: Observe -> Reason -> Act）
  */
 @Slf4j
 @Component
 public class AgentOrchestrator {
 
     private static final double MCP_EXECUTION_MIN_INTENT_SCORE = 0.60D;
-
-    private static final Set<String> WRITE_TOOL_IDS = Set.of(
-            "obsidian_create",
-            "obsidian_update",
-            "obsidian_replace",
-            "obsidian_delete",
-            "obsidian_video_transcript"
+    private static final Pattern DATE_TIME_LOOKUP_HINT = Pattern.compile(
+            "(今天几号|今天星期几|今天周几|现在几点|当前时间|当前日期|几号|星期几|周几|日期|时间|date|time|day)",
+            Pattern.CASE_INSENSITIVE
     );
+    private static final Pattern NOTE_TITLE_PATTERN = Pattern.compile("《([^》]+)》");
 
-    private static final String PLANNER_SYSTEM_PROMPT = """
-            你是一个任务规划器。请基于用户问题输出严格 JSON：
-            {
-              "goal":"目标",
-              "steps":[
-                {"type":"KB_RETRIEVE|GRAPH_QUERY|MCP_CALL|SYNTHESIZE","instruction":"步骤说明","query":"检索/工具查询词","toolId":"可选工具ID","params":{}}
-              ]
-            }
-            规则：
-            1) steps 不超过 6 步；
-            2) 必须至少包含 1 个可执行步骤；
-            3) KB_RETRIEVE：知识库向量检索，适合语义相似性匹配；
-            4) GRAPH_QUERY：知识图谱查询，适合实体关系推断、多跳关联查询；
-            5) MCP_CALL：调用外部工具；
-            6) SYNTHESIZE：汇总已有证据；
-            7) JSON 之外不要输出额外文本。
-            """;
+    private static final int MAX_OBSERVATION_ITEMS = 5;
+    private static final int MAX_RECENT_ACTIONS = 6;
+    private static final int MAX_REASONING_DETAIL_CHARS = 420;
 
-    private static final String REFLECTOR_SYSTEM_PROMPT = """
-            你是一个任务反思器。请输出严格 JSON：
+    private static final String REASONER_SYSTEM_PROMPT = """
+            你是一个按照 ReAct（Observe -> Reason -> Act）循环工作的任务型 Agent。
+            你必须先阅读 observations 和 recentActions，再决定下一步行动。
+            请输出严格 JSON：
             {
+              "goal":"当前阶段目标",
+              "thought":"基于 observation 的判断",
               "done": true/false,
-              "reason": "判断原因",
-              "nextSteps":[
-                {"type":"KB_RETRIEVE|GRAPH_QUERY|MCP_CALL|SYNTHESIZE","instruction":"步骤说明","query":"查询词","toolId":"可选工具ID","params":{}}
-              ]
+              "finalAnswer":"可选；仅在 done=true 且无需继续 act 时输出",
+              "action":{
+                "type":"KB_RETRIEVE|GRAPH_QUERY|MCP_CALL|SYNTHESIZE|FINAL_ANSWER",
+                "instruction":"下一步动作说明",
+                "query":"检索词或工具输入",
+                "toolId":"可选工具ID",
+                "params":{}
+              }
             }
             规则：
-            1) done=true 表示已可直接回答用户；
-            2) done=false 时给出 nextSteps（不超过 6 步）；
-            3) JSON 之外不要输出额外文本。
+            1) 每次只能选择 1 个 action；
+            2) thought 必须说明是基于哪些 observation 做出的判断；
+            3) 如果 observation 已足够回答用户，done=true，并将 action.type 设为 FINAL_ANSWER；
+            4) 如果用户目标包含“创建/更新/写入/添加/加入/插入/补充/替换/删除笔记”，必须优先选择 MCP_CALL，而不是只给建议；
+            5) 如果最近动作已经失败，优先换策略，避免重复同一个失败动作；
+            6) 如果当前没有证据，优先检索或调用工具，不要空想；
+            7) JSON 之外不要输出额外文本。
             """;
 
     private final LLMService llmService;
@@ -174,84 +174,66 @@ public class AgentOrchestrator {
     public boolean execute(AgentExecuteRequest request) {
         try {
             int maxLoops = Math.max(1, Optional.ofNullable(ragConfigProperties.getAgentMaxLoops()).orElse(3));
-            int maxSteps = Math.max(1, Optional.ofNullable(ragConfigProperties.getAgentMaxStepsPerLoop()).orElse(6));
+            int maxStepsPerLoop = Math.max(1, Optional.ofNullable(ragConfigProperties.getAgentMaxStepsPerLoop()).orElse(6));
+            int maxActions = maxLoops * maxStepsPerLoop;
 
             StringBuilder evidence = new StringBuilder();
-            if (request.firstRoundContext() != null) {
-                appendEvidence(evidence, "first-round", request.firstRoundContext().getKbContext(), request.firstRoundContext().getMcpContext());
-            }
+            List<AgentObservation> observations = new ArrayList<>();
+            List<ActionRecord> actionHistory = new ArrayList<>();
+            seedInitialObservations(request, evidence, observations);
 
-            List<AgentPlanStep> candidateSteps = null;
-            String latestReason = null;
-
-            for (int loop = 1; loop <= maxLoops; loop++) {
+            for (int actionCursor = 1; actionCursor <= maxActions; actionCursor++) {
                 request.token().throwIfCancelled();
+                int loop = ((actionCursor - 1) / maxStepsPerLoop) + 1;
+                int stepIndex = ((actionCursor - 1) % maxStepsPerLoop) + 1;
 
-                AgentPlan plan = (candidateSteps == null || candidateSteps.isEmpty())
-                        ? plan(loop, request.question(), evidence.toString(), latestReason, maxSteps)
-                        : new AgentPlan(request.question(), candidateSteps);
-                plan = trimPlan(plan, maxSteps);
+                sendObservation(request.emitter(), observe(loop, stepIndex, observations));
 
-                sendAgentPlan(request.emitter(), loop, plan);
+                ReasoningDecision decision = reason(
+                        request.question(),
+                        observations,
+                        actionHistory,
+                        maxActions - actionCursor + 1
+                );
+                AgentPlanStep step = normalizeReasoningStep(request.question(), decision, observations, actionHistory);
 
-                List<String> stepSummaries = new ArrayList<>();
-                boolean loopFailed = false;
-
-                for (int idx = 0; idx < plan.steps().size(); idx++) {
-                    request.token().throwIfCancelled();
-                    AgentPlanStep step = plan.steps().get(idx);
-
-                    StepExecutionResult result = null;
-                    Exception lastError = null;
-                    for (int attempt = 1; attempt <= 2; attempt++) {
-                        try {
-                            result = executeStep(step, request, evidence, loop, idx + 1);
-                            break;
-                        } catch (Exception e) {
-                            lastError = e;
-                            log.warn("Agent 步骤执行失败，准备重试。loop={}, step={}, attempt={}", loop, idx + 1, attempt, e);
-                        }
+                if (decision.done() || step == null || "FINAL_ANSWER".equals(normalizeStepType(step.type()))) {
+                    String answer = resolveDoneAnswer(request.question(), evidence.toString(), decision);
+                    if (StrUtil.isBlank(answer)) {
+                        break;
                     }
-
-                    if (result == null && lastError != null) {
-                        result = StepExecutionResult.failed("步骤执行失败：" + lastError.getMessage(), lastError.getMessage());
-                    }
-
-                    if (result == null) {
-                        result = StepExecutionResult.failed("步骤执行失败：未知错误", "unknown");
-                    }
-
-                    sendAgentStep(request.emitter(), loop, idx + 1, step, result);
-                    stepSummaries.add("step-" + (idx + 1) + ": " + result.summary());
-
-                    if (result.confirmRequired()) {
-                        PendingProposal proposal = result.proposal();
-                        sendConfirmRequired(request.emitter(), proposal);
-                        request.callback().onContent("检测到写操作，需要你确认后才会执行。\n"
-                                + "请输入 `/confirm " + proposal.getProposalId() + "` 执行，或 `/reject " + proposal.getProposalId() + "` 取消。");
-                        request.callback().onComplete();
-                        return true;
-                    }
-
-                    if (!result.success()) {
-                        loopFailed = true;
-                    }
-                }
-
-                ReflectionResult reflection = reflect(loop, request.question(), evidence.toString(), stepSummaries, maxSteps);
-                if (reflection.done() && !StrUtil.isBlank(evidence.toString())) {
-                    String answer = synthesizeFinalAnswer(request.question(), evidence.toString(), "任务已完成");
                     request.callback().onContent(answer);
                     request.callback().onComplete();
                     return true;
                 }
 
-                latestReason = reflection.reason();
-                candidateSteps = reflection.nextSteps();
-                sendReplan(request.emitter(), loop, reflection);
+                sendAgentPlan(request.emitter(), loop, stepIndex, new AgentPlan(
+                        StrUtil.blankToDefault(decision.goal(), request.question()),
+                        List.of(step)
+                ));
 
-                if (!loopFailed && (candidateSteps == null || candidateSteps.isEmpty())) {
-                    break;
+                StepExecutionResult result = executeWithRetry(step, request, evidence, loop, stepIndex);
+                sendAgentStep(request.emitter(), loop, stepIndex, step, result);
+
+                AgentObservation newObservation = buildStepObservation(loop, stepIndex, step, result);
+                observations.add(newObservation);
+                actionHistory.add(new ActionRecord(loop, stepIndex, step, result.success(), result.summary(), result.error()));
+
+                if (result.confirmRequired()) {
+                    PendingProposal proposal = result.proposal();
+                    sendConfirmRequired(request.emitter(), proposal);
+                    request.callback().onContent("检测到写操作，需要你确认后才会执行。\n"
+                            + "请输入 `/confirm " + proposal.getProposalId() + "` 执行，或 `/reject " + proposal.getProposalId() + "` 取消。");
+                    request.callback().onComplete();
+                    return true;
+                }
+
+                if (shouldEmitReplan(result, stepIndex, maxStepsPerLoop, actionCursor < maxActions)) {
+                    sendReplan(request.emitter(), loop, new ReflectionResult(
+                            false,
+                            buildReplanReason(step, result),
+                            List.of(step)
+                    ));
                 }
             }
 
@@ -275,6 +257,365 @@ public class AgentOrchestrator {
         }
     }
 
+    private StepExecutionResult executeWithRetry(AgentPlanStep step,
+                                                 AgentExecuteRequest request,
+                                                 StringBuilder evidence,
+                                                 int loop,
+                                                 int stepIndex) {
+        StepExecutionResult result = null;
+        Exception lastError = null;
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                result = executeStep(step, request, evidence, loop, stepIndex);
+                break;
+            } catch (Exception e) {
+                lastError = e;
+                log.warn("Agent 步骤执行失败，准备重试。loop={}, step={}, attempt={}", loop, stepIndex, attempt, e);
+            }
+        }
+        if (result == null && lastError != null) {
+            return StepExecutionResult.failed("步骤执行失败：" + lastError.getMessage(), lastError.getMessage());
+        }
+        return result == null
+                ? StepExecutionResult.failed("步骤执行失败：未知错误", "unknown")
+                : result;
+    }
+
+    private void seedInitialObservations(AgentExecuteRequest request,
+                                         StringBuilder evidence,
+                                         List<AgentObservation> observations) {
+        RetrievalContext firstRoundContext = request.firstRoundContext();
+        if (firstRoundContext == null || firstRoundContext.isEmpty()) {
+            observations.add(new AgentObservation(
+                    1,
+                    0,
+                    "initial",
+                    "EMPTY",
+                    "首轮观察暂无证据，下一步应优先执行检索或工具调用。",
+                    ""
+            ));
+            return;
+        }
+        appendEvidence(evidence, "first-round", firstRoundContext.getKbContext(), firstRoundContext.getMcpContext());
+        if (firstRoundContext.hasKb()) {
+            observations.add(new AgentObservation(
+                    1,
+                    0,
+                    "first-round-kb",
+                    "SUCCESS",
+                    "首轮观察已命中知识库证据。",
+                    firstRoundContext.getKbContext()
+            ));
+        }
+        if (firstRoundContext.hasMcp()) {
+            observations.add(new AgentObservation(
+                    1,
+                    0,
+                    "first-round-mcp",
+                    "SUCCESS",
+                    "首轮观察已获得工具上下文。",
+                    firstRoundContext.getMcpContext()
+            ));
+        }
+    }
+
+    private AgentObservePayload observe(int loop, int stepIndex, List<AgentObservation> observations) {
+        List<AgentObservation> recent = observations.stream()
+                .sorted(Comparator.comparingInt(AgentObservation::loop)
+                        .thenComparingInt(AgentObservation::stepIndex))
+                .skip(Math.max(0, observations.size() - MAX_OBSERVATION_ITEMS))
+                .toList();
+        List<AgentObservePayload.ObservationItem> items = recent.stream()
+                .map(each -> new AgentObservePayload.ObservationItem(each.source(), each.status(), each.summary()))
+                .toList();
+        String summary;
+        if (items.isEmpty()) {
+            summary = "当前暂无 observation，优先补证据。";
+        } else {
+            summary = recent.get(recent.size() - 1).summary();
+        }
+        return new AgentObservePayload(loop, stepIndex, summary, items);
+    }
+
+    @RagTraceNode(name = "agent-reason", type = "AGENT_PLAN")
+    protected ReasoningDecision reason(String question,
+                                       List<AgentObservation> observations,
+                                       List<ActionRecord> actionHistory,
+                                       int remainingSteps) {
+        String userPrompt = """
+                用户问题：
+                %s
+
+                observations：
+                %s
+
+                recentActions：
+                %s
+
+                剩余行动预算：%s
+                """.formatted(
+                question,
+                renderObservations(observations),
+                renderActionHistory(actionHistory),
+                remainingSteps
+        );
+
+        String raw = llmService.chat(ChatRequest.builder()
+                .messages(List.of(
+                        ChatMessage.system(REASONER_SYSTEM_PROMPT),
+                        ChatMessage.user(userPrompt)
+                ))
+                .thinking(true)
+                .temperature(0.1D)
+                .topP(0.8D)
+                .maxTokens(1024)
+                .build());
+        String cleaned = LLMResponseCleaner.stripMarkdownCodeFence(raw);
+        try {
+            JsonNode root = objectMapper.readTree(cleaned);
+            String goal = root.path("goal").asText(question);
+            String thought = root.path("thought").asText("基于当前 observation 决定下一步动作。");
+            boolean done = root.path("done").asBoolean(false);
+            String finalAnswer = root.path("finalAnswer").asText(null);
+            JsonNode actionNode = root.path("action");
+            AgentPlanStep action = actionNode.isMissingNode() || actionNode.isNull()
+                    ? null
+                    : parseAction(actionNode, question);
+            return new ReasoningDecision(goal, thought, done, finalAnswer, action);
+        } catch (Exception e) {
+            return fallbackReasoning(question, observations, actionHistory);
+        }
+    }
+
+    private ReasoningDecision fallbackReasoning(String question,
+                                                List<AgentObservation> observations,
+                                                List<ActionRecord> actionHistory) {
+        boolean hasEvidence = observations.stream()
+                .anyMatch(each -> "SUCCESS".equals(each.status()) && StrUtil.isNotBlank(each.detail()));
+        boolean hasWriteAction = actionHistory.stream()
+                .map(ActionRecord::step)
+                .filter(step -> step != null && StrUtil.isNotBlank(step.toolId()))
+                .map(AgentPlanStep::toolId)
+                .anyMatch(this::isWriteTool);
+        if (isLikelyNoteWriteQuestion(question) && !hasWriteAction) {
+            return new ReasoningDecision(
+                    question,
+                    "问题包含明确写入意图，优先准备写工具调用。",
+                    false,
+                    null,
+                    new AgentPlanStep("MCP_CALL", "准备 Obsidian 写操作并等待用户确认", question, suggestWriteToolId(question), Map.of())
+            );
+        }
+        if (hasEvidence && !actionHistory.isEmpty()
+                && "SYNTHESIZE".equals(normalizeStepType(actionHistory.get(actionHistory.size() - 1).step().type()))
+                && actionHistory.get(actionHistory.size() - 1).success()) {
+            return new ReasoningDecision(question, "汇总动作已完成，可直接输出最终回答。", true, null, null);
+        }
+        if (hasEvidence) {
+            return new ReasoningDecision(
+                    question,
+                    "已有 observation 可支撑回答，降级直接汇总。",
+                    false,
+                    null,
+                    new AgentPlanStep("SYNTHESIZE", "汇总当前 observation 并生成回答草稿", question, null, Map.of())
+            );
+        }
+        if (!actionHistory.isEmpty() && !actionHistory.get(actionHistory.size() - 1).success()) {
+            return new ReasoningDecision(question, "最近动作失败，先停止循环并回退。", true, null, null);
+        }
+        return new ReasoningDecision(
+                question,
+                "暂无足够 observation，默认补一次知识库检索。",
+                false,
+                null,
+                new AgentPlanStep("KB_RETRIEVE", "补充知识库检索", question, null, Map.of())
+        );
+    }
+
+    private AgentPlanStep parseAction(JsonNode node, String fallbackQuery) {
+        String type = normalizeStepType(node.path("type").asText("KB_RETRIEVE"));
+        String instruction = node.path("instruction").asText("执行步骤");
+        String query = node.path("query").asText(fallbackQuery);
+        String toolId = node.path("toolId").asText(null);
+        Map<String, Object> params = new LinkedHashMap<>();
+        JsonNode paramsNode = node.path("params");
+        if (paramsNode.isObject()) {
+            paramsNode.fields().forEachRemaining(entry -> params.put(entry.getKey(), parseJsonNode(entry.getValue())));
+        }
+        return new AgentPlanStep(type, instruction, query, toolId, params);
+    }
+
+    private AgentPlanStep normalizeReasoningStep(String question,
+                                                 ReasoningDecision decision,
+                                                 List<AgentObservation> observations,
+                                                 List<ActionRecord> actionHistory) {
+        AgentPlanStep action = decision.action();
+        if (action == null) {
+            return fallbackReasoning(question, observations, actionHistory).action();
+        }
+        String normalizedType = normalizeStepType(action.type());
+        if (shouldForceWriteAction(question, normalizedType, actionHistory)) {
+            return new AgentPlanStep(
+                    "MCP_CALL",
+                    "已有汇总结果，进入写操作确认",
+                    question,
+                    resolveCompatibleToolId(question, null, actionHistory),
+                    Map.of()
+            );
+        }
+        if (shouldForceFinalAnswer(question, normalizedType, actionHistory)) {
+            return new AgentPlanStep(
+                    "FINAL_ANSWER",
+                    "已有汇总结果，直接输出最终回答",
+                    question,
+                    null,
+                    Map.of()
+            );
+        }
+        if ("FINAL_ANSWER".equals(normalizedType)) {
+            return action;
+        }
+        if ("MCP_CALL".equals(normalizedType)) {
+            return new AgentPlanStep(
+                    action.type(),
+                    action.instruction(),
+                    action.query(),
+                    resolveCompatibleToolId(question, action.toolId(), actionHistory),
+                    action.params()
+            );
+        }
+        return new AgentPlanStep(normalizedType, action.instruction(), action.query(), action.toolId(), action.params());
+    }
+
+    private boolean shouldForceWriteAction(String question,
+                                           String normalizedType,
+                                           List<ActionRecord> actionHistory) {
+        if (!isLikelyNoteWriteQuestion(question) || CollUtil.isEmpty(actionHistory) || "MCP_CALL".equals(normalizedType)) {
+            return false;
+        }
+        ActionRecord latest = actionHistory.get(actionHistory.size() - 1);
+        return latest.success()
+                && latest.step() != null
+                && "SYNTHESIZE".equals(normalizeStepType(latest.step().type()));
+    }
+
+    private boolean shouldForceFinalAnswer(String question,
+                                           String normalizedType,
+                                           List<ActionRecord> actionHistory) {
+        if (CollUtil.isEmpty(actionHistory) || isLikelyNoteWriteQuestion(question)) {
+            return false;
+        }
+        ActionRecord latest = actionHistory.get(actionHistory.size() - 1);
+        if (!latest.success() || latest.step() == null) {
+            return false;
+        }
+        if (!"SYNTHESIZE".equals(normalizeStepType(latest.step().type()))
+                || "FINAL_ANSWER".equals(normalizedType)) {
+            return false;
+        }
+        return true;
+    }
+
+    private String resolveCompatibleToolId(String question,
+                                           String candidateToolId,
+                                           List<ActionRecord> actionHistory) {
+        String normalizedToolId = StrUtil.trim(candidateToolId);
+        if (StrUtil.isNotBlank(normalizedToolId)
+                && mcpToolRegistry.getExecutor(normalizedToolId).isPresent()) {
+            return normalizedToolId;
+        }
+        if (isLikelyNoteWriteQuestion(question)) {
+            return suggestWriteToolId(question);
+        }
+        String latestToolId = resolveLatestToolId(actionHistory);
+        if (StrUtil.isNotBlank(latestToolId) && mcpToolRegistry.getExecutor(latestToolId).isPresent()) {
+            return latestToolId;
+        }
+        return normalizedToolId;
+    }
+
+    private String resolveDoneAnswer(String question, String evidence, ReasoningDecision decision) {
+        if (StrUtil.isNotBlank(evidence)) {
+            return synthesizeFinalAnswer(
+                    question,
+                    evidence,
+                    StrUtil.blankToDefault(decision.thought(), "基于 observation 判断已可完成回答。")
+            );
+        }
+        if (StrUtil.isNotBlank(decision.finalAnswer())) {
+            return decision.finalAnswer();
+        }
+        return null;
+    }
+
+    private boolean shouldEmitReplan(StepExecutionResult result,
+                                     int stepIndex,
+                                     int maxStepsPerLoop,
+                                     boolean hasMoreBudget) {
+        if (!hasMoreBudget) {
+            return false;
+        }
+        return !result.success() || stepIndex >= maxStepsPerLoop;
+    }
+
+    private String buildReplanReason(AgentPlanStep step, StepExecutionResult result) {
+        if (result.success()) {
+            return "已完成动作 " + normalizeStepType(step.type()) + "，继续依据新的 observation 判断下一步。";
+        }
+        return "动作 " + normalizeStepType(step.type()) + " 执行未达预期，需要根据失败 observation 调整策略。";
+    }
+
+    private String renderObservations(List<AgentObservation> observations) {
+        if (CollUtil.isEmpty(observations)) {
+            return "无 observation";
+        }
+        return observations.stream()
+                .sorted(Comparator.comparingInt(AgentObservation::loop)
+                        .thenComparingInt(AgentObservation::stepIndex))
+                .skip(Math.max(0, observations.size() - MAX_OBSERVATION_ITEMS))
+                .map(each -> "[%s][%s] %s | detail=%s".formatted(
+                        each.source(),
+                        each.status(),
+                        each.summary(),
+                        clip(each.detail(), MAX_REASONING_DETAIL_CHARS)
+                ))
+                .collect(Collectors.joining("\n"));
+    }
+
+    private String renderActionHistory(List<ActionRecord> actionHistory) {
+        if (CollUtil.isEmpty(actionHistory)) {
+            return "无 recentActions";
+        }
+        return actionHistory.stream()
+                .skip(Math.max(0, actionHistory.size() - MAX_RECENT_ACTIONS))
+                .map(each -> "loop=%s step=%s type=%s status=%s summary=%s".formatted(
+                        each.loop(),
+                        each.stepIndex(),
+                        normalizeStepType(each.step().type()),
+                        each.success() ? "SUCCESS" : "FAILED",
+                        clip(StrUtil.blankToDefault(each.summary(), each.error()), 160)
+                ))
+                .collect(Collectors.joining("\n"));
+    }
+
+    private AgentObservation buildStepObservation(int loop,
+                                                 int stepIndex,
+                                                 AgentPlanStep step,
+                                                 StepExecutionResult result) {
+        String status;
+        if (result.confirmRequired()) {
+            status = "CONFIRM_REQUIRED";
+        } else if (result.success()) {
+            status = "SUCCESS";
+        } else {
+            status = "FAILED";
+        }
+        String detail = result.confirmRequired()
+                ? StrUtil.blankToDefault(result.proposalSummary(), result.summary())
+                : StrUtil.blankToDefault(result.observationDetail(), result.error());
+        return new AgentObservation(loop, stepIndex, normalizeStepType(step.type()), status, result.summary(), detail);
+    }
+
     @RagTraceNode(name = "agent-step", type = "AGENT_STEP")
     protected StepExecutionResult executeStep(AgentPlanStep step,
                                               AgentExecuteRequest request,
@@ -289,121 +630,6 @@ public class AgentOrchestrator {
             case "SYNTHESIZE" -> executeSynthesize(step, request, evidence);
             default -> StepExecutionResult.failed("不支持的步骤类型：" + type, "unsupported-step-type");
         };
-    }
-
-    @RagTraceNode(name = "agent-replan", type = "AGENT_REPLAN")
-    protected ReflectionResult reflect(int loop,
-                                       String question,
-                                       String evidence,
-                                       List<String> stepSummaries,
-                                       int maxSteps) {
-        String userPrompt = """
-                用户问题：
-                %s
-
-                当前证据：
-                %s
-
-                本轮执行摘要：
-                %s
-                """.formatted(question, safeText(evidence), String.join("\n", stepSummaries));
-        String raw = llmService.chat(ChatRequest.builder()
-                .messages(List.of(
-                        ChatMessage.system(REFLECTOR_SYSTEM_PROMPT),
-                        ChatMessage.user(userPrompt)
-                ))
-                .thinking(true)
-                .temperature(0.1D)
-                .topP(0.8D)
-                .maxTokens(1024)
-                .build());
-        String cleaned = LLMResponseCleaner.stripMarkdownCodeFence(raw);
-        try {
-            JsonNode root = objectMapper.readTree(cleaned);
-            boolean done = root.path("done").asBoolean(false);
-            String reason = root.path("reason").asText(done ? "已可回答" : "需要补充信息");
-            List<AgentPlanStep> next = parseSteps(root.path("nextSteps"), maxSteps, question);
-            return new ReflectionResult(done, reason, next);
-        } catch (Exception e) {
-            boolean done = StrUtil.length(evidence) > 180;
-            String reason = done ? "反思解析失败，按现有证据结束" : "反思解析失败，尝试补充一次 KB 检索";
-            List<AgentPlanStep> next = done ? List.of() : List.of(new AgentPlanStep("KB_RETRIEVE", "补充检索证据", question, null, Map.of()));
-            return new ReflectionResult(done, reason, next);
-        }
-    }
-
-    private AgentPlan plan(int loop, String question, String evidence, String reason, int maxSteps) {
-        String userPrompt = """
-                用户问题：
-                %s
-
-                已有证据：
-                %s
-
-                上一轮原因：
-                %s
-                """.formatted(question, safeText(evidence), safeText(reason));
-
-        String raw = llmService.chat(ChatRequest.builder()
-                .messages(List.of(
-                        ChatMessage.system(PLANNER_SYSTEM_PROMPT),
-                        ChatMessage.user(userPrompt)
-                ))
-                .thinking(true)
-                .temperature(0.1D)
-                .topP(0.8D)
-                .maxTokens(1024)
-                .build());
-        String cleaned = LLMResponseCleaner.stripMarkdownCodeFence(raw);
-        try {
-            JsonNode root = objectMapper.readTree(cleaned);
-            String goal = root.path("goal").asText(question);
-            List<AgentPlanStep> steps = parseSteps(root.path("steps"), maxSteps, question);
-            if (steps.isEmpty()) {
-                steps = defaultPlan(question);
-            }
-            return new AgentPlan(goal, steps);
-        } catch (Exception e) {
-            return new AgentPlan(question, defaultPlan(question));
-        }
-    }
-
-    private AgentPlan trimPlan(AgentPlan plan, int maxSteps) {
-        List<AgentPlanStep> steps = plan.steps();
-        if (steps == null || steps.isEmpty()) {
-            return new AgentPlan(plan.goal(), defaultPlan(plan.goal()));
-        }
-        return new AgentPlan(plan.goal(), steps.stream().limit(maxSteps).toList());
-    }
-
-    private List<AgentPlanStep> parseSteps(JsonNode stepsNode, int maxSteps, String fallbackQuery) {
-        if (stepsNode == null || !stepsNode.isArray()) {
-            return List.of();
-        }
-        List<AgentPlanStep> steps = new ArrayList<>();
-        for (JsonNode node : stepsNode) {
-            String type = normalizeStepType(node.path("type").asText("KB_RETRIEVE"));
-            String instruction = node.path("instruction").asText("执行步骤");
-            String query = node.path("query").asText(fallbackQuery);
-            String toolId = node.path("toolId").asText(null);
-            Map<String, Object> params = new LinkedHashMap<>();
-            JsonNode paramsNode = node.path("params");
-            if (paramsNode.isObject()) {
-                paramsNode.fields().forEachRemaining(entry -> params.put(entry.getKey(), parseJsonNode(entry.getValue())));
-            }
-            steps.add(new AgentPlanStep(type, instruction, query, toolId, params));
-            if (steps.size() >= maxSteps) {
-                break;
-            }
-        }
-        return steps;
-    }
-
-    private List<AgentPlanStep> defaultPlan(String query) {
-        return List.of(
-                new AgentPlanStep("KB_RETRIEVE", "补充知识库检索", query, null, Map.of()),
-                new AgentPlanStep("SYNTHESIZE", "汇总并回答用户", query, null, Map.of())
-        );
     }
 
     private StepExecutionResult executeKbRetrieve(AgentPlanStep step,
@@ -425,16 +651,20 @@ public class AgentOrchestrator {
                 ))
                 .filter(each -> CollUtil.isNotEmpty(each.nodeScores()))
                 .toList();
+        List<SubQuestionIntent> retrievalTargets = kbIntents;
+        String successSummary = "KB 检索完成，已获得相关证据";
         if (kbIntents.isEmpty()) {
-            return StepExecutionResult.failed("未识别到可用 KB 意图", "kb-intent-empty");
+            log.info("未识别到可用 KB 意图，KB_RETRIEVE 降级为全局知识检索, query={}", query);
+            retrievalTargets = List.of(new SubQuestionIntent(query, List.of()));
+            successSummary = "未识别到明确 KB 意图，已通过全局知识检索获得相关证据";
         }
-        RetrievalContext context = retrievalEngine.retrieve(kbIntents, DEFAULT_TOP_K, request.token());
-        if (context == null || context.isEmpty()) {
+        RetrievalContext context = retrievalEngine.retrieve(retrievalTargets, DEFAULT_TOP_K, request.token());
+        if (context == null || StrUtil.isBlank(context.getKbContext())) {
             return StepExecutionResult.failed("KB 检索无结果", "kb-empty");
         }
         appendEvidence(evidence, "kb-step", context.getKbContext(), null);
         List<ReferenceItem> references = buildReferences(context);
-        return StepExecutionResult.success("KB 检索完成，已获得相关证据", references);
+        return StepExecutionResult.success(successSummary, references, context.getKbContext());
     }
 
     private StepExecutionResult executeGraphQuery(AgentPlanStep step,
@@ -480,7 +710,7 @@ public class AgentOrchestrator {
                 .map(RetrievedChunk::getText)
                 .collect(Collectors.joining("\n"));
         appendEvidence(evidence, "graph-step", graphEvidence, null);
-        return StepExecutionResult.success("图谱查询完成，发现 " + allTriples.size() + " 条关系", List.of());
+        return StepExecutionResult.success("图谱查询完成，发现 " + allTriples.size() + " 条关系", List.of(), graphEvidence);
     }
 
     private List<String> resolveKbIdsFromIntents(AgentExecuteRequest request) {
@@ -515,8 +745,12 @@ public class AgentOrchestrator {
             return StepExecutionResult.failed("MCP 工具不存在：" + toolId, "tool-not-found");
         }
         MCPTool tool = executorOpt.get().getToolDefinition();
+        boolean writeTool = isWriteTool(toolId, tool);
         if (!isMcpExecutionAllowed(toolId, request)) {
             return StepExecutionResult.failed("MCP 执行已跳过：缺少高置信度意图支持", "mcp-confidence-low");
+        }
+        if (writeTool && isDateTimeLookupQuestion(query)) {
+            return StepExecutionResult.failed("检测到时间查询，已阻止写入工具调用", "write-tool-blocked-datetime-query");
         }
 
         Map<String, Object> params = new LinkedHashMap<>();
@@ -525,16 +759,27 @@ public class AgentOrchestrator {
         } else {
             params.putAll(mcpParameterExtractor.extractParameters(query, tool, null));
         }
+        if (writeTool) {
+            enrichWriteParams(toolId, request.question(), evidence.toString(), params);
+        }
+        MCPParameterExtractor.ParameterValidationResult validationResult = mcpParameterExtractor.validate(params, tool);
+        if (!validationResult.valid()) {
+            String missing = String.join("、", validationResult.missingParams());
+            String detail = StrUtil.blankToDefault(validationResult.clarificationMessage(), "请补充必要参数后重试。");
+            return StepExecutionResult.failed("MCP 调用缺少必要参数：" + missing + "。 " + detail, "mcp-missing-required-params");
+        }
+        params = validationResult.params();
 
         MCPRequest mcpRequest = MCPRequest.builder()
                 .toolId(toolId)
                 .userId(request.userId())
                 .conversationId(request.conversationId())
                 .userQuestion(query)
+                .requestSource(MCPRequestSource.AGENT_STEP)
                 .parameters(params)
                 .build();
 
-        if (WRITE_TOOL_IDS.contains(toolId)) {
+        if (writeTool) {
             PendingProposal proposal = pendingProposalStore.create(
                     request.userId(),
                     request.conversationId(),
@@ -542,17 +787,97 @@ public class AgentOrchestrator {
                     resolveTargetPath(params),
                     "写操作默认需要人工确认，防止误写入"
             );
-            return StepExecutionResult.confirmRequired("检测到写操作，已创建待确认提案", proposal);
+            return StepExecutionResult.confirmRequired(
+                    "检测到写操作，已创建待确认提案",
+                    proposal,
+                    "待确认写操作：toolId=%s, targetPath=%s".formatted(
+                            proposal.getToolId(),
+                            StrUtil.blankToDefault(proposal.getTargetPath(), "未解析目标路径")
+                    )
+            );
         }
 
         MCPResponse response = mcpService.execute(mcpRequest);
+        if (response == null) {
+            return StepExecutionResult.failed("MCP 执行失败：工具未返回响应", "mcp-empty-response");
+        }
         if (!response.isSuccess()) {
             return StepExecutionResult.failed("MCP 执行失败：" + response.getErrorMessage(), response.getErrorCode());
         }
 
         String textResult = StrUtil.blankToDefault(response.getTextResult(), "MCP 执行成功");
         appendEvidence(evidence, "mcp-step", textResult, null);
-        return StepExecutionResult.success("MCP 执行成功", List.of());
+        return StepExecutionResult.success("MCP 执行成功", List.of(), textResult);
+    }
+
+    private void enrichWriteParams(String toolId,
+                                   String question,
+                                   String evidence,
+                                   Map<String, Object> params) {
+        if ("obsidian_create".equals(toolId) && isBlankParam(params.get("name"))) {
+            String explicitNoteName = extractExplicitNoteName(question);
+            if (StrUtil.isNotBlank(explicitNoteName)) {
+                params.put("name", explicitNoteName);
+            }
+        }
+        if (StrUtil.isBlank(evidence)) {
+            return;
+        }
+        if (isBlankParam(params.get("content")) || isRawQuestionContent(params.get("content"), question)) {
+            String draftContent = buildWriteDraftContent(question, evidence);
+            if (StrUtil.isNotBlank(draftContent)) {
+                params.put("content", draftContent);
+            }
+        }
+    }
+
+    private boolean isBlankParam(Object value) {
+        return value == null || StrUtil.isBlank(String.valueOf(value));
+    }
+
+    private boolean isRawQuestionContent(Object contentValue, String question) {
+        if (contentValue == null || StrUtil.isBlank(question)) {
+            return false;
+        }
+        return StrUtil.equals(StrUtil.trim(String.valueOf(contentValue)), StrUtil.trim(question));
+    }
+
+    private String extractExplicitNoteName(String text) {
+        if (StrUtil.isBlank(text)) {
+            return null;
+        }
+        Matcher matcher = NOTE_TITLE_PATTERN.matcher(text);
+        if (matcher.find()) {
+            return StrUtil.trim(matcher.group(1));
+        }
+        return null;
+    }
+
+    private String buildWriteDraftContent(String question, String evidence) {
+        String prompt = """
+                请根据以下证据，为 Obsidian 笔记生成可直接写入的 Markdown 正文。
+                要求：
+                1) 只输出 Markdown 正文；
+                2) 保留关键事实、列表、来源链接和结论；
+                3) 不要编造证据中不存在的信息；
+                4) 结构要贴合用户任务（如日报、简报、检查清单、复习计划等）。
+
+                用户问题：
+                %s
+
+                当前证据：
+                %s
+                """.formatted(question, evidence);
+        return llmService.chat(ChatRequest.builder()
+                .messages(List.of(
+                        ChatMessage.system("你是严谨的 Markdown 笔记整理助手。"),
+                        ChatMessage.user(prompt)
+                ))
+                .thinking(false)
+                .temperature(0.2D)
+                .topP(0.8D)
+                .maxTokens(1200)
+                .build());
     }
 
     private StepExecutionResult executeSynthesize(AgentPlanStep step,
@@ -576,7 +901,7 @@ public class AgentOrchestrator {
                 .maxTokens(1200)
                 .build());
         appendEvidence(evidence, "synthesize-step", summary, null);
-        return StepExecutionResult.success("中间汇总完成", List.of());
+        return StepExecutionResult.success("中间汇总完成", List.of(), summary);
     }
 
     private String resolveToolId(AgentPlanStep step, AgentExecuteRequest request) {
@@ -604,9 +929,26 @@ public class AgentOrchestrator {
         return StrUtil.isBlank(candidateToolId) ? null : candidateToolId;
     }
 
+    private String resolveLatestToolId(List<ActionRecord> actionHistory) {
+        if (CollUtil.isEmpty(actionHistory)) {
+            return null;
+        }
+        for (int i = actionHistory.size() - 1; i >= 0; i--) {
+            ActionRecord record = actionHistory.get(i);
+            if (record.step() == null || StrUtil.isBlank(record.step().toolId())) {
+                continue;
+            }
+            return record.step().toolId();
+        }
+        return null;
+    }
+
     private boolean isMcpExecutionAllowed(String toolId, AgentExecuteRequest request) {
         if (StrUtil.isBlank(toolId)) {
             return false;
+        }
+        if (isWriteTool(toolId) && isLikelyNoteWriteQuestion(request.question())) {
+            return true;
         }
         if (CollUtil.isEmpty(request.subIntents())) {
             return true;
@@ -621,6 +963,35 @@ public class AgentOrchestrator {
                 .max()
                 .orElse(0D);
         return bestScore >= MCP_EXECUTION_MIN_INTENT_SCORE;
+    }
+
+    private boolean isWriteTool(String toolId) {
+        return mcpToolRegistry.getExecutor(toolId)
+                .map(MCPToolExecutor::getToolDefinition)
+                .map(tool -> isWriteTool(toolId, tool))
+                .orElseGet(() -> isKnownWriteToolId(toolId));
+    }
+
+    private boolean isWriteTool(String toolId, MCPTool tool) {
+        if (tool != null && tool.getOperationType() == MCPTool.OperationType.WRITE) {
+            return true;
+        }
+        return isKnownWriteToolId(toolId);
+    }
+
+    private boolean isKnownWriteToolId(String toolId) {
+        return switch (StrUtil.blankToDefault(toolId, "").trim()) {
+            case "obsidian_create", "obsidian_update", "obsidian_replace", "obsidian_delete", "obsidian_video_transcript" -> true;
+            default -> false;
+        };
+    }
+
+    private boolean isLikelyNoteWriteQuestion(String question) {
+        return NoteWriteIntentHelper.isLikelyNoteWriteQuestion(question);
+    }
+
+    private String suggestWriteToolId(String question) {
+        return NoteWriteIntentHelper.suggestWriteToolId(question);
     }
 
     private String resolveTargetPath(Map<String, Object> params) {
@@ -672,11 +1043,18 @@ public class AgentOrchestrator {
         }
     }
 
-    private void sendAgentPlan(SseEmitter emitter, int loop, AgentPlan plan) {
+    private void sendObservation(SseEmitter emitter, AgentObservePayload payload) {
+        if (payload == null) {
+            return;
+        }
+        sendEvent(emitter, SSEEventType.AGENT_OBSERVE.value(), payload);
+    }
+
+    private void sendAgentPlan(SseEmitter emitter, int loop, int startStepIndex, AgentPlan plan) {
         List<AgentPlanPayload.PlanStep> steps = new ArrayList<>();
         for (int i = 0; i < plan.steps().size(); i++) {
             AgentPlanStep step = plan.steps().get(i);
-            steps.add(new AgentPlanPayload.PlanStep(i + 1, step.type(), step.instruction()));
+            steps.add(new AgentPlanPayload.PlanStep(startStepIndex + i, step.type(), step.instruction()));
         }
         sendEvent(emitter, SSEEventType.AGENT_PLAN.value(), new AgentPlanPayload(loop, plan.goal(), steps));
     }
@@ -818,6 +1196,29 @@ public class AgentOrchestrator {
         return StrUtil.blankToDefault(text, "无");
     }
 
+    private String clip(String text, int maxChars) {
+        if (StrUtil.isBlank(text)) {
+            return "";
+        }
+        String normalized = text.replace("\r", "").trim();
+        if (normalized.length() <= maxChars) {
+            return normalized;
+        }
+        return normalized.substring(0, maxChars) + "...";
+    }
+
+    private boolean isDateTimeLookupQuestion(String question) {
+        if (StrUtil.isBlank(question)) {
+            return false;
+        }
+        String normalized = StrUtil.trim(question);
+        boolean dateTimeLookup = DATE_TIME_LOOKUP_HINT.matcher(normalized).find();
+        if (!dateTimeLookup) {
+            return false;
+        }
+        return !NoteWriteIntentHelper.isLikelyNoteWriteQuestion(normalized);
+    }
+
     private record AgentPlan(String goal, List<AgentPlanStep> steps) {
     }
 
@@ -835,24 +1236,56 @@ public class AgentOrchestrator {
             List<AgentPlanStep> nextSteps) {
     }
 
+    private record ReasoningDecision(
+            String goal,
+            String thought,
+            boolean done,
+            String finalAnswer,
+            AgentPlanStep action) {
+    }
+
+    private record AgentObservation(
+            int loop,
+            int stepIndex,
+            String source,
+            String status,
+            String summary,
+            String detail) {
+    }
+
+    private record ActionRecord(
+            int loop,
+            int stepIndex,
+            AgentPlanStep step,
+            boolean success,
+            String summary,
+            String error) {
+    }
+
     private record StepExecutionResult(
             boolean success,
             String summary,
             String error,
             List<ReferenceItem> references,
             boolean confirmRequired,
-            PendingProposal proposal) {
+            PendingProposal proposal,
+            String observationDetail,
+            String proposalSummary) {
 
-        static StepExecutionResult success(String summary, List<ReferenceItem> references) {
-            return new StepExecutionResult(true, summary, null, references, false, null);
+        static StepExecutionResult success(String summary,
+                                           List<ReferenceItem> references,
+                                           String observationDetail) {
+            return new StepExecutionResult(true, summary, null, references, false, null, observationDetail, null);
         }
 
         static StepExecutionResult failed(String summary, String error) {
-            return new StepExecutionResult(false, summary, error, List.of(), false, null);
+            return new StepExecutionResult(false, summary, error, List.of(), false, null, error, null);
         }
 
-        static StepExecutionResult confirmRequired(String summary, PendingProposal proposal) {
-            return new StepExecutionResult(true, summary, null, List.of(), true, proposal);
+        static StepExecutionResult confirmRequired(String summary,
+                                                   PendingProposal proposal,
+                                                   String proposalSummary) {
+            return new StepExecutionResult(true, summary, null, List.of(), true, proposal, null, proposalSummary);
         }
     }
 

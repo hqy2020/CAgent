@@ -79,16 +79,16 @@ class ObsidianUpdateNoteToolTests {
 
     @Test
     void shouldReturnDateConflictWhenTodayAndExplicitDailyDateDiffer() {
+        LocalDate today = LocalDate.now();
+        LocalDate target = today.plusDays(1);
         MCPRequest request = buildDailyRequest(
-                "帮我往今日日记加一条待办，写到3月7日日记里",
+                String.format("帮我往今日日记加一条待办，写到%d月%d日日记里", target.getMonthValue(), target.getDayOfMonth()),
                 "答辩",
-                "2023-03-07"
+                target.toString()
         );
 
         MCPResponse response = updateTool.handle(request);
 
-        LocalDate today = LocalDate.now();
-        LocalDate target = LocalDate.of(today.getYear(), 3, 7);
         assertFalse(response.isSuccess());
         assertEquals("DATE_CONFLICT", response.getErrorCode());
         assertNotNull(response.getErrorMessage());
@@ -140,4 +140,3 @@ class ObsidianUpdateNoteToolTests {
                 .orElse("");
     }
 }
-

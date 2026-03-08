@@ -1,0 +1,716 @@
+- generic [ref=e2]:
+  - generic [ref=e31]:
+    - complementary [ref=e32]:
+      - generic [ref=e34]:
+        - img [ref=e36]
+        - generic [ref=e39]:
+          - paragraph [ref=e40]: RAG 智能问答
+          - paragraph [ref=e41]: Powered by AI
+      - generic [ref=e42]:
+        - generic [ref=e46]:
+          - generic [ref=e47]:
+            - generic [ref=e48]: 快速开始
+            - generic [ref=e49]: 新内容
+          - button "新建对话 从空白开始" [ref=e50] [cursor=pointer]:
+            - img [ref=e52]
+            - generic [ref=e53]:
+              - generic [ref=e54]: 新建对话
+              - generic [ref=e55]: 从空白开始
+          - button "管理后台" [ref=e56] [cursor=pointer]:
+            - img [ref=e57]
+            - text: 管理后台
+        - generic [ref=e60]:
+          - generic [ref=e61]:
+            - generic [ref=e62]: 搜索对话
+            - generic [ref=e63]: Ctrl / Cmd + K
+          - generic [ref=e65]:
+            - img [ref=e66]
+            - textbox "搜索对话..." [ref=e69]
+      - generic [ref=e72]:
+        - generic [ref=e73]:
+          - paragraph [ref=e74]: 今天
+          - button "AI领域今日新闻搜索 会话操作" [ref=e506] [cursor=pointer]:
+            - generic [ref=e507]: AI领域今日新闻搜索
+            - button "会话操作" [ref=e508]:
+              - img [ref=e509]
+          - button "询问当前日期 会话操作" [ref=e75] [cursor=pointer]:
+            - generic [ref=e76]: 询问当前日期
+            - button "会话操作":
+              - img
+          - button "完成回归测试的《测试自动化记录》笔记 会话操作" [ref=e77] [cursor=pointer]:
+            - generic [ref=e78]: 完成回归测试的《测试自动化记录》笔记
+            - button "会话操作":
+              - img
+          - button "Obsidian 搜索 HashMap 笔记 会话操作" [ref=e79] [cursor=pointer]:
+            - generic [ref=e80]: Obsidian 搜索 HashMap 笔记
+            - button "会话操作":
+              - img
+          - button "HashMap 底层原理 会话操作" [ref=e81] [cursor=pointer]:
+            - generic [ref=e82]: HashMap 底层原理
+            - button "会话操作":
+              - img
+          - button "华东区月销售额统计 会话操作" [ref=e83] [cursor=pointer]:
+            - generic [ref=e84]: 华东区月销售额统计
+            - button "会话操作":
+              - img
+          - button "查询当前日期 会话操作" [ref=e85] [cursor=pointer]:
+            - generic [ref=e86]: 查询当前日期
+            - button "会话操作":
+              - img
+          - button "AI领域今日新闻搜索 会话操作" [ref=e87] [cursor=pointer]:
+            - generic [ref=e88]: AI领域今日新闻搜索
+            - button "会话操作":
+              - img
+          - button "AI领域今日新闻搜索 会话操作" [ref=e89] [cursor=pointer]:
+            - generic [ref=e90]: AI领域今日新闻搜索
+            - button "会话操作":
+              - img
+          - button "查询当前日期 会话操作" [ref=e91] [cursor=pointer]:
+            - generic [ref=e92]: 查询当前日期
+            - button "会话操作":
+              - img
+          - button "完成回归测试的《测试自动化记录》笔记 会话操作" [ref=e93] [cursor=pointer]:
+            - generic [ref=e94]: 完成回归测试的《测试自动化记录》笔记
+            - button "会话操作":
+              - img
+          - button "Obsidian 搜索 HashMap 笔记 会话操作" [ref=e95] [cursor=pointer]:
+            - generic [ref=e96]: Obsidian 搜索 HashMap 笔记
+            - button "会话操作":
+              - img
+          - button "HashMap 底层原理 会话操作" [ref=e97] [cursor=pointer]:
+            - generic [ref=e98]: HashMap 底层原理
+            - button "会话操作":
+              - img
+          - button "华东区月销售额统计 会话操作" [ref=e99] [cursor=pointer]:
+            - generic [ref=e100]: 华东区月销售额统计
+            - button "会话操作":
+              - img
+          - button "询问当前日期 会话操作" [ref=e101] [cursor=pointer]:
+            - generic [ref=e102]: 询问当前日期
+            - button "会话操作":
+              - img
+          - button "AI领域今日新闻搜索 会话操作" [ref=e103] [cursor=pointer]:
+            - generic [ref=e104]: AI领域今日新闻搜索
+            - button "会话操作":
+              - img
+        - generic [ref=e105]:
+          - paragraph [ref=e106]: 7天内
+          - button "HashMap 底层原理 会话操作" [ref=e107] [cursor=pointer]:
+            - generic [ref=e108]: HashMap 底层原理
+            - button "会话操作":
+              - img
+          - button "查询当前日期 会话操作" [ref=e109] [cursor=pointer]:
+            - generic [ref=e110]: 查询当前日期
+            - button "会话操作":
+              - img
+          - button "完成回归测试的《测试自动化记录》笔记 会话操作" [ref=e111] [cursor=pointer]:
+            - generic [ref=e112]: 完成回归测试的《测试自动化记录》笔记
+            - button "会话操作":
+              - img
+          - button "Obsidian 搜索 HashMap 笔记 会话操作" [ref=e113] [cursor=pointer]:
+            - generic [ref=e114]: Obsidian 搜索 HashMap 笔记
+            - button "会话操作":
+              - img
+          - button "HashMap 底层原理 会话操作" [ref=e115] [cursor=pointer]:
+            - generic [ref=e116]: HashMap 底层原理
+            - button "会话操作":
+              - img
+          - button "华东区月销售额统计 会话操作" [ref=e117] [cursor=pointer]:
+            - generic [ref=e118]: 华东区月销售额统计
+            - button "会话操作":
+              - img
+          - button "询问当前日期 会话操作" [ref=e119] [cursor=pointer]:
+            - generic [ref=e120]: 询问当前日期
+            - button "会话操作":
+              - img
+          - button "AI领域今日新闻搜索 会话操作" [ref=e121] [cursor=pointer]:
+            - generic [ref=e122]: AI领域今日新闻搜索
+            - button "会话操作":
+              - img
+          - button "完成回归测试的《测试自动化记录》笔记 会话操作" [ref=e123] [cursor=pointer]:
+            - generic [ref=e124]: 完成回归测试的《测试自动化记录》笔记
+            - button "会话操作":
+              - img
+          - button "AI领域今日新闻搜索 会话操作" [ref=e125] [cursor=pointer]:
+            - generic [ref=e126]: AI领域今日新闻搜索
+            - button "会话操作":
+              - img
+          - button "完成回归测试的《测试自动化记录》笔记 会话操作" [ref=e127] [cursor=pointer]:
+            - generic [ref=e128]: 完成回归测试的《测试自动化记录》笔记
+            - button "会话操作":
+              - img
+          - button "Obsidian 搜索 HashMap 笔记 会话操作" [ref=e129] [cursor=pointer]:
+            - generic [ref=e130]: Obsidian 搜索 HashMap 笔记
+            - button "会话操作":
+              - img
+          - button "HashMap底层原理 会话操作" [ref=e131] [cursor=pointer]:
+            - generic [ref=e132]: HashMap底层原理
+            - button "会话操作":
+              - img
+          - button "华东区月销售额统计 会话操作" [ref=e133] [cursor=pointer]:
+            - generic [ref=e134]: 华东区月销售额统计
+            - button "会话操作":
+              - img
+          - button "询问当前日期 会话操作" [ref=e135] [cursor=pointer]:
+            - generic [ref=e136]: 询问当前日期
+            - button "会话操作":
+              - img
+          - button "AI领域今日新闻搜索 会话操作" [ref=e137] [cursor=pointer]:
+            - generic [ref=e138]: AI领域今日新闻搜索
+            - button "会话操作":
+              - img
+          - button "AI领域今日新闻搜索 会话操作" [ref=e139] [cursor=pointer]:
+            - generic [ref=e140]: AI领域今日新闻搜索
+            - button "会话操作":
+              - img
+          - button "完成回归测试的《测试自动化记录》笔记 会话操作" [ref=e141] [cursor=pointer]:
+            - generic [ref=e142]: 完成回归测试的《测试自动化记录》笔记
+            - button "会话操作":
+              - img
+          - button "Obsidian 搜索 HashMap 笔记 会话操作" [ref=e143] [cursor=pointer]:
+            - generic [ref=e144]: Obsidian 搜索 HashMap 笔记
+            - button "会话操作":
+              - img
+          - button "HashMap 底层原理 会话操作" [ref=e145] [cursor=pointer]:
+            - generic [ref=e146]: HashMap 底层原理
+            - button "会话操作":
+              - img
+          - button "华东区月销售额统计 会话操作" [ref=e147] [cursor=pointer]:
+            - generic [ref=e148]: 华东区月销售额统计
+            - button "会话操作":
+              - img
+          - button "询问当前日期 会话操作" [ref=e149] [cursor=pointer]:
+            - generic [ref=e150]: 询问当前日期
+            - button "会话操作":
+              - img
+          - button "AI领域今日新闻搜索 会话操作" [ref=e151] [cursor=pointer]:
+            - generic [ref=e152]: AI领域今日新闻搜索
+            - button "会话操作":
+              - img
+          - button "询问当前日期 会话操作" [ref=e153] [cursor=pointer]:
+            - generic [ref=e154]: 询问当前日期
+            - button "会话操作":
+              - img
+          - button "完成回归测试的《测试自动化记录》笔记 会话操作" [ref=e155] [cursor=pointer]:
+            - generic [ref=e156]: 完成回归测试的《测试自动化记录》笔记
+            - button "会话操作":
+              - img
+          - button "Obsidian 搜索 HashMap 笔记 会话操作" [ref=e157] [cursor=pointer]:
+            - generic [ref=e158]: Obsidian 搜索 HashMap 笔记
+            - button "会话操作":
+              - img
+          - button "HashMap 底层原理 会话操作" [ref=e159] [cursor=pointer]:
+            - generic [ref=e160]: HashMap 底层原理
+            - button "会话操作":
+              - img
+          - button "华东区月销售额统计 会话操作" [ref=e161] [cursor=pointer]:
+            - generic [ref=e162]: 华东区月销售额统计
+            - button "会话操作":
+              - img
+          - button "查询当前日期 会话操作" [ref=e163] [cursor=pointer]:
+            - generic [ref=e164]: 查询当前日期
+            - button "会话操作":
+              - img
+          - button "AI领域今日新闻搜索 会话操作" [ref=e165] [cursor=pointer]:
+            - generic [ref=e166]: AI领域今日新闻搜索
+            - button "会话操作":
+              - img
+          - button "完成回归测试的《测试自动化记录》笔记 会话操作" [ref=e167] [cursor=pointer]:
+            - generic [ref=e168]: 完成回归测试的《测试自动化记录》笔记
+            - button "会话操作":
+              - img
+          - button "Obsidian 搜索 HashMap 笔记 会话操作" [ref=e169] [cursor=pointer]:
+            - generic [ref=e170]: Obsidian 搜索 HashMap 笔记
+            - button "会话操作":
+              - img
+          - button "HashMap 底层原理 会话操作" [ref=e171] [cursor=pointer]:
+            - generic [ref=e172]: HashMap 底层原理
+            - button "会话操作":
+              - img
+          - button "华东区月销售额统计 会话操作" [ref=e173] [cursor=pointer]:
+            - generic [ref=e174]: 华东区月销售额统计
+            - button "会话操作":
+              - img
+          - button "AI领域今日新闻搜索 会话操作" [ref=e175] [cursor=pointer]:
+            - generic [ref=e176]: AI领域今日新闻搜索
+            - button "会话操作":
+              - img
+          - button "查询当前日期 会话操作" [ref=e177] [cursor=pointer]:
+            - generic [ref=e178]: 查询当前日期
+            - button "会话操作":
+              - img
+          - button "查询当前日期 会话操作" [ref=e179] [cursor=pointer]:
+            - generic [ref=e180]: 查询当前日期
+            - button "会话操作":
+              - img
+          - button "查询当前日期 会话操作" [ref=e181] [cursor=pointer]:
+            - generic [ref=e182]: 查询当前日期
+            - button "会话操作":
+              - img
+          - button "Spring 事务传播行为及@TRANSACTIONAL失效原因 会话操作" [ref=e183] [cursor=pointer]:
+            - generic [ref=e184]: Spring 事务传播行为及@TRANSACTIONAL失效原因
+            - button "会话操作":
+              - img
+          - button "Spring AOP 实现原理及使用场景 会话操作" [ref=e185] [cursor=pointer]:
+            - generic [ref=e186]: Spring AOP 实现原理及使用场景
+            - button "会话操作":
+              - img
+          - button "@Component与@Bean的区别 会话操作" [ref=e187] [cursor=pointer]:
+            - generic [ref=e188]: "@Component与@Bean的区别"
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e189] [cursor=pointer]:
+            - generic [ref=e190]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Spring Boot 默认端口号 会话操作" [ref=e191] [cursor=pointer]:
+            - generic [ref=e192]: Spring Boot 默认端口号
+            - button "会话操作":
+              - img
+          - button "Spring 事务传播行为及@Transactional失效原因 会话操作" [ref=e193] [cursor=pointer]:
+            - generic [ref=e194]: Spring 事务传播行为及@Transactional失效原因
+            - button "会话操作":
+              - img
+          - button "Spring AOP 实现原理及使用场景 会话操作" [ref=e195] [cursor=pointer]:
+            - generic [ref=e196]: Spring AOP 实现原理及使用场景
+            - button "会话操作":
+              - img
+          - button "@Component与@Bean的区别 会话操作" [ref=e197] [cursor=pointer]:
+            - generic [ref=e198]: "@Component与@Bean的区别"
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e199] [cursor=pointer]:
+            - generic [ref=e200]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Spring Boot 默认端口号 会话操作" [ref=e201] [cursor=pointer]:
+            - generic [ref=e202]: Spring Boot 默认端口号
+            - button "会话操作":
+              - img
+          - button "Spring Boot 默认端口号 会话操作" [ref=e203] [cursor=pointer]:
+            - generic [ref=e204]: Spring Boot 默认端口号
+            - button "会话操作":
+              - img
+          - button "Spring 事务传播行为及@Transactional失效原因 会话操作" [ref=e205] [cursor=pointer]:
+            - generic [ref=e206]: Spring 事务传播行为及@Transactional失效原因
+            - button "会话操作":
+              - img
+          - button "Spring AOP 实现原理及使用场景 会话操作" [ref=e207] [cursor=pointer]:
+            - generic [ref=e208]: Spring AOP 实现原理及使用场景
+            - button "会话操作":
+              - img
+          - button "@Component与@Bean的区别 会话操作" [ref=e209] [cursor=pointer]:
+            - generic [ref=e210]: "@Component与@Bean的区别"
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e211] [cursor=pointer]:
+            - generic [ref=e212]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Spring Boot 默认端口号 会话操作" [ref=e213] [cursor=pointer]:
+            - generic [ref=e214]: Spring Boot 默认端口号
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e215] [cursor=pointer]:
+            - generic [ref=e216]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "华东区月销售额及HashMap底层原理 会话操作" [ref=e217] [cursor=pointer]:
+            - generic [ref=e218]: 华东区月销售额及HashMap底层原理
+            - button "会话操作":
+              - img
+          - button "公司敏感字段脱敏要求 会话操作" [ref=e219] [cursor=pointer]:
+            - generic [ref=e220]: 公司敏感字段脱敏要求
+            - button "会话操作":
+              - img
+          - button "华东区月销售额统计 会话操作" [ref=e221] [cursor=pointer]:
+            - generic [ref=e222]: 华东区月销售额统计
+            - button "会话操作":
+              - img
+          - button "HashMap 底层原理 会话操作" [ref=e223] [cursor=pointer]:
+            - generic [ref=e224]: HashMap 底层原理
+            - button "会话操作":
+              - img
+          - button "系统主要能力介绍 会话操作" [ref=e225] [cursor=pointer]:
+            - generic [ref=e226]: 系统主要能力介绍
+            - button "会话操作":
+              - img
+          - button "Spring 事务传播行为及@Transactional失效原因 会话操作" [ref=e227] [cursor=pointer]:
+            - generic [ref=e228]: Spring 事务传播行为及@Transactional失效原因
+            - button "会话操作":
+              - img
+          - button "Spring AOP 实现原理及使用场景 会话操作" [ref=e229] [cursor=pointer]:
+            - generic [ref=e230]: Spring AOP 实现原理及使用场景
+            - button "会话操作":
+              - img
+          - button "@Component与@Bean的区别 会话操作" [ref=e231] [cursor=pointer]:
+            - generic [ref=e232]: "@Component与@Bean的区别"
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e233] [cursor=pointer]:
+            - generic [ref=e234]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Spring Boot 默认端口号 会话操作" [ref=e235] [cursor=pointer]:
+            - generic [ref=e236]: Spring Boot 默认端口号
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e237] [cursor=pointer]:
+            - generic [ref=e238]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "华东区月销售额及HashMap底层原理 会话操作" [ref=e239] [cursor=pointer]:
+            - generic [ref=e240]: 华东区月销售额及HashMap底层原理
+            - button "会话操作":
+              - img
+          - button "公司敏感字段脱敏要求 会话操作" [ref=e241] [cursor=pointer]:
+            - generic [ref=e242]: 公司敏感字段脱敏要求
+            - button "会话操作":
+              - img
+          - button "华东区月销售额统计 会话操作" [ref=e243] [cursor=pointer]:
+            - generic [ref=e244]: 华东区月销售额统计
+            - button "会话操作":
+              - img
+          - button "HashMap 底层原理 会话操作" [ref=e245] [cursor=pointer]:
+            - generic [ref=e246]: HashMap 底层原理
+            - button "会话操作":
+              - img
+          - button "系统主要能力介绍 会话操作" [ref=e247] [cursor=pointer]:
+            - generic [ref=e248]: 系统主要能力介绍
+            - button "会话操作":
+              - img
+          - button "Spring Boot 默认端口号 会话操作" [ref=e249] [cursor=pointer]:
+            - generic [ref=e250]: Spring Boot 默认端口号
+            - button "会话操作":
+              - img
+          - button "Spring Boot 默认端口号 会话操作" [ref=e251] [cursor=pointer]:
+            - generic [ref=e252]: Spring Boot 默认端口号
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e253] [cursor=pointer]:
+            - generic [ref=e254]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "华东区月销售额及HashMap底层原理 会话操作" [ref=e255] [cursor=pointer]:
+            - generic [ref=e256]: 华东区月销售额及HashMap底层原理
+            - button "会话操作":
+              - img
+          - button "公司敏感字段脱敏要求 会话操作" [ref=e257] [cursor=pointer]:
+            - generic [ref=e258]: 公司敏感字段脱敏要求
+            - button "会话操作":
+              - img
+          - button "华东区月销售额统计 会话操作" [ref=e259] [cursor=pointer]:
+            - generic [ref=e260]: 华东区月销售额统计
+            - button "会话操作":
+              - img
+          - button "HashMap 底层原理 会话操作" [ref=e261] [cursor=pointer]:
+            - generic [ref=e262]: HashMap 底层原理
+            - button "会话操作":
+              - img
+          - button "系统主要能力介绍 会话操作" [ref=e263] [cursor=pointer]:
+            - generic [ref=e264]: 系统主要能力介绍
+            - button "会话操作":
+              - img
+          - button "华东区月销售额及销售口径定义 会话操作" [ref=e265] [cursor=pointer]:
+            - generic [ref=e266]: 华东区月销售额及销售口径定义
+            - button "会话操作":
+              - img
+          - button "公司敏感字段脱敏要求 会话操作" [ref=e267] [cursor=pointer]:
+            - generic [ref=e268]: 公司敏感字段脱敏要求
+            - button "会话操作":
+              - img
+          - button "华东区月销售额统计 会话操作" [ref=e269] [cursor=pointer]:
+            - generic [ref=e270]: 华东区月销售额统计
+            - button "会话操作":
+              - img
+          - button "HashMap 底层原理 会话操作" [ref=e271] [cursor=pointer]:
+            - generic [ref=e272]: HashMap 底层原理
+            - button "会话操作":
+              - img
+          - button "系统主要能力介绍 会话操作" [ref=e273] [cursor=pointer]:
+            - generic [ref=e274]: 系统主要能力介绍
+            - button "会话操作":
+              - img
+          - button "公司敏感字段脱敏要求 会话操作" [ref=e275] [cursor=pointer]:
+            - generic [ref=e276]: 公司敏感字段脱敏要求
+            - button "会话操作":
+              - img
+          - button "华东区月销售额统计 会话操作" [ref=e277] [cursor=pointer]:
+            - generic [ref=e278]: 华东区月销售额统计
+            - button "会话操作":
+              - img
+          - button "HashMap 底层原理 会话操作" [ref=e279] [cursor=pointer]:
+            - generic [ref=e280]: HashMap 底层原理
+            - button "会话操作":
+              - img
+          - button "系统主要能力介绍 会话操作" [ref=e281] [cursor=pointer]:
+            - generic [ref=e282]: 系统主要能力介绍
+            - button "会话操作":
+              - img
+          - button "公司敏感字段脱敏要求 会话操作" [ref=e283] [cursor=pointer]:
+            - generic [ref=e284]: 公司敏感字段脱敏要求
+            - button "会话操作":
+              - img
+          - button "华东区月销售额统计 会话操作" [ref=e285] [cursor=pointer]:
+            - generic [ref=e286]: 华东区月销售额统计
+            - button "会话操作":
+              - img
+          - button "HashMap 底层原理 会话操作" [ref=e287] [cursor=pointer]:
+            - generic [ref=e288]: HashMap 底层原理
+            - button "会话操作":
+              - img
+          - button "系统主要能力介绍 会话操作" [ref=e289] [cursor=pointer]:
+            - generic [ref=e290]: 系统主要能力介绍
+            - button "会话操作":
+              - img
+          - button "系统能力简要介绍 会话操作" [ref=e291] [cursor=pointer]:
+            - generic [ref=e292]: 系统能力简要介绍
+            - button "会话操作":
+              - img
+          - button "系统主要能力介绍 会话操作" [ref=e293] [cursor=pointer]:
+            - generic [ref=e294]: 系统主要能力介绍
+            - button "会话操作":
+              - img
+          - button "公司敏感字段脱敏要求 会话操作" [ref=e295] [cursor=pointer]:
+            - generic [ref=e296]: 公司敏感字段脱敏要求
+            - button "会话操作":
+              - img
+          - button "公司敏感字段脱敏要求 会话操作" [ref=e297] [cursor=pointer]:
+            - generic [ref=e298]: 公司敏感字段脱敏要求
+            - button "会话操作":
+              - img
+          - button "华东区月销售额统计 会话操作" [ref=e299] [cursor=pointer]:
+            - generic [ref=e300]: 华东区月销售额统计
+            - button "会话操作":
+              - img
+          - button "公司敏感字段脱敏要求 会话操作" [ref=e301] [cursor=pointer]:
+            - generic [ref=e302]: 公司敏感字段脱敏要求
+            - button "会话操作":
+              - img
+          - button "系统主要能力介绍 会话操作" [ref=e303] [cursor=pointer]:
+            - generic [ref=e304]: 系统主要能力介绍
+            - button "会话操作":
+              - img
+          - button "系统能力简要介绍 会话操作" [ref=e305] [cursor=pointer]:
+            - generic [ref=e306]: 系统能力简要介绍
+            - button "会话操作":
+              - img
+          - button "系统主要能力介绍 会话操作" [ref=e307] [cursor=pointer]:
+            - generic [ref=e308]: 系统主要能力介绍
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期要点笔记整理 会话操作" [ref=e309] [cursor=pointer]:
+            - generic [ref=e310]: Spring Bean 生命周期要点笔记整理
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期要点笔记整理 会话操作" [ref=e311] [cursor=pointer]:
+            - generic [ref=e312]: Spring Bean 生命周期要点笔记整理
+            - button "会话操作":
+              - img
+          - button "Spring Bean生命周期解释 会话操作" [ref=e313] [cursor=pointer]:
+            - generic [ref=e314]: Spring Bean生命周期解释
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e315] [cursor=pointer]:
+            - generic [ref=e316]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期简述 会话操作" [ref=e317] [cursor=pointer]:
+            - generic [ref=e318]: Spring Bean 生命周期简述
+            - button "会话操作":
+              - img
+          - button "测试 Enter 发送功能 会话操作" [ref=e319] [cursor=pointer]:
+            - generic [ref=e320]: 测试 Enter 发送功能
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e321] [cursor=pointer]:
+            - generic [ref=e322]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "添加今日待办事项：3.7 答辩 会话操作" [ref=e323] [cursor=pointer]:
+            - generic [ref=e324]: 添加今日待办事项：3.7 答辩
+            - button "会话操作":
+              - img
+          - button "阿里云实习经历回顾 会话操作" [ref=e325] [cursor=pointer]:
+            - generic [ref=e326]: 阿里云实习经历回顾
+            - button "会话操作":
+              - img
+          - button "geek 的含义 会话操作" [ref=e327] [cursor=pointer]:
+            - generic [ref=e328]: geek 的含义
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e329] [cursor=pointer]:
+            - generic [ref=e330]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e331] [cursor=pointer]:
+            - generic [ref=e332]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e333] [cursor=pointer]:
+            - generic [ref=e334]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e335] [cursor=pointer]:
+            - generic [ref=e336]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Milvus原理讲解 会话操作" [ref=e337] [cursor=pointer]:
+            - generic [ref=e338]: Milvus原理讲解
+            - button "会话操作":
+              - img
+          - button "Spring AOP 实现原理及使用场景 会话操作" [ref=e339] [cursor=pointer]:
+            - generic [ref=e340]: Spring AOP 实现原理及使用场景
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e341] [cursor=pointer]:
+            - generic [ref=e342]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e343] [cursor=pointer]:
+            - generic [ref=e344]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期解析 会话操作" [ref=e345] [cursor=pointer]:
+            - generic [ref=e346]: Spring Bean 生命周期解析
+            - button "会话操作":
+              - img
+          - button "Spring Bean 生命周期详细说明 会话操作" [ref=e347] [cursor=pointer]:
+            - generic [ref=e348]: Spring Bean 生命周期详细说明
+            - button "会话操作":
+              - img
+          - button "创建笔记：RAG多路检索内容概述 会话操作" [ref=e349] [cursor=pointer]:
+            - generic [ref=e350]: 创建笔记：RAG多路检索内容概述
+            - button "会话操作":
+              - img
+          - button "MOC-Knowledge笔记内容替换 会话操作" [ref=e351] [cursor=pointer]:
+            - generic [ref=e352]: MOC-Knowledge笔记内容替换
+            - button "会话操作":
+              - img
+          - button "追加RAG系统设计笔记到MOC-Knowledge 会话操作" [ref=e353] [cursor=pointer]:
+            - generic [ref=e354]: 追加RAG系统设计笔记到MOC-Knowledge
+            - button "会话操作":
+              - img
+          - button "MOC-Knowledge 笔记追加 RAG 系统设计笔记 会话操作" [ref=e355] [cursor=pointer]:
+            - generic [ref=e356]: MOC-Knowledge 笔记追加 RAG 系统设计笔记
+            - button "会话操作":
+              - img
+          - button "搜索笔记库中HashMap笔记 会话操作" [ref=e357] [cursor=pointer]:
+            - generic [ref=e358]: 搜索笔记库中HashMap笔记
+            - button "会话操作":
+              - img
+          - button "搜索笔记库中HashMap笔记 会话操作" [ref=e359] [cursor=pointer]:
+            - generic [ref=e360]: 搜索笔记库中HashMap笔记
+            - button "会话操作":
+              - img
+          - button "追加待办：完成RAG系统MCP工具集成测试 会话操作" [ref=e361] [cursor=pointer]:
+            - generic [ref=e362]: 追加待办：完成RAG系统MCP工具集成测试
+            - button "会话操作":
+              - img
+          - button "追加待办：完成RAG系统MCP工具集成测试 会话操作" [ref=e363] [cursor=pointer]:
+            - generic [ref=e364]: 追加待办：完成RAG系统MCP工具集成测试
+            - button "会话操作":
+              - img
+          - button "Spring Boot核心特性简介 会话操作" [ref=e365] [cursor=pointer]:
+            - generic [ref=e366]: Spring Boot核心特性简介
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e367] [cursor=pointer]:
+            - generic [ref=e368]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e369] [cursor=pointer]:
+            - generic [ref=e370]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e371] [cursor=pointer]:
+            - generic [ref=e372]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e373] [cursor=pointer]:
+            - generic [ref=e374]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e375] [cursor=pointer]:
+            - generic [ref=e376]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e377] [cursor=pointer]:
+            - generic [ref=e378]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e379] [cursor=pointer]:
+            - generic [ref=e380]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e381] [cursor=pointer]:
+            - generic [ref=e382]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e383] [cursor=pointer]:
+            - generic [ref=e384]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e385] [cursor=pointer]:
+            - generic [ref=e386]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e387] [cursor=pointer]:
+            - generic [ref=e388]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e389] [cursor=pointer]:
+            - generic [ref=e390]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e391] [cursor=pointer]:
+            - generic [ref=e392]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e393] [cursor=pointer]:
+            - generic [ref=e394]: 新对话
+            - button "会话操作":
+              - img
+          - button "新对话 会话操作" [ref=e395] [cursor=pointer]:
+            - generic [ref=e396]: 新对话
+            - button "会话操作":
+              - img
+      - button "用户菜单" [ref=e398] [cursor=pointer]:
+        - img "admin" [ref=e400]
+        - generic [ref=e401]: admin
+        - img [ref=e402]
+    - generic [ref=e406]:
+      - banner [ref=e407]:
+        - generic [ref=e408]:
+          - paragraph [ref=e410]: AI领域今日新闻搜索
+          - link "打开 GitHub 仓库" [ref=e412] [cursor=pointer]:
+            - /url: https://github.com/hqy2020/CAgent
+            - img [ref=e413]
+            - generic [ref=e416]: Star
+            - generic [ref=e417]: "4"
+      - main [ref=e418]:
+        - generic [ref=e419]:
+          - generic [ref=e515]:
+            - paragraph [ref=e520]: 帮我联网搜索一下今天 AI 领域的 3 条新闻
+            - generic [ref=e525]:
+              - paragraph [ref=e528]: 未能建立浏览器连接，以下将降级为通用回答（可能非实时）。
+              - generic [ref=e529]:
+                - button "复制内容" [ref=e530] [cursor=pointer]:
+                  - img [ref=e531]
+                - button "点赞" [ref=e534] [cursor=pointer]:
+                  - img [ref=e535]
+                - button "点踩" [ref=e537] [cursor=pointer]:
+                  - img [ref=e538]
+          - generic [ref=e544]:
+            - generic [ref=e545]:
+              - textbox "聊天输入框" [active] [ref=e547]:
+                - /placeholder: 输入你的问题...
+              - generic [ref=e548]:
+                - button "深度思考" [ref=e549] [cursor=pointer]:
+                  - generic [ref=e550]:
+                    - img [ref=e551]
+                    - text: 深度思考
+                - button "发送消息" [disabled] [ref=e561]:
+                  - img [ref=e562]
+            - paragraph [ref=e565]: Enter 发送·Shift + Enter 换行
+  - region "Notifications alt+T"

@@ -30,6 +30,7 @@ import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPParameterExtractor;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPRequest;
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPRequestSource;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPResponse;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPService;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
@@ -47,7 +48,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -71,16 +71,6 @@ public class RetrievalEngine {
      * MCP 意图最低置信度阈值（高于通用意图阈值），用于抑制误触发工具调用。
      */
     private static final double MCP_INTENT_MIN_SCORE = 0.60D;
-    /**
-     * 检索阶段禁止执行写工具，避免非确认链路产生副作用。
-     */
-    private static final Set<String> WRITE_TOOL_IDS = Set.of(
-            "obsidian_create",
-            "obsidian_update",
-            "obsidian_replace",
-            "obsidian_delete",
-            "obsidian_video_transcript"
-    );
     private static final Pattern WEB_NEWS_QUERY_HINT = Pattern.compile(
             "(联网|上网|互联网|web|internet|google|bing|百度|新闻|热搜|实时|最新|快讯|简报|热点)",
             Pattern.CASE_INSENSITIVE
@@ -220,7 +210,7 @@ public class RetrievalEngine {
                 .filter(ns -> ns.getScore() >= MCP_INTENT_MIN_SCORE)
                 .filter(ns -> ns.getNode() != null && ns.getNode().getKind() == IntentKind.MCP)
                 .filter(ns -> StrUtil.isNotBlank(ns.getNode().getMcpToolId()))
-                .filter(ns -> !WRITE_TOOL_IDS.contains(ns.getNode().getMcpToolId()))
+                .filter(ns -> isReadOnlyTool(ns.getNode().getMcpToolId()))
                 .filter(ns -> isQuestionCompatibleWithTool(question, ns.getNode().getMcpToolId()))
                 .toList();
     }
@@ -328,6 +318,10 @@ public class RetrievalEngine {
         }
 
         MCPTool tool = executorOpt.get().getToolDefinition();
+        if (tool.getOperationType() == MCPTool.OperationType.WRITE) {
+            log.info("检索阶段跳过写工具, toolId: {}", toolId);
+            return null;
+        }
 
         String customParamPrompt = intentNode.getParamPromptTemplate();
         Map<String, Object> params = mcpParameterExtractor.extractParameters(question, tool, customParamPrompt);
@@ -341,8 +335,16 @@ public class RetrievalEngine {
         return MCPRequest.builder()
                 .toolId(toolId)
                 .userQuestion(question)
+                .requestSource(MCPRequestSource.RETRIEVAL)
                 .parameters(params)
                 .build();
+    }
+
+    private boolean isReadOnlyTool(String toolId) {
+        Optional<MCPToolExecutor> executorOpt = mcpToolRegistry.getExecutor(toolId);
+        return executorOpt.map(MCPToolExecutor::getToolDefinition)
+                .map(MCPTool::getOperationType)
+                .orElse(MCPTool.OperationType.READ) == MCPTool.OperationType.READ;
     }
 
     private record SubQuestionContext(String question,

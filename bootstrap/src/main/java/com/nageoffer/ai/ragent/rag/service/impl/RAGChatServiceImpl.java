@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.rag.service.impl;
 
 import cn.dev33.satoken.stp.StpUtil;
+import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.context.LoginUser;
@@ -61,6 +62,8 @@ import com.nageoffer.ai.ragent.rag.service.ConversationService;
 import com.nageoffer.ai.ragent.rag.service.RAGChatService;
 import com.nageoffer.ai.ragent.rag.service.handler.StreamCallbackFactory;
 import com.nageoffer.ai.ragent.rag.service.handler.StreamTaskManager;
+import com.nageoffer.ai.ragent.rag.enums.IntentKind;
+import com.nageoffer.ai.ragent.rag.util.NoteWriteIntentHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -68,11 +71,15 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.net.URI;
+import java.time.DayOfWeek;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CHAT_SYSTEM_PROMPT_PATH;
@@ -88,6 +95,22 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.DEFAULT_TOP_K;
 @Service
 @RequiredArgsConstructor
 public class RAGChatServiceImpl implements RAGChatService {
+
+    private static final String WEB_NEWS_MCP_TOOL_ID = "web_news_search";
+    private static final Pattern DATE_TIME_QUICK_REPLY_HINT = Pattern.compile(
+            "(今天几号|今天几月几号|今天几月几日|今天星期几|今天周几|现在几点|当前时间|当前日期|现在日期|几号|几月几号|几月几日|星期几|周几|日期|时间|date|time|day)",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern DATE_LOOKUP_HINT = Pattern.compile(
+            "(今天几号|今天几月几号|今天几月几日|今天星期几|今天周几|几号|几月几号|几月几日|星期几|周几|日期|date|day)",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern TIME_LOOKUP_HINT = Pattern.compile(
+            "(现在几点|当前时间|时间|time|clock)",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final DateTimeFormatter DATE_CN_FORMATTER = DateTimeFormatter.ofPattern("yyyy年MM月dd日");
+    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     private final LLMService llmService;
     private final RAGConfigProperties ragConfigProperties;
@@ -149,6 +172,12 @@ public class RAGChatServiceImpl implements RAGChatService {
                 return;
             }
 
+            if (isDateTimeLookupQuestion(question)) {
+                callback.onContent(buildDateTimeReply(question));
+                callback.onComplete();
+                return;
+            }
+
             token.throwIfCancelled();
             RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(question, history);
 
@@ -193,6 +222,11 @@ public class RAGChatServiceImpl implements RAGChatService {
                         ? ctx.getKbContext().substring(0, 500) + "..."
                         : ctx.getKbContext();
                 log.info("kbContext preview:\n{}", preview);
+            }
+            if (shouldDirectReplyWithWebNews(subIntents, ctx)) {
+                callback.onContent(extractWebNewsReply(ctx.getMcpContext()));
+                callback.onComplete();
+                return;
             }
             // Keep original user intent for Agent-mode detection/planning.
             AgentModeDecision agentModeDecision = agentModeDecider.decide(
@@ -257,6 +291,93 @@ public class RAGChatServiceImpl implements RAGChatService {
     }
 
     // ==================== LLM 响应 ====================
+
+    private boolean isDateTimeLookupQuestion(String question) {
+        if (StrUtil.isBlank(question)) {
+            return false;
+        }
+        String normalized = StrUtil.trim(question);
+        boolean isDateTimeLookup = DATE_TIME_QUICK_REPLY_HINT.matcher(normalized).find();
+        if (!isDateTimeLookup) {
+            return false;
+        }
+        return !NoteWriteIntentHelper.isLikelyNoteWriteQuestion(normalized);
+    }
+
+    private String buildDateTimeReply(String question) {
+        String normalized = StrUtil.blankToDefault(question, "").trim();
+        ZonedDateTime now = ZonedDateTime.now();
+        String dateText = DATE_CN_FORMATTER.format(now);
+        String timeText = TIME_FORMATTER.format(now);
+        String weekdayText = toChineseWeekday(now.getDayOfWeek());
+        String zoneId = now.getZone().getId();
+        boolean asksDate = DATE_LOOKUP_HINT.matcher(normalized).find();
+        boolean asksTime = TIME_LOOKUP_HINT.matcher(normalized).find();
+
+        if (asksTime && !asksDate) {
+            return "现在时间是 " + timeText + "（" + zoneId + "，" + weekdayText + "）。";
+        }
+        if (asksDate && !asksTime) {
+            return "今天是 " + dateText + "，" + weekdayText + "。";
+        }
+        return "现在是 " + dateText + " " + timeText + "（" + zoneId + "，" + weekdayText + "）。";
+    }
+
+    private String toChineseWeekday(DayOfWeek dayOfWeek) {
+        return switch (dayOfWeek) {
+            case MONDAY -> "星期一";
+            case TUESDAY -> "星期二";
+            case WEDNESDAY -> "星期三";
+            case THURSDAY -> "星期四";
+            case FRIDAY -> "星期五";
+            case SATURDAY -> "星期六";
+            case SUNDAY -> "星期日";
+        };
+    }
+
+    private boolean shouldDirectReplyWithWebNews(List<SubQuestionIntent> subIntents, RetrievalContext ctx) {
+        if (ctx == null || StrUtil.isBlank(ctx.getMcpContext()) || CollUtil.isEmpty(subIntents)) {
+            return false;
+        }
+        boolean hasWebNewsIntent = false;
+        for (SubQuestionIntent subIntent : subIntents) {
+            if (subIntent == null || CollUtil.isEmpty(subIntent.nodeScores())) {
+                continue;
+            }
+            for (var nodeScore : subIntent.nodeScores()) {
+                if (nodeScore == null || nodeScore.getNode() == null) {
+                    continue;
+                }
+                if (nodeScore.getNode().getKind() != IntentKind.MCP) {
+                    continue;
+                }
+                String toolId = nodeScore.getNode().getMcpToolId();
+                if (WEB_NEWS_MCP_TOOL_ID.equals(toolId)) {
+                    hasWebNewsIntent = true;
+                    continue;
+                }
+                if (StrUtil.isNotBlank(toolId)) {
+                    return false;
+                }
+            }
+        }
+        return hasWebNewsIntent;
+    }
+
+    private String extractWebNewsReply(String mcpContext) {
+        String normalized = StrUtil.blankToDefault(mcpContext, "").trim();
+        if (StrUtil.isBlank(normalized)) {
+            return "联网新闻检索失败，请稍后重试。";
+        }
+
+        String marker = "#### 动态数据片段";
+        int markerIndex = normalized.indexOf(marker);
+        if (markerIndex >= 0) {
+            return normalized.substring(markerIndex + marker.length()).trim();
+        }
+
+        return normalized;
+    }
 
     private StreamCancellationHandle streamSystemResponse(String question, StreamCallback callback) {
         String systemPrompt = promptTemplateLoader.load(CHAT_SYSTEM_PROMPT_PATH);

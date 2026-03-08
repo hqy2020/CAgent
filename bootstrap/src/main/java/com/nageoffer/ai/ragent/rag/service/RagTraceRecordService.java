@@ -21,6 +21,7 @@ import com.nageoffer.ai.ragent.rag.dao.entity.RagTraceNodeDO;
 import com.nageoffer.ai.ragent.rag.dao.entity.RagTraceRunDO;
 
 import java.util.Date;
+import java.util.Map;
 
 /**
  * RAG Trace 记录服务
@@ -34,4 +35,6 @@ public interface RagTraceRecordService {
     void startNode(RagTraceNodeDO node);
 
     void finishNode(String traceId, String nodeId, String status, String errorMessage, Date endTime, long durationMs);
+
+    void updateNodeExtraData(String traceId, String nodeId, Map<String, Object> extraData);
 }

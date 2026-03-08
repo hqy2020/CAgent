@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.rag.agent;
 
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPRequest;
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPRequestSource;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -50,12 +51,16 @@ public class PendingProposal {
 
     public MCPRequest toMcpRequest() {
         return MCPRequest.builder()
+                .requestId(proposalId)
+                .traceId(proposalId)
+                .idempotencyKey(proposalId)
                 .toolId(toolId)
                 .userId(userId)
                 .conversationId(conversationId)
                 .userQuestion(userQuestion)
+                .requestSource(MCPRequestSource.AGENT_CONFIRM)
+                .confirmed(true)
                 .parameters(parameters == null ? new HashMap<>() : new HashMap<>(parameters))
                 .build();
     }
 }
-

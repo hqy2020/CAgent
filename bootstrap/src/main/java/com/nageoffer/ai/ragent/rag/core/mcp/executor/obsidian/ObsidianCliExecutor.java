@@ -18,8 +18,8 @@
 package com.nageoffer.ai.ragent.rag.core.mcp.executor.obsidian;
 
 import com.nageoffer.ai.ragent.rag.config.ObsidianProperties;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 /**
@@ -45,13 +46,40 @@ import java.util.stream.Stream;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class ObsidianCliExecutor {
 
+    private enum AccessMode {
+        READ,
+        WRITE
+    }
+
     private final ObsidianProperties properties;
+    private final ObsidianExternalMcpGateway externalGateway;
 
     private static final String DAILY_NOTE_PATH_PATTERN = "2-Resource（参考资源）/80_生活记录/DailyNote/日记";
     private static final int SEARCH_CONTEXT_LINES = 2;
+    private static final Set<String> BLOCKED_SEGMENTS = Set.of(
+            ".obsidian", ".trash", ".git", "Library", "System", "Applications", "private", "etc", "var"
+    );
+    private static final Set<String> WRITE_ALLOWED_TOP_LEVELS = Set.of(
+            "0-Inbox", "1-Inbox", "1-Projects", "2-Resource（参考资源）", "3-Knowledge",
+            "4-Areas", "5-Output", "5-Archive", "6-Attachments", "7-Assets", "8-Templates"
+    );
+
+    @Autowired
+    public ObsidianCliExecutor(ObsidianProperties properties,
+                               ObsidianExternalMcpGateway externalGateway) {
+        this.properties = properties;
+        this.externalGateway = externalGateway;
+    }
+
+    /**
+     * 测试专用构造（仅本地模式）。
+     */
+    public ObsidianCliExecutor(ObsidianProperties properties) {
+        this.properties = properties;
+        this.externalGateway = null;
+    }
 
     /**
      * 执行 Obsidian 操作命令
@@ -62,10 +90,18 @@ public class ObsidianCliExecutor {
      */
     public CliResult execute(String command, List<String> args) {
         Map<String, String> params = parseArgs(args);
-        log.info("Obsidian 文件操作: command={}, params={}", command, params);
+        log.info("Obsidian 文件操作: command={}, params={}", command, summarizeParams(params));
+
+        ObsidianExternalMcpGateway.ExternalExecuteResult externalResult = tryExternal(command, params);
+        if (externalResult.success()) {
+            return new CliResult(0, externalResult.textResult(), "");
+        }
+        if (externalGateway != null && externalGateway.externalOnly() && externalResult.attempted()) {
+            return new CliResult(1, "", "EXTERNAL_MCP_ERROR: " + externalResult.errorMessage());
+        }
 
         try {
-            return switch (command) {
+            CliResult localResult = switch (command) {
                 case "read" -> doRead(params);
                 case "search" -> doSearch(params, false);
                 case "search:context" -> doSearch(params, true);
@@ -79,16 +115,62 @@ public class ObsidianCliExecutor {
                 case "replace" -> doReplace(params);
                 default -> new CliResult(1, "", "不支持的命令: " + command);
             };
+
+            if (localResult.isSuccess() && externalResult.attempted() && !externalResult.success()) {
+                String fallbackLine = "[fallback] 外部 Obsidian MCP 调用失败，已切换本地文件模式。"
+                        + " error=" + externalResult.errorCode();
+                String merged = localResult.stdout().isBlank()
+                        ? fallbackLine
+                        : localResult.stdout() + "\n" + fallbackLine;
+                return new CliResult(localResult.exitCode(), merged, localResult.stderr());
+            }
+            return localResult;
+        } catch (SecurityException e) {
+            log.warn("Obsidian 文件操作被安全策略阻断: command={}, message={}", command, e.getMessage());
+            return new CliResult(1, "", "SECURITY_VIOLATION: " + e.getMessage());
         } catch (IOException e) {
             log.error("Obsidian 文件操作失败: command={}", command, e);
             return new CliResult(1, "", "文件操作失败: " + e.getMessage());
         }
     }
 
+    private ObsidianExternalMcpGateway.ExternalExecuteResult tryExternal(String command, Map<String, String> params) {
+        if (externalGateway == null) {
+            return ObsidianExternalMcpGateway.ExternalExecuteResult.skipped();
+        }
+        try {
+            return externalGateway.tryExecute(command, params);
+        } catch (Exception e) {
+            log.warn("External Obsidian MCP execution failed, fallback to local mode. command={}", command, e);
+            return ObsidianExternalMcpGateway.ExternalExecuteResult.failed("EXTERNAL_EXCEPTION", e.getMessage());
+        }
+    }
+
+    private Map<String, Object> summarizeParams(Map<String, String> params) {
+        Map<String, Object> summary = new HashMap<>();
+        if (params == null || params.isEmpty()) {
+            return summary;
+        }
+        for (Map.Entry<String, String> entry : params.entrySet()) {
+            String key = entry.getKey();
+            String value = entry.getValue();
+            if ("content".equalsIgnoreCase(key)
+                    || "oldContent".equalsIgnoreCase(key)
+                    || "newContent".equalsIgnoreCase(key)
+                    || "url".equalsIgnoreCase(key)
+                    || "sourceUrl".equalsIgnoreCase(key)) {
+                summary.put(key, value == null ? "[MASKED length=0]" : "[MASKED length=" + value.length() + "]");
+            } else {
+                summary.put(key, value);
+            }
+        }
+        return summary;
+    }
+
     // ===================== 命令实现 =====================
 
     private CliResult doRead(Map<String, String> params) throws IOException {
-        Path filePath = resolveNotePath(params);
+        Path filePath = resolveNotePath(params, AccessMode.READ);
         if (filePath == null) {
             return new CliResult(1, "", "必须提供 file 或 path 参数");
         }
@@ -107,7 +189,7 @@ public class ObsidianCliExecutor {
 
         String searchPath = params.get("path");
         int limit = parseIntParam(params, "limit", 10);
-        Path searchRoot = searchPath != null ? getVaultPath().resolve(searchPath) : getVaultPath();
+        Path searchRoot = searchPath != null ? resolveDirectoryPath(searchPath, AccessMode.READ) : getVaultPath();
 
         if (!Files.exists(searchRoot)) {
             return new CliResult(1, "", "搜索路径不存在: " + searchRoot);
@@ -173,7 +255,7 @@ public class ObsidianCliExecutor {
     private CliResult doListFiles(Map<String, String> params) throws IOException {
         String folder = params.get("folder");
         String ext = params.getOrDefault("ext", "md");
-        Path root = folder != null ? getVaultPath().resolve(folder) : getVaultPath();
+        Path root = folder != null ? resolveDirectoryPath(folder, AccessMode.READ) : getVaultPath();
 
         if (!Files.exists(root)) {
             return new CliResult(1, "", "目录不存在: " + root);
@@ -191,7 +273,7 @@ public class ObsidianCliExecutor {
 
     private CliResult doListFolders(Map<String, String> params) throws IOException {
         String folder = params.get("folder");
-        Path root = folder != null ? getVaultPath().resolve(folder) : getVaultPath();
+        Path root = folder != null ? resolveDirectoryPath(folder, AccessMode.READ) : getVaultPath();
 
         if (!Files.exists(root)) {
             return new CliResult(1, "", "目录不存在: " + root);
@@ -216,11 +298,13 @@ public class ObsidianCliExecutor {
         String path = params.get("path");
         String content = params.getOrDefault("content", "");
 
-        Path targetDir = path != null ? getVaultPath().resolve(path) : getVaultPath();
+        Path targetDir = path != null ? resolveDirectoryPath(path, AccessMode.WRITE) : getVaultPath();
         Files.createDirectories(targetDir);
 
-        String fileName = name.endsWith(".md") ? name : name + ".md";
-        Path filePath = targetDir.resolve(fileName);
+        String fileName = ensureMarkdownSuffix(validateFileName(name));
+        Path filePath = targetDir.resolve(fileName).normalize();
+        ensureInsideVault(filePath);
+        ensureWriteAllowed(filePath);
 
         if (Files.exists(filePath)) {
             return new CliResult(1, "", "笔记已存在: " + getVaultPath().relativize(filePath));
@@ -236,7 +320,7 @@ public class ObsidianCliExecutor {
             return new CliResult(1, "", "必须提供 content 参数");
         }
 
-        Path filePath = resolveNotePath(params);
+        Path filePath = resolveNotePath(params, AccessMode.WRITE);
         if (filePath == null) {
             return new CliResult(1, "", "必须提供 file 或 path 参数");
         }
@@ -260,7 +344,7 @@ public class ObsidianCliExecutor {
             return new CliResult(1, "", "必须提供 content 参数");
         }
 
-        Path filePath = resolveNotePath(params);
+        Path filePath = resolveNotePath(params, AccessMode.WRITE);
         if (filePath == null) {
             return new CliResult(1, "", "必须提供 file 或 path 参数");
         }
@@ -286,13 +370,13 @@ public class ObsidianCliExecutor {
         String dateStr = params.get("date");
         LocalDate date = parseDateParam(dateStr);
         String dateFileName = date.format(DateTimeFormatter.ISO_LOCAL_DATE) + ".md";
-        Path dailyPath = getVaultPath().resolve(DAILY_NOTE_PATH_PATTERN).resolve(dateFileName);
+        Path dailyPath = resolveDirectoryPath(DAILY_NOTE_PATH_PATTERN, AccessMode.WRITE).resolve(dateFileName).normalize();
+        ensureInsideVault(dailyPath);
+        ensureWriteAllowed(dailyPath);
 
-        // 确保日记目录存在
         Files.createDirectories(dailyPath.getParent());
 
         if (!Files.exists(dailyPath)) {
-            // 如果日记文件不存在，创建并写入标题 + 内容
             String header = "# " + date.format(DateTimeFormatter.ISO_LOCAL_DATE) + "\n\n";
             Files.writeString(dailyPath, header + content + "\n", StandardCharsets.UTF_8);
             CliResult verifyResult = verifyWrite(dailyPath, header + content + "\n", WritePosition.START, "创建日记并写入");
@@ -313,7 +397,7 @@ public class ObsidianCliExecutor {
     }
 
     private CliResult doDelete(Map<String, String> params) throws IOException {
-        Path filePath = resolveNotePath(params);
+        Path filePath = resolveNotePath(params, AccessMode.WRITE);
         if (filePath == null) {
             return new CliResult(1, "", "必须提供 file 或 path 参数");
         }
@@ -328,7 +412,6 @@ public class ObsidianCliExecutor {
             Files.delete(filePath);
             return new CliResult(0, "已永久删除笔记: " + relativePath, "");
         } else {
-            // 移到 .trash 目录
             Path trashDir = getVaultPath().resolve(".trash");
             Files.createDirectories(trashDir);
             Path trashPath = trashDir.resolve(filePath.getFileName());
@@ -338,7 +421,7 @@ public class ObsidianCliExecutor {
     }
 
     private CliResult doReplace(Map<String, String> params) throws IOException {
-        Path filePath = resolveNotePath(params);
+        Path filePath = resolveNotePath(params, AccessMode.WRITE);
         if (filePath == null) {
             return new CliResult(1, "", "必须提供 file 或 path 参数");
         }
@@ -369,19 +452,22 @@ public class ObsidianCliExecutor {
     // ===================== 工具方法 =====================
 
     private Path getVaultPath() {
-        return Path.of(properties.getVaultPath());
+        return Path.of(properties.getVaultPath()).toAbsolutePath().normalize();
     }
 
     private Path resolveNotePath(Map<String, String> params) {
+        return resolveNotePath(params, AccessMode.READ);
+    }
+
+    private Path resolveNotePath(Map<String, String> params, AccessMode accessMode) {
         String path = params.get("path");
         String file = params.get("file");
 
         if (path != null && !path.isBlank()) {
-            String normalizedPath = path.endsWith(".md") ? path : path + ".md";
-            return getVaultPath().resolve(normalizedPath);
+            return resolveFilePath(path, accessMode);
         }
         if (file != null && !file.isBlank()) {
-            String normalizedFile = file.endsWith(".md") ? file : file + ".md";
+            String normalizedFile = ensureMarkdownSuffix(validateFileName(file));
             return findFileByName(normalizedFile);
         }
         return null;
@@ -393,10 +479,10 @@ public class ObsidianCliExecutor {
                     .filter(p -> p.getFileName().toString().equals(fileName))
                     .filter(p -> !isHiddenPath(p))
                     .findFirst()
-                    .orElse(getVaultPath().resolve(fileName));
+                    .orElse(resolveFilePath(fileName, AccessMode.READ));
         } catch (IOException e) {
             log.warn("搜索文件失败: {}", fileName, e);
-            return getVaultPath().resolve(fileName);
+            return resolveFilePath(fileName, AccessMode.READ);
         }
     }
 
@@ -436,12 +522,110 @@ public class ObsidianCliExecutor {
         return false;
     }
 
+    private Path resolveFilePath(String rawPath, AccessMode accessMode) {
+        return resolveRelativePath(rawPath, true, accessMode);
+    }
+
+    private Path resolveDirectoryPath(String rawPath, AccessMode accessMode) {
+        return resolveRelativePath(rawPath, false, accessMode);
+    }
+
+    private Path resolveRelativePath(String rawPath, boolean markdownFile, AccessMode accessMode) {
+        String sanitized = sanitizePathText(rawPath);
+        Path relative = Path.of(sanitized).normalize();
+        if (relative.isAbsolute() || sanitized.startsWith("/")) {
+            throw new SecurityException("禁止使用绝对路径");
+        }
+        if (relative.startsWith("..")) {
+            throw new SecurityException("禁止访问 vault 外路径");
+        }
+        validateRelativePath(relative, accessMode);
+        if (markdownFile && !relative.toString().endsWith(".md")) {
+            relative = Path.of(relative.toString() + ".md").normalize();
+        }
+        Path resolved = getVaultPath().resolve(relative).normalize();
+        ensureInsideVault(resolved);
+        if (accessMode == AccessMode.WRITE) {
+            ensureWriteAllowed(resolved);
+        }
+        return resolved;
+    }
+
+    private String sanitizePathText(String rawPath) {
+        if (rawPath == null || rawPath.isBlank()) {
+            throw new SecurityException("路径不能为空");
+        }
+        String sanitized = rawPath.trim().replace("\\", "/");
+        if (sanitized.contains("\0")) {
+            throw new SecurityException("路径包含非法字符");
+        }
+        return sanitized;
+    }
+
+    private void validateRelativePath(Path relative, AccessMode accessMode) {
+        if (relative.getNameCount() == 0) {
+            return;
+        }
+        for (Path part : relative) {
+            String segment = part.toString();
+            if (segment.isBlank() || ".".equals(segment)) {
+                continue;
+            }
+            if (segment.startsWith(".")) {
+                throw new SecurityException("禁止访问隐藏目录: " + segment);
+            }
+            if (BLOCKED_SEGMENTS.contains(segment)) {
+                throw new SecurityException("禁止访问系统目录: " + segment);
+            }
+        }
+        if (accessMode == AccessMode.WRITE && relative.getNameCount() > 1) {
+            String topLevel = relative.getName(0).toString();
+            if (!WRITE_ALLOWED_TOP_LEVELS.contains(topLevel)) {
+                throw new SecurityException("写入路径不在允许白名单内: " + topLevel);
+            }
+        }
+    }
+
+    private void ensureInsideVault(Path resolved) {
+        if (!resolved.startsWith(getVaultPath())) {
+            throw new SecurityException("禁止访问 vault 外路径");
+        }
+    }
+
+    private void ensureWriteAllowed(Path resolved) {
+        Path relative = getVaultPath().relativize(resolved);
+        if (relative.getNameCount() <= 1) {
+            return;
+        }
+        String topLevel = relative.getName(0).toString();
+        if (!WRITE_ALLOWED_TOP_LEVELS.contains(topLevel)) {
+            throw new SecurityException("写入路径不在允许白名单内: " + topLevel);
+        }
+    }
+
+    private String validateFileName(String rawName) {
+        String sanitized = sanitizePathText(rawName);
+        if (sanitized.contains("/")) {
+            throw new SecurityException("file 参数仅允许文件名，请改用 path 参数");
+        }
+        if (sanitized.equals(".") || sanitized.equals("..") || sanitized.startsWith(".")) {
+            throw new SecurityException("禁止访问隐藏或非法文件名");
+        }
+        return sanitized;
+    }
+
+    private String ensureMarkdownSuffix(String filename) {
+        if (filename == null || filename.isBlank()) {
+            return filename;
+        }
+        return filename.endsWith(".md") ? filename : filename + ".md";
+    }
+
     private LocalDate parseDateParam(String dateStr) {
         if (dateStr == null || dateStr.isBlank()) {
             return LocalDate.now();
         }
         String trimmed = dateStr.trim();
-        // 处理中文相对日期
         if ("今天".equals(trimmed) || "today".equalsIgnoreCase(trimmed)) {
             return LocalDate.now();
         }
@@ -451,7 +635,6 @@ public class ObsidianCliExecutor {
         if ("明天".equals(trimmed) || "tomorrow".equalsIgnoreCase(trimmed)) {
             return LocalDate.now().plusDays(1);
         }
-        // 尝试 ISO 格式解析
         try {
             return LocalDate.parse(trimmed);
         } catch (Exception e) {

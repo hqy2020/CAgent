@@ -18,6 +18,8 @@
 package com.nageoffer.ai.ragent.rag.service.impl;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nageoffer.ai.ragent.rag.dao.entity.RagTraceNodeDO;
 import com.nageoffer.ai.ragent.rag.dao.entity.RagTraceRunDO;
 import com.nageoffer.ai.ragent.rag.dao.mapper.RagTraceNodeMapper;
@@ -27,6 +29,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * RAG Trace 记录服务实现
@@ -37,6 +41,7 @@ public class RagTraceRecordServiceImpl implements RagTraceRecordService {
 
     private final RagTraceRunMapper runMapper;
     private final RagTraceNodeMapper nodeMapper;
+    private final ObjectMapper objectMapper;
 
     @Override
     public void startRun(RagTraceRunDO run) {
@@ -71,5 +76,47 @@ public class RagTraceRecordServiceImpl implements RagTraceRecordService {
         nodeMapper.update(update, Wrappers.lambdaUpdate(RagTraceNodeDO.class)
                 .eq(RagTraceNodeDO::getTraceId, traceId)
                 .eq(RagTraceNodeDO::getNodeId, nodeId));
+    }
+
+    @Override
+    public void updateNodeExtraData(String traceId, String nodeId, Map<String, Object> extraData) {
+        if (traceId == null || nodeId == null || extraData == null || extraData.isEmpty()) {
+            return;
+        }
+        RagTraceNodeDO existing = nodeMapper.selectOne(Wrappers.lambdaQuery(RagTraceNodeDO.class)
+                .eq(RagTraceNodeDO::getTraceId, traceId)
+                .eq(RagTraceNodeDO::getNodeId, nodeId)
+                .last("limit 1"));
+        if (existing == null) {
+            return;
+        }
+        Map<String, Object> merged = new LinkedHashMap<>(readExistingExtraData(existing.getExtraData()));
+        merged.putAll(extraData);
+        RagTraceNodeDO update = RagTraceNodeDO.builder()
+                .extraData(writeExtraData(merged))
+                .build();
+        nodeMapper.update(update, Wrappers.lambdaUpdate(RagTraceNodeDO.class)
+                .eq(RagTraceNodeDO::getTraceId, traceId)
+                .eq(RagTraceNodeDO::getNodeId, nodeId));
+    }
+
+    private Map<String, Object> readExistingExtraData(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return new LinkedHashMap<>();
+        }
+        try {
+            return objectMapper.readValue(raw, new TypeReference<>() {
+            });
+        } catch (Exception ignored) {
+            return new LinkedHashMap<>();
+        }
+    }
+
+    private String writeExtraData(Map<String, Object> extraData) {
+        try {
+            return objectMapper.writeValueAsString(extraData);
+        } catch (Exception e) {
+            return "{}";
+        }
     }
 }

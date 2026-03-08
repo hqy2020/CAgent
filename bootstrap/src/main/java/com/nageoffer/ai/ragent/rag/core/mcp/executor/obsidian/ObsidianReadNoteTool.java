@@ -23,6 +23,7 @@ import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPExecute;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPParam;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPToolDeclare;
+import com.nageoffer.ai.ragent.rag.core.mcp.governance.MCPErrorClassifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -45,6 +46,7 @@ import java.util.List;
         examples = {"读取我的日记", "打开笔记 README", "查看 3-Knowledge 下的 RAG 笔记"},
         sceneKeywords = {"Obsidian", "笔记读取", "知识卡片"},
         requireUserId = false,
+        operationType = MCPTool.OperationType.READ,
         timeoutSeconds = 12,
         maxRetries = 1,
         sensitivity = MCPTool.Sensitivity.LOW,
@@ -59,6 +61,7 @@ import java.util.List;
 public class ObsidianReadNoteTool {
 
     private final ObsidianCliExecutor cliExecutor;
+    private final MCPErrorClassifier errorClassifier;
 
     @MCPExecute
     public MCPResponse handle(MCPRequest request) {
@@ -78,10 +81,10 @@ public class ObsidianReadNoteTool {
 
         ObsidianCliExecutor.CliResult result = cliExecutor.execute("read", args);
         if (result == null) {
-            return MCPResponse.error("obsidian_read", "CLI_ERROR", "Obsidian 读取执行器未返回结果");
+            return MCPResponse.error("obsidian_read", "EXECUTION_ERROR", "Obsidian 读取执行器未返回结果");
         }
         if (!result.isSuccess()) {
-            return MCPResponse.error("obsidian_read", "CLI_ERROR", result.stderr());
+            return errorClassifier.classifyCliFailure("obsidian_read", result.stderr());
         }
         MCPResponse response = MCPResponse.success("obsidian_read", result.stdout());
         response.setFallbackUsed(result.stdout().contains("[fallback]"));

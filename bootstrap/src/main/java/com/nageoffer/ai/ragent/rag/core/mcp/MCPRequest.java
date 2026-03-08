@@ -73,6 +73,12 @@ public class MCPRequest {
     private String userQuestion;
 
     /**
+     * 请求来源
+     */
+    @Builder.Default
+    private MCPRequestSource requestSource = MCPRequestSource.DIRECT;
+
+    /**
      * 是否已通过确认链
      */
     @Builder.Default

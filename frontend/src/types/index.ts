@@ -65,6 +65,19 @@ export interface AgentPlanStepPayload {
   instruction: string;
 }
 
+export interface AgentObserveItemPayload {
+  source: string;
+  status: string;
+  summary: string;
+}
+
+export interface AgentObservePayload {
+  loop: number;
+  stepIndex: number;
+  summary?: string;
+  items?: AgentObserveItemPayload[];
+}
+
 export interface AgentPlanPayload {
   loop: number;
   goal: string;
@@ -97,6 +110,7 @@ export interface AgentConfirmPayload {
 }
 
 export type AgentTimelineItem =
+  | { kind: "observe"; at: number; payload: AgentObservePayload }
   | { kind: "plan"; at: number; payload: AgentPlanPayload }
   | { kind: "step"; at: number; payload: AgentStepPayload }
   | { kind: "replan"; at: number; payload: AgentReplanPayload };

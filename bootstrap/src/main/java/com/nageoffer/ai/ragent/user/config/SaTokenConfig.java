@@ -36,6 +36,14 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @RequiredArgsConstructor
 public class SaTokenConfig implements WebMvcConfigurer {
 
+    private static final String[] EXCLUDED_PATHS = {
+            "/auth/**",
+            "/user/auth/**",
+            "/actuator/health",
+            "/actuator/health/**",
+            "/actuator/prometheus"
+    };
+
     /**
      * 用户上下文拦截器
      */
@@ -56,7 +64,11 @@ public class SaTokenConfig implements WebMvcConfigurer {
                         String uri = request.getRequestURI();
 
                         // 排除登录路径
-                        if (uri.contains("/auth/login") || uri.contains("/user/auth")) {
+                        if (uri.contains("/auth/login") || uri.contains("/user/auth")
+                                || uri.startsWith("/api/ragent/actuator/health")
+                                || uri.startsWith("/api/ragent/actuator/prometheus")
+                                || uri.startsWith("/actuator/health")
+                                || uri.startsWith("/actuator/prometheus")) {
                             return;
                         }
 
@@ -77,13 +89,13 @@ public class SaTokenConfig implements WebMvcConfigurer {
                 // 拦截所有路径
                 .addPathPatterns("/**")
                 // 排除认证相关路径
-                .excludePathPatterns("/auth/**", "/user/auth/**");
+                .excludePathPatterns(EXCLUDED_PATHS);
 
         // 注册用户上下文拦截器
         registry.addInterceptor(userContextInterceptor)
                 // 拦截所有路径
                 .addPathPatterns("/**")
                 // 排除认证相关路径
-                .excludePathPatterns("/auth/**", "/user/auth/**");
+                .excludePathPatterns(EXCLUDED_PATHS);
     }
 }

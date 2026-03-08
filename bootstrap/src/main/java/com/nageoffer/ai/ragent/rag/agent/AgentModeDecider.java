@@ -21,17 +21,20 @@ import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
+import com.nageoffer.ai.ragent.rag.core.mcp.DefaultMCPToolRegistry;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import com.nageoffer.ai.ragent.rag.enums.IntentKind;
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPToolExecutor;
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPToolRegistry;
 import com.nageoffer.ai.ragent.rag.util.NoteWriteIntentHelper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -53,15 +56,13 @@ public class AgentModeDecider {
             "(联网|上网|互联网|web|internet|google|bing|百度|新闻|热搜|实时|最新|天气|股价|汇率)",
             Pattern.CASE_INSENSITIVE
     );
-    private static final Set<String> MCP_WRITE_TOOL_IDS = Set.of(
-            "obsidian_create",
-            "obsidian_update",
-            "obsidian_replace",
-            "obsidian_delete",
-            "obsidian_video_transcript"
-    );
 
     private final RAGConfigProperties ragConfigProperties;
+    private final MCPToolRegistry mcpToolRegistry;
+
+    public AgentModeDecider(RAGConfigProperties ragConfigProperties) {
+        this(ragConfigProperties, new DefaultMCPToolRegistry(List.of()));
+    }
 
     @RagTraceNode(name = "agent-decide", type = "AGENT_DECIDE")
     public AgentModeDecision decide(String question,
@@ -185,7 +186,7 @@ public class AgentModeDecider {
                     continue;
                 }
                 String toolId = nodeScore.getNode().getMcpToolId();
-                if (toolId != null && MCP_WRITE_TOOL_IDS.contains(toolId)) {
+                if (toolId != null && isWriteTool(toolId)) {
                     return true;
                 }
             }
@@ -213,7 +214,7 @@ public class AgentModeDecider {
                 if (kind == IntentKind.MCP) {
                     hasMcp = true;
                     String toolId = nodeScore.getNode().getMcpToolId();
-                    if (toolId != null && MCP_WRITE_TOOL_IDS.contains(toolId)) {
+                    if (toolId != null && isWriteTool(toolId)) {
                         return false;
                     }
                     continue;
@@ -224,6 +225,20 @@ public class AgentModeDecider {
             }
         }
         return hasMcp && !hasKb;
+    }
+
+    private boolean isWriteTool(String toolId) {
+        return mcpToolRegistry.getExecutor(toolId)
+                .map(MCPToolExecutor::getToolDefinition)
+                .map(tool -> tool.getOperationType() == MCPTool.OperationType.WRITE || isKnownWriteToolId(toolId))
+                .orElseGet(() -> isKnownWriteToolId(toolId));
+    }
+
+    private boolean isKnownWriteToolId(String toolId) {
+        return switch (toolId == null ? "" : toolId.trim()) {
+            case "obsidian_create", "obsidian_update", "obsidian_replace", "obsidian_delete", "obsidian_video_transcript" -> true;
+            default -> false;
+        };
     }
 
     private boolean containsKbIntent(List<SubQuestionIntent> subIntents) {

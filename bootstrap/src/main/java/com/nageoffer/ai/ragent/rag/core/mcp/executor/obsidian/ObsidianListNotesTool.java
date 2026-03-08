@@ -23,6 +23,7 @@ import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPExecute;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPParam;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPToolDeclare;
+import com.nageoffer.ai.ragent.rag.core.mcp.governance.MCPErrorClassifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -45,6 +46,7 @@ import java.util.List;
         examples = {"列出笔记库里的文件夹", "查看所有笔记", "列出 3-Knowledge 文件夹下的文件"},
         sceneKeywords = {"Obsidian", "目录浏览", "文件列表"},
         requireUserId = false,
+        operationType = MCPTool.OperationType.READ,
         timeoutSeconds = 10,
         maxRetries = 1,
         sensitivity = MCPTool.Sensitivity.LOW,
@@ -61,6 +63,7 @@ import java.util.List;
 public class ObsidianListNotesTool {
 
     private final ObsidianCliExecutor cliExecutor;
+    private final MCPErrorClassifier errorClassifier;
 
     @MCPExecute
     public MCPResponse handle(MCPRequest request) {
@@ -80,10 +83,10 @@ public class ObsidianListNotesTool {
 
         ObsidianCliExecutor.CliResult result = cliExecutor.execute(command, args);
         if (result == null) {
-            return MCPResponse.error("obsidian_list", "CLI_ERROR", "Obsidian 列表执行器未返回结果");
+            return MCPResponse.error("obsidian_list", "EXECUTION_ERROR", "Obsidian 列表执行器未返回结果");
         }
         if (!result.isSuccess()) {
-            return MCPResponse.error("obsidian_list", "CLI_ERROR", result.stderr());
+            return errorClassifier.classifyCliFailure("obsidian_list", result.stderr());
         }
         MCPResponse response = MCPResponse.success("obsidian_list", result.stdout());
         response.setFallbackUsed(result.stdout().contains("[fallback]"));

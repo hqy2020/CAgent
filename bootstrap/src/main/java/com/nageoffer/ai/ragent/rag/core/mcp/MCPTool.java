@@ -37,6 +37,11 @@ import java.util.Map;
 @AllArgsConstructor
 public class MCPTool {
 
+    public enum OperationType {
+        READ,
+        WRITE
+    }
+
     public enum Sensitivity {
         LOW,
         MEDIUM,
@@ -87,10 +92,16 @@ public class MCPTool {
     private List<String> sceneKeywords = List.of();
 
     /**
+     * 工具操作类型
+     */
+    @Builder.Default
+    private OperationType operationType = OperationType.READ;
+
+    /**
      * 是否需要用户身份（调用时自动注入 userId）
      */
     @Builder.Default
-    private boolean requireUserId = true;
+    private boolean requireUserId = false;
 
     /**
      * 是否需要显式确认后才能执行
@@ -117,9 +128,27 @@ public class MCPTool {
     private Sensitivity sensitivity = Sensitivity.MEDIUM;
 
     /**
+     * 需要脱敏的参数名
+     */
+    @Builder.Default
+    private List<String> sensitiveParams = List.of();
+
+    /**
      * 降级提示文案
      */
     private String fallbackMessage;
+
+    /**
+     * 是否允许使用缓存降级
+     */
+    @Builder.Default
+    private boolean cacheableFallback = false;
+
+    /**
+     * 缓存降级 TTL（秒）
+     */
+    @Builder.Default
+    private int fallbackCacheTtlSeconds = 300;
 
     /**
      * 是否对模型暴露，兼容别名工具可隐藏。

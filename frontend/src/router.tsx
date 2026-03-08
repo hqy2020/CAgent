@@ -5,6 +5,7 @@ import { ChatPage } from "@/pages/ChatPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { AdminLayout } from "@/pages/admin/AdminLayout";
 import { DashboardPage } from "@/pages/admin/dashboard/DashboardPage";
+import { HotspotRadarPage } from "@/pages/admin/hotspots/HotspotRadarPage";
 import { KnowledgeListPage } from "@/pages/admin/knowledge/KnowledgeListPage";
 import { KnowledgeDocumentsPage } from "@/pages/admin/knowledge/KnowledgeDocumentsPage";
 import { KnowledgeChunksPage } from "@/pages/admin/knowledge/KnowledgeChunksPage";
@@ -100,6 +101,10 @@ export const router = createBrowserRouter([
       {
         path: "dashboard",
         element: <DashboardPage />
+      },
+      {
+        path: "hotspots",
+        element: <HotspotRadarPage />
       },
       {
         path: "knowledge",

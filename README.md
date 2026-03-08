@@ -218,6 +218,7 @@ VITE_API_BASE_URL=/api/ragent
 | 脚本 | 用途 |
 |------|------|
 | `chat_quality_test.sh` | 对话质量测试 |
+| `prompt_regression_matrix.sh` | 提示词与路由回归矩阵（日期/联网/数据库/KB/Obsidian） |
 | `trace_fullchain_smoke.sh` | 全链路追踪冒烟测试 |
 | `ingestion_pipeline_user_test.sh` | 入库流水线用户测试 |
 | `mcp_kb_integration_test.sh` | MCP 与知识库集成测试 |

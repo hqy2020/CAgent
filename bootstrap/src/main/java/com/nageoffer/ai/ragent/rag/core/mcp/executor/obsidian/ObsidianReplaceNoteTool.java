@@ -23,6 +23,7 @@ import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPExecute;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPParam;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPToolDeclare;
+import com.nageoffer.ai.ragent.rag.core.mcp.governance.MCPErrorClassifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -43,10 +44,12 @@ import java.util.List;
         useWhen = "当用户明确给出旧文本和新文本，想对已有笔记做局部替换时使用。",
         avoidWhen = "不要用于追加新内容、创建新笔记、删除笔记或仅按关键词搜索笔记。",
         examples = {"把笔记里的旧标题替换为新标题", "修改笔记中的某段描述", "将笔记中的 A 替换为 B"},
-        requireUserId = false,
+        requireUserId = true,
+        operationType = MCPTool.OperationType.WRITE,
         confirmationRequired = true,
         timeoutSeconds = 15,
         sensitivity = MCPTool.Sensitivity.HIGH,
+        sensitiveParams = {"oldContent", "newContent"},
         fallbackMessage = "Obsidian 替换暂时不可用，本次不会执行替换。",
         parameters = {
                 @MCPParam(name = "file", description = "目标笔记文件名（不含 .md 后缀）", type = "string",
@@ -62,6 +65,7 @@ import java.util.List;
 public class ObsidianReplaceNoteTool {
 
     private final ObsidianCliExecutor cliExecutor;
+    private final MCPErrorClassifier errorClassifier;
 
     @MCPExecute
     public MCPResponse handle(MCPRequest request) {
@@ -91,10 +95,10 @@ public class ObsidianReplaceNoteTool {
 
         ObsidianCliExecutor.CliResult result = cliExecutor.execute("replace", args);
         if (result == null) {
-            return MCPResponse.error("obsidian_replace", "REPLACE_ERROR", "Obsidian 替换执行器未返回结果");
+            return MCPResponse.error("obsidian_replace", "EXECUTION_ERROR", "Obsidian 替换执行器未返回结果");
         }
         if (!result.isSuccess()) {
-            return MCPResponse.error("obsidian_replace", "REPLACE_ERROR", result.stderr());
+            return errorClassifier.classifyCliFailure("obsidian_replace", result.stderr());
         }
         MCPResponse response = MCPResponse.success("obsidian_replace", result.stdout());
         response.setFallbackUsed(result.stdout().contains("[fallback]"));

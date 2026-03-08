@@ -75,9 +75,22 @@ public class UserContextInterceptor implements HandlerInterceptor {
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             return true;
         }
+        String requestUri = request.getRequestURI();
+        if (requestUri.startsWith("/api/ragent/actuator/health")
+                || requestUri.startsWith("/api/ragent/actuator/prometheus")
+                || requestUri.startsWith("/actuator/health")
+                || requestUri.startsWith("/actuator/prometheus")) {
+            return true;
+        }
 
         String loginId = StpUtil.getLoginIdAsString();
+        if (StrUtil.isBlank(loginId) || !StrUtil.isNumeric(loginId)) {
+            return true;
+        }
         UserDO user = userMapper.selectById(Long.parseLong(loginId));
+        if (user == null) {
+            return true;
+        }
 
         UserContext.set(
                 LoginUser.builder()

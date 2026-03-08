@@ -17,6 +17,7 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 FRONTEND_DIR="$ROOT_DIR/frontend"
+MCP_BRIDGE_DIR="$ROOT_DIR/scripts/mcp-bridge"
 CHAT_URL="http://localhost:5173/chat"
 BACKEND_LOG="/tmp/ragent-backend.log"
 FRONTEND_LOG="/tmp/ragent-frontend.log"
@@ -51,6 +52,11 @@ start_backend_if_needed() {
     return
   fi
 
+  if [ -f "$MCP_BRIDGE_DIR/package.json" ] && [ ! -d "$MCP_BRIDGE_DIR/node_modules/@modelcontextprotocol" ]; then
+    log_step "Installing MCP bridge dependencies..."
+    (cd "$MCP_BRIDGE_DIR" && npm install >/tmp/ragent-mcp-bridge-install.log 2>&1)
+  fi
+
   log_step "Starting Spring Boot backend..."
   cd "$ROOT_DIR"
   nohup env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY -u all_proxy -u ALL_PROXY \
@@ -81,6 +87,11 @@ log_step "Waiting for backend (port 8080)..."
 wait_port 8080 120
 log_step "Waiting for frontend (port 5173)..."
 wait_port 5173 60
+
+if [ "${RUN_UI_REGRESSION:-false}" = "true" ]; then
+  log_step "Running UI prompt regression..."
+  "$ROOT_DIR/scripts/ui_prompt_regression.sh"
+fi
 
 log_info "Ragent is ready! Opening browser..."
 open "$CHAT_URL"

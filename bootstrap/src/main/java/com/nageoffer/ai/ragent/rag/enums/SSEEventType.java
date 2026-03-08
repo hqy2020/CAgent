@@ -46,6 +46,11 @@ public enum SSEEventType {
     WORKFLOW("workflow"),
 
     /**
+     * Agent 观察事件
+     */
+    AGENT_OBSERVE("agent_observe"),
+
+    /**
      * Agent 规划事件
      */
     AGENT_PLAN("agent_plan"),
