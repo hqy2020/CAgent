@@ -19,12 +19,14 @@ package com.nageoffer.ai.ragent.rag.agent;
 
 import com.nageoffer.ai.ragent.infra.chat.StreamCallback;
 import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPRequest;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPResponse;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPService;
 import com.nageoffer.ai.ragent.rag.dto.WorkflowEventPayload;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
@@ -37,9 +39,11 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -173,6 +177,39 @@ class AgentCommandRouterTests {
     }
 
     @Test
+    void shouldMergeParameterOverridesWhenConfirmingProposal() {
+        PendingProposal proposal = PendingProposal.builder()
+                .proposalId("p-override")
+                .conversationId("c1")
+                .userId("u1")
+                .toolId("obsidian_create")
+                .userQuestion("create note")
+                .parameters(new HashMap<>())
+                .status(PendingProposalStore.STATUS_PENDING)
+                .createdAt(System.currentTimeMillis())
+                .expiresAt(System.currentTimeMillis() + 10000)
+                .build();
+        when(pendingProposalStore.confirm(eq("p-override"), eq("c1"), eq("u1")))
+                .thenReturn(new PendingProposalStore.ProposalDecisionResult(true, proposal, null));
+        when(mcpService.execute(any())).thenReturn(MCPResponse.success("obsidian_create", "ok"));
+
+        boolean routed = router.tryRoute(
+                "/confirm p-override name=今日日报",
+                "c1",
+                "u1",
+                "t1",
+                new CapturingSseEmitter(),
+                callback,
+                CancellationToken.NONE
+        );
+
+        assertTrue(routed);
+        ArgumentCaptor<MCPRequest> requestCaptor = ArgumentCaptor.forClass(MCPRequest.class);
+        verify(mcpService).execute(requestCaptor.capture());
+        assertEquals("今日日报", requestCaptor.getValue().getStringParameter("name"));
+    }
+
+    @Test
     void shouldRejectProposal() {
         PendingProposal proposal = PendingProposal.builder()
                 .proposalId("p-2")
@@ -219,6 +256,41 @@ class AgentCommandRouterTests {
         verify(callback).onContent("确认失败：无权限确认该提案");
         verify(callback).onComplete();
         verifyNoInteractions(mcpService);
+    }
+
+    @Test
+    void shouldRollbackWhenConfirmedExecutionFailsWithMissingParam() {
+        PendingProposal proposal = PendingProposal.builder()
+                .proposalId("p-4")
+                .conversationId("c1")
+                .userId("u1")
+                .toolId("obsidian_create")
+                .userQuestion("create")
+                .parameters(new HashMap<>())
+                .status(PendingProposalStore.STATUS_PENDING)
+                .createdAt(System.currentTimeMillis())
+                .expiresAt(System.currentTimeMillis() + 10000)
+                .build();
+        when(pendingProposalStore.confirm(eq("p-4"), eq("c1"), eq("u1")))
+                .thenReturn(new PendingProposalStore.ProposalDecisionResult(true, proposal, null));
+        when(pendingProposalStore.rollbackToPending(eq("p-4"), eq("c1"), eq("u1"), any()))
+                .thenReturn(new PendingProposalStore.ProposalDecisionResult(true, proposal, null));
+        when(mcpService.execute(any())).thenReturn(MCPResponse.error("obsidian_create", "MISSING_PARAM", "必须提供 name 参数"));
+
+        boolean routed = router.tryRoute(
+                "/confirm p-4",
+                "c1",
+                "u1",
+                "t1",
+                new CapturingSseEmitter(),
+                callback,
+                CancellationToken.NONE
+        );
+
+        assertTrue(routed);
+        verify(pendingProposalStore).rollbackToPending(eq("p-4"), eq("c1"), eq("u1"), any());
+        verify(callback).onContent(contains("补全参数后重试"));
+        verify(callback).onComplete();
     }
 
     private static final class CapturingSseEmitter extends SseEmitter {

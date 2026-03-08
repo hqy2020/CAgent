@@ -109,6 +109,12 @@ public interface MCPParameterExtractor {
                 if (def.getEnumValues() != null && !def.getEnumValues().isEmpty()) {
                     sb.append("（可选：").append(String.join("、", def.getEnumValues())).append("）");
                 }
+                if (def.getExample() != null && !def.getExample().isBlank()) {
+                    sb.append("（示例：").append(def.getExample()).append("）");
+                }
+                if (def.getPattern() != null && !def.getPattern().isBlank()) {
+                    sb.append("（格式：").append(def.getPattern()).append("）");
+                }
                 sb.append("\n");
             }
             return new ParameterValidationResult(false, params, missingParams, sb.toString().trim());

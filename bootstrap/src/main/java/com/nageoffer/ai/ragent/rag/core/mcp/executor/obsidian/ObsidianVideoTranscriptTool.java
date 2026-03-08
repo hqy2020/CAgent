@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.rag.core.mcp.executor.obsidian;
 import com.nageoffer.ai.ragent.rag.config.VideoTranscriptProperties;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPRequest;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPResponse;
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPExecute;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPParam;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPToolDeclare;
@@ -46,23 +47,34 @@ import java.util.Map;
 @MCPToolDeclare(
         toolId = "obsidian_video_transcript",
         name = "视频转录写入 Obsidian",
-        description = "调用 VideoTranscriptAPI 将视频链接转文字，并自动写入 Obsidian 笔记",
+        description = "将视频或播客链接转录为文字，并自动写入 Obsidian 笔记。",
+        useWhen = "当用户提供视频、播客或长内容链接，并明确要求转录后落盘到 Obsidian 时使用。",
+        avoidWhen = "不要用于普通网页搜索、仅创建空白笔记、只更新一小段文本或查询已有笔记。",
         examples = {
                 "把这个 B 站链接转录成文字并写进 Obsidian",
                 "转录这个小宇宙链接，存到视频转录目录",
                 "把这个 YouTube 视频转录后追加到现有笔记"
         },
         requireUserId = false,
+        confirmationRequired = true,
+        timeoutSeconds = 30,
+        sensitivity = MCPTool.Sensitivity.HIGH,
+        fallbackMessage = "视频转录写入暂时不可用，本次不会执行写入。",
         parameters = {
-                @MCPParam(name = "url", description = "视频链接（必填）", type = "string", required = true),
-                @MCPParam(name = "sourceUrl", description = "原始来源链接（可选）", type = "string", required = false),
-                @MCPParam(name = "path", description = "写入的 Obsidian 目录（相对 vault 路径）", type = "string", required = false),
-                @MCPParam(name = "noteName", description = "笔记名（不含 .md，可选）", type = "string", required = false),
+                @MCPParam(name = "url", description = "视频或播客链接（必填）", type = "string",
+                        required = true, example = "https://www.bilibili.com/video/BV1xx411c7mD", pattern = "^https?://.+"),
+                @MCPParam(name = "sourceUrl", description = "原始来源链接（可选）", type = "string",
+                        required = false, example = "https://www.youtube.com/watch?v=demo", pattern = "^https?://.+"),
+                @MCPParam(name = "path", description = "写入的 Obsidian 目录（相对 vault 路径）", type = "string",
+                        required = false, example = "2-Inputs/Transcripts"),
+                @MCPParam(name = "noteName", description = "笔记名（不含 .md，可选）", type = "string",
+                        required = false, example = "AI 工具调用访谈转录"),
                 @MCPParam(name = "useSpeakerRecognition", description = "是否开启说话人识别", type = "string", required = false,
-                        defaultValue = "false", enumValues = {"true", "false"}),
+                        defaultValue = "false", example = "false", enumValues = {"true", "false"}),
                 @MCPParam(name = "appendIfExists", description = "若笔记已存在是否追加写入", type = "string", required = false,
-                        defaultValue = "true", enumValues = {"true", "false"}),
-                @MCPParam(name = "pollTimeoutSeconds", description = "轮询超时秒数", type = "number", required = false)
+                        defaultValue = "true", example = "true", enumValues = {"true", "false"}),
+                @MCPParam(name = "pollTimeoutSeconds", description = "轮询超时秒数", type = "number",
+                        required = false, example = "180")
         }
 )
 public class ObsidianVideoTranscriptTool {

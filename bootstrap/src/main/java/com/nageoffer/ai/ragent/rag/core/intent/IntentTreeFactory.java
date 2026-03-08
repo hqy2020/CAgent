@@ -34,7 +34,6 @@ import static com.nageoffer.ai.ragent.rag.enums.IntentLevel.TOPIC;
  *   <li>知识问答（KB）：面试八股 / 项目实战 / 实习经验</li>
  *   <li>笔记检索（MCP）：读取 / 搜索 / 列出</li>
  *   <li>笔记编辑（MCP）：创建 / 更新 / 删除</li>
- *   <li>业务系统查询（MCP）：销售数据实时查询</li>
  *   <li>系统交互（SYSTEM）：欢迎 / 关于助手</li>
  * </ul>
  */
@@ -52,7 +51,7 @@ public class IntentTreeFactory {
         roots.add(buildKbDomain());
         roots.add(buildObsQueryDomain());
         roots.add(buildObsEditDomain());
-        roots.add(buildSalesQueryDomain());
+        roots.add(buildWebSearchDomain());
         roots.add(buildSysDomain());
 
         // 填充 fullPath
@@ -190,7 +189,7 @@ public class IntentTreeFactory {
                 .name("笔记检索")
                 .level(DOMAIN)
                 .kind(IntentKind.MCP)
-                .description("通过 Obsidian 笔记库进行只读查询，包括读取、搜索和列出笔记")
+                .description("通过 Obsidian 笔记库进行只读查询，覆盖打开指定笔记、按关键词搜索和浏览目录结构。")
                 .build();
 
         // --- 读取笔记 ---
@@ -203,8 +202,8 @@ public class IntentTreeFactory {
                 .mcpToolId("obsidian_read")
                 .promptTemplate(OBSIDIAN_MCP_PROMPT_TEMPLATE)
                 .paramPromptTemplate(MCP_PARAMETER_EXTRACT_PROMPT)
-                .description("读取 Obsidian 笔记库中指定笔记的完整内容")
-                .examples(List.of("读取我的日记", "打开笔记 README", "查看 RAG 笔记内容"))
+                .description("读取指定 Obsidian 笔记的完整内容，适合已知笔记名或路径的打开场景。")
+                .examples(List.of("读取我的日记", "打开笔记 README", "查看 Projects/Ragent/README.md 的内容"))
                 .build();
 
         IntentNode readFile = IntentNode.builder()
@@ -245,7 +244,7 @@ public class IntentTreeFactory {
                 .mcpToolId("obsidian_search")
                 .promptTemplate(OBSIDIAN_MCP_PROMPT_TEMPLATE)
                 .paramPromptTemplate(MCP_PARAMETER_EXTRACT_PROMPT)
-                .description("在 Obsidian 笔记库中搜索笔记内容或标题")
+                .description("在 Obsidian 笔记库中按关键词全文搜索相关笔记和上下文片段。")
                 .examples(List.of("搜索关于 RAG 的笔记", "在笔记库中查找 Spring Boot", "搜索包含 TODO 的笔记"))
                 .build();
 
@@ -287,8 +286,8 @@ public class IntentTreeFactory {
                 .mcpToolId("obsidian_list")
                 .promptTemplate(OBSIDIAN_MCP_PROMPT_TEMPLATE)
                 .paramPromptTemplate(MCP_PARAMETER_EXTRACT_PROMPT)
-                .description("列出 Obsidian 笔记库中的文件或文件夹结构")
-                .examples(List.of("列出笔记库里的文件夹", "查看所有笔记", "列出知识库文件夹下的文件"))
+                .description("列出 Obsidian 笔记库中的文件或文件夹结构，适合目录浏览。")
+                .examples(List.of("列出笔记库里的文件夹", "查看 3-Knowledge 下有哪些文件", "展示笔记库目录结构"))
                 .build();
 
         IntentNode listFolders = IntentNode.builder()
@@ -331,7 +330,7 @@ public class IntentTreeFactory {
                 .name("笔记编辑")
                 .level(DOMAIN)
                 .kind(IntentKind.MCP)
-                .description("对 Obsidian 笔记库进行写操作，包括创建、更新、删除和视频转录入库")
+                .description("对 Obsidian 笔记库进行写操作，包括创建、追加更新、局部替换、删除和转录入库。")
                 .build();
 
         // --- 创建笔记 ---
@@ -344,7 +343,7 @@ public class IntentTreeFactory {
                 .mcpToolId("obsidian_create")
                 .promptTemplate(OBSIDIAN_MCP_PROMPT_TEMPLATE)
                 .paramPromptTemplate(MCP_PARAMETER_EXTRACT_PROMPT)
-                .description("在 Obsidian 笔记库中创建新笔记")
+                .description("在 Obsidian 中创建新笔记，适合新建知识卡片、草稿或日记。")
                 .examples(List.of("创建一个关于 Docker 的笔记", "新建一篇学习笔记", "在知识库文件夹创建笔记"))
                 .build();
 
@@ -386,7 +385,7 @@ public class IntentTreeFactory {
                 .mcpToolId("obsidian_update")
                 .promptTemplate(OBSIDIAN_MCP_PROMPT_TEMPLATE)
                 .paramPromptTemplate(MCP_PARAMETER_EXTRACT_PROMPT)
-                .description("向已有 Obsidian 笔记追加或修改内容")
+                .description("向已有笔记或日记追加内容，支持末尾追加和开头插入。")
                 .examples(List.of("在日记里追加一条待办", "往 README 末尾添加内容", "在笔记开头插入摘要"))
                 .build();
 
@@ -428,7 +427,7 @@ public class IntentTreeFactory {
                 .mcpToolId("obsidian_replace")
                 .promptTemplate(OBSIDIAN_MCP_PROMPT_TEMPLATE)
                 .paramPromptTemplate(MCP_PARAMETER_EXTRACT_PROMPT)
-                .description("替换 Obsidian 笔记中的指定文本为新内容，用于语义化编辑修改笔记")
+                .description("替换 Obsidian 笔记中的指定旧文本为新文本，适合局部精确修改。")
                 .examples(List.of("把笔记里的旧标题替换为新标题", "修改笔记中的某段描述", "将笔记中的 A 替换为 B"))
                 .build();
 
@@ -458,7 +457,7 @@ public class IntentTreeFactory {
                 .mcpToolId("obsidian_delete")
                 .promptTemplate(OBSIDIAN_MCP_PROMPT_TEMPLATE)
                 .paramPromptTemplate(MCP_PARAMETER_EXTRACT_PROMPT)
-                .description("删除 Obsidian 笔记库中的指定笔记")
+                .description("删除指定 Obsidian 笔记，默认进入回收站。")
                 .examples(List.of("删除草稿笔记", "把 temp 笔记删掉", "清理测试笔记"))
                 .build();
 
@@ -487,7 +486,7 @@ public class IntentTreeFactory {
                 .mcpToolId("obsidian_video_transcript")
                 .promptTemplate(OBSIDIAN_MCP_PROMPT_TEMPLATE)
                 .paramPromptTemplate(MCP_PARAMETER_EXTRACT_PROMPT)
-                .description("将视频链接转录为文字并自动写入 Obsidian 笔记")
+                .description("将视频或播客链接转录为文字并自动写入 Obsidian 笔记。")
                 .examples(List.of("把这个 B 站链接转录到 Obsidian", "转录这个 YouTube 视频并保存成笔记", "把小宇宙链接转成文字放进笔记库"))
                 .build();
 
@@ -523,38 +522,38 @@ public class IntentTreeFactory {
         return domain;
     }
 
-    // ========== 4. 业务系统查询 (biz-sales) ==========
+    // ========== 4. 联网搜索 (web-search) ==========
 
-    private static IntentNode buildSalesQueryDomain() {
+    private static IntentNode buildWebSearchDomain() {
         IntentNode domain = IntentNode.builder()
-                .id("biz-sales")
-                .name("业务系统查询")
+                .id("web-search")
+                .name("联网搜索")
                 .level(DOMAIN)
                 .kind(IntentKind.MCP)
-                .description("通过业务系统查询实时销售数据，支持汇总、排名与趋势分析")
+                .description("通过多源聚合抓取进行联网检索，返回带来源链接与发布日期的近期新闻和热点。")
                 .build();
 
-        IntentNode salesQuery = IntentNode.builder()
-                .id("biz-sales-query")
-                .name("销售数据查询")
+        IntentNode newsSearch = IntentNode.builder()
+                .id("web-search-news")
+                .name("新闻搜索")
                 .level(CATEGORY)
                 .parentId(domain.getId())
                 .kind(IntentKind.MCP)
-                .mcpToolId("sales_query")
+                .mcpToolId("web_news_search")
                 .paramPromptTemplate(MCP_PARAMETER_EXTRACT_PROMPT)
-                .description("查询销售额、销售排名和销售趋势等经营指标")
+                .description("联网搜索近期新闻与热点，优先返回标题、来源、链接和发布日期。")
                 .examples(List.of(
-                        "华东区这个月销售额多少？",
-                        "本月销售排名前五是谁？",
-                        "华东区这个月销售额多少，并说明销售口径定义。"
+                        "帮我联网搜索今天 AI 领域的 3 条新闻",
+                        "联网查一下今天大模型领域最新动态",
+                        "搜索今天的 AI 热点并给出处链接"
                 ))
                 .build();
 
-        domain.setChildren(List.of(salesQuery));
+        domain.setChildren(List.of(newsSearch));
         return domain;
     }
 
-    // ========== 5. 系统交互 (sys) ==========
+    // ========== 6. 系统交互 (sys) ==========
 
     private static IntentNode buildSysDomain() {
         IntentNode domain = IntentNode.builder()
@@ -585,7 +584,22 @@ public class IntentTreeFactory {
                 .examples(List.of("你是谁", "你是做什么的", "你能帮我做什么", "你是什么AI"))
                 .build();
 
-        domain.setChildren(List.of(welcome, aboutBot));
+        IntentNode realtime = IntentNode.builder()
+                .id("sys-realtime-query")
+                .name("日期时间与实时信息")
+                .level(CATEGORY)
+                .parentId(domain.getId())
+                .kind(IntentKind.SYSTEM)
+                .description("询问当前日期/时间，不涉及知识库写操作")
+                .examples(List.of(
+                        "今天几号",
+                        "今天星期几",
+                        "现在几点了",
+                        "今天比特币价格是多少"
+                ))
+                .build();
+
+        domain.setChildren(List.of(welcome, aboutBot, realtime));
         return domain;
     }
 

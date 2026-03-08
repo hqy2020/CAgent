@@ -17,6 +17,8 @@
 
 package com.nageoffer.ai.ragent.rag.core.mcp.annotation;
 
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -49,6 +51,16 @@ public @interface MCPToolDeclare {
     String description();
 
     /**
+     * 何时优先使用该工具
+     */
+    String useWhen() default "";
+
+    /**
+     * 何时避免使用该工具
+     */
+    String avoidWhen() default "";
+
+    /**
      * 示例问题（帮助意图识别匹配）
      */
     String[] examples() default {};
@@ -57,6 +69,41 @@ public @interface MCPToolDeclare {
      * 是否需要用户身份
      */
     boolean requireUserId() default true;
+
+    /**
+     * 场景关键词
+     */
+    String[] sceneKeywords() default {};
+
+    /**
+     * 是否需要确认后执行
+     */
+    boolean confirmationRequired() default false;
+
+    /**
+     * 超时时间（秒）
+     */
+    int timeoutSeconds() default 15;
+
+    /**
+     * 瞬时错误最大重试次数
+     */
+    int maxRetries() default 0;
+
+    /**
+     * 敏感级别
+     */
+    MCPTool.Sensitivity sensitivity() default MCPTool.Sensitivity.MEDIUM;
+
+    /**
+     * 降级提示文案
+     */
+    String fallbackMessage() default "";
+
+    /**
+     * 是否对模型暴露
+     */
+    boolean visibleToModel() default true;
 
     /**
      * 参数定义

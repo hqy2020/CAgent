@@ -34,12 +34,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MCP_PARAMETER_EXTRACT_PROMPT_PATH;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MCP_PARAMETER_REPAIR_PROMPT_PATH;
@@ -54,6 +57,41 @@ import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MCP_PARAMETER_REP
 @Service
 @RequiredArgsConstructor
 public class LLMMCPParameterExtractor implements MCPParameterExtractor {
+
+    private static final Map<String, Map<String, List<String>>> PARAMETER_ALIASES = Map.of(
+            "obsidian_search", Map.of(
+                    "withContext", List.of("with_context"),
+                    "path", List.of("folder", "dir", "directory")
+            ),
+            "obsidian_list", Map.of(
+                    "folder", List.of("path", "dir", "directory")
+            ),
+            "obsidian_read", Map.of(
+                    "file", List.of("filename", "title", "note"),
+                    "path", List.of("filepath")
+            )
+    );
+
+    private static final Map<String, Map<String, Map<String, String>>> ENUM_ALIASES = Map.of(
+            "obsidian_search", Map.of(
+                    "withContext", Map.of("yes", "true", "true", "true", "需要", "true", "no", "false", "false", "false")
+            )
+    );
+
+    private static final Pattern TOP_N_PATTERN = Pattern.compile("(?:前|top\\s*)(\\d{1,2})", Pattern.CASE_INSENSITIVE);
+    private static final Pattern COUNT_PATTERN = Pattern.compile("(\\d{1,2})\\s*(?:条|个|篇|则)");
+    private static final Pattern QUOTED_TITLE_PATTERN = Pattern.compile("《([^》]+)》");
+    private static final Pattern PATH_PATTERN = Pattern.compile("([\\p{L}\\p{N}_./（）()\\-]+(?:\\.md)?)");
+    private static final Pattern DATE_ISO_PATTERN = Pattern.compile("(\\d{4})[-./年](\\d{1,2})[-./月](\\d{1,2})日?");
+    private static final Pattern DATE_MONTH_DAY_PATTERN = Pattern.compile("(?<!\\d)(\\d{1,2})[./-](\\d{1,2})(?!\\d)");
+    private static final Pattern DATE_CN_MONTH_DAY_PATTERN = Pattern.compile("(?<!\\d)(\\d{1,2})月(\\d{1,2})日?");
+    private static final Pattern TODAY_DAILY_PATTERN = Pattern.compile("今日日记|今天(?:的)?日记|今日(?:的)?日记");
+    private static final Pattern TARGET_DAILY_ISO_PATTERN =
+            Pattern.compile("(?<!\\d)(\\d{4})[-./年](\\d{1,2})[-./月](\\d{1,2})日?\\s*(?:的)?\\s*日记");
+    private static final Pattern TARGET_DAILY_MONTH_DAY_PATTERN =
+            Pattern.compile("(?<!\\d)(\\d{1,2})[./-](\\d{1,2})\\s*(?:的)?\\s*日记");
+    private static final Pattern TARGET_DAILY_CN_MONTH_DAY_PATTERN =
+            Pattern.compile("(?<!\\d)(\\d{1,2})月(\\d{1,2})日\\s*(?:的)?\\s*日记");
 
     private final LLMService llmService;
     private final PromptTemplateLoader promptTemplateLoader;
@@ -71,19 +109,22 @@ public class LLMMCPParameterExtractor implements MCPParameterExtractor {
         }
 
         try {
+            Map<String, Object> ruleBased = normalizeBySchema(extractRuleBasedParameters(userQuestion, tool), tool);
+            Map<String, Object> ruleResolved = new LinkedHashMap<>(ruleBased);
+            fillDefaults(ruleResolved, tool);
+            ensureRequiredKeys(ruleResolved, tool);
+            MCPParameterExtractor.ParameterValidationResult ruleValidation = validate(new LinkedHashMap<>(ruleResolved), tool);
+            if (ruleValidation.valid() && !ruleBased.isEmpty()) {
+                log.info("MCP 参数提取命中规则层, toolId: {}, 参数: {}", tool.getToolId(), ruleResolved);
+                return ruleResolved;
+            }
+
             String basePrompt = StrUtil.isNotBlank(customPromptTemplate)
                     ? customPromptTemplate
                     : promptTemplateLoader.load(MCP_PARAMETER_EXTRACT_PROMPT_PATH);
 
-            Map<String, Object> extracted = runExtraction(
-                    userQuestion,
-                    tool,
-                    basePrompt,
-                    Map.of(),
-                    List.of(),
-                    false
-            );
-            Map<String, Object> normalized = normalizeBySchema(extracted, tool);
+            Map<String, Object> extracted = runExtraction(userQuestion, tool, basePrompt, ruleBased, List.of(), false);
+            Map<String, Object> normalized = mergeParameters(ruleBased, normalizeBySchema(extracted, tool));
             fillDefaults(normalized, tool);
 
             MCPParameterExtractor.ParameterValidationResult validation = validate(normalized, tool);
@@ -154,7 +195,7 @@ public class LLMMCPParameterExtractor implements MCPParameterExtractor {
                 <tool_definition>
                 %s
                 </tool_definition>
-                """.formatted(buildToolDefinition(tool))));
+                """.formatted(MCPToolDefinitionFormatter.format(tool))));
         messages.add(ChatMessage.user("""
                 <user_question>
                 %s
@@ -203,37 +244,6 @@ public class LLMMCPParameterExtractor implements MCPParameterExtractor {
     }
 
     /**
-     * 构建工具定义描述（供 LLM 理解）
-     */
-    private String buildToolDefinition(MCPTool tool) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("工具名称: ").append(tool.getName()).append("\n");
-        sb.append("工具ID: ").append(tool.getToolId()).append("\n");
-        sb.append("功能描述: ").append(tool.getDescription()).append("\n");
-        sb.append("参数列表:\n");
-
-        for (Map.Entry<String, MCPTool.ParameterDef> entry : tool.getParameters().entrySet()) {
-            String paramName = entry.getKey();
-            MCPTool.ParameterDef def = entry.getValue();
-
-            sb.append("  - ").append(paramName);
-            sb.append(" (类型: ").append(def.getType());
-            sb.append(def.isRequired() ? ", 必填" : ", 可选");
-            sb.append("): ").append(def.getDescription());
-
-            if (def.getDefaultValue() != null) {
-                sb.append(" [默认值: ").append(def.getDefaultValue()).append("]");
-            }
-            if (CollUtil.isNotEmpty(def.getEnumValues())) {
-                sb.append(" [可选值: ").append(String.join(", ", def.getEnumValues())).append("]");
-            }
-            sb.append("\n");
-        }
-
-        return sb.toString();
-    }
-
-    /**
      * 解析 LLM 返回的 JSON 响应
      */
     private Map<String, Object> parseJsonResponse(String raw, MCPTool tool) {
@@ -255,12 +265,16 @@ public class LLMMCPParameterExtractor implements MCPParameterExtractor {
         }
         JsonObject obj = element.getAsJsonObject();
         Map<String, Object> result = new LinkedHashMap<>();
-        // 只提取工具定义中声明的参数
-        for (String paramName : tool.getParameters().keySet()) {
-            if (obj.has(paramName) && !obj.get(paramName).isJsonNull()) {
-                JsonElement value = obj.get(paramName);
-                result.put(paramName, convertJsonElement(value));
+        Map<String, String> aliasIndex = buildParameterAliasIndex(tool);
+        for (Map.Entry<String, JsonElement> entry : obj.entrySet()) {
+            if (entry.getValue() == null || entry.getValue().isJsonNull()) {
+                continue;
             }
+            String canonicalName = aliasIndex.get(normalizeParamKey(entry.getKey()));
+            if (canonicalName == null || result.containsKey(canonicalName)) {
+                continue;
+            }
+            result.put(canonicalName, convertJsonElement(entry.getValue()));
         }
         return result;
     }
@@ -318,7 +332,7 @@ public class LLMMCPParameterExtractor implements MCPParameterExtractor {
                 continue;
             }
 
-            Object enumAligned = alignEnumValue(converted, def);
+            Object enumAligned = alignEnumValue(tool, paramName, converted, def);
             if (enumAligned == null) {
                 continue;
             }
@@ -328,13 +342,29 @@ public class LLMMCPParameterExtractor implements MCPParameterExtractor {
         return normalized;
     }
 
-    private Object alignEnumValue(Object value, MCPTool.ParameterDef def) {
+    private Object alignEnumValue(MCPTool tool, String paramName, Object value, MCPTool.ParameterDef def) {
         if (def == null || CollUtil.isEmpty(def.getEnumValues())) {
             return value;
         }
         String actual = StrUtil.trim(value.toString());
         for (String candidate : def.getEnumValues()) {
             if (StrUtil.equalsIgnoreCase(StrUtil.trim(candidate), actual)) {
+                return candidate;
+            }
+        }
+        Map<String, String> aliases = ENUM_ALIASES.getOrDefault(tool.getToolId(), Map.of()).get(paramName);
+        if (aliases == null || aliases.isEmpty()) {
+            return null;
+        }
+        String canonical = aliases.get(normalizeParamKey(actual));
+        if (canonical == null) {
+            canonical = aliases.get(actual.toLowerCase(Locale.ROOT));
+        }
+        if (canonical == null) {
+            return null;
+        }
+        for (String candidate : def.getEnumValues()) {
+            if (StrUtil.equalsIgnoreCase(StrUtil.trim(candidate), canonical)) {
                 return candidate;
             }
         }
@@ -490,6 +520,312 @@ public class LLMMCPParameterExtractor implements MCPParameterExtractor {
                     params.put(paramName, null);
                 }
             }
+        }
+    }
+
+    private Map<String, Object> mergeParameters(Map<String, Object> preferred, Map<String, Object> secondary) {
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (preferred != null) {
+            merged.putAll(preferred);
+        }
+        if (secondary != null) {
+            secondary.forEach(merged::putIfAbsent);
+        }
+        return merged;
+    }
+
+    private Map<String, String> buildParameterAliasIndex(MCPTool tool) {
+        Map<String, String> aliasIndex = new LinkedHashMap<>();
+        if (tool == null || tool.getParameters() == null) {
+            return aliasIndex;
+        }
+        Map<String, List<String>> toolAliases = PARAMETER_ALIASES.getOrDefault(tool.getToolId(), Map.of());
+        for (String paramName : tool.getParameters().keySet()) {
+            registerAlias(aliasIndex, paramName, paramName);
+            registerAlias(aliasIndex, toSnakeCase(paramName), paramName);
+            registerAlias(aliasIndex, toKebabCase(paramName), paramName);
+            registerAlias(aliasIndex, normalizeParamKey(paramName), paramName);
+            for (String alias : toolAliases.getOrDefault(paramName, List.of())) {
+                registerAlias(aliasIndex, alias, paramName);
+            }
+        }
+        return aliasIndex;
+    }
+
+    private void registerAlias(Map<String, String> aliasIndex, String alias, String paramName) {
+        if (StrUtil.isBlank(alias) || StrUtil.isBlank(paramName)) {
+            return;
+        }
+        aliasIndex.putIfAbsent(normalizeParamKey(alias), paramName);
+    }
+
+    private String normalizeParamKey(String raw) {
+        return StrUtil.blankToDefault(raw, "")
+                .replace("_", "")
+                .replace("-", "")
+                .replace(" ", "")
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private String toSnakeCase(String raw) {
+        return raw.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase(Locale.ROOT);
+    }
+
+    private String toKebabCase(String raw) {
+        return raw.replaceAll("([a-z])([A-Z])", "$1-$2").toLowerCase(Locale.ROOT);
+    }
+
+    private Map<String, Object> extractRuleBasedParameters(String userQuestion, MCPTool tool) {
+        Map<String, Object> params = new LinkedHashMap<>();
+        if (tool == null || tool.getParameters() == null || tool.getParameters().isEmpty()) {
+            return params;
+        }
+        String question = StrUtil.blankToDefault(userQuestion, "").trim();
+        if (question.isEmpty()) {
+            return params;
+        }
+
+        if (tool.getParameters().containsKey("limit")) {
+            Integer limit = extractLimit(question);
+            if (limit != null) {
+                params.put("limit", limit);
+            }
+        }
+        if (tool.getParameters().containsKey("date") && shouldExtractRuleBasedDate(tool.getToolId(), question)) {
+            String date = extractDate(question);
+            if (date != null) {
+                params.put("date", date);
+            }
+        }
+
+        switch (tool.getToolId()) {
+            case "obsidian_search" -> extractObsidianSearchParameters(question, params);
+            case "obsidian_read" -> extractObsidianReadParameters(question, params);
+            case "obsidian_list" -> extractObsidianListParameters(question, params);
+            case "obsidian_update" -> extractObsidianUpdateParameters(question, params);
+            case "web_news_search" -> extractWebSearchParameters(question, params);
+            default -> {
+                // no-op
+            }
+        }
+        return params;
+    }
+
+    private boolean shouldExtractRuleBasedDate(String toolId, String question) {
+        if (!"obsidian_update".equals(toolId)) {
+            return true;
+        }
+        return extractExplicitDailyDate(question) != null;
+    }
+
+    private void extractObsidianSearchParameters(String question, Map<String, Object> params) {
+        String title = extractQuotedTitle(question);
+        if (title != null) {
+            params.putIfAbsent("query", title);
+        }
+        String extracted = extractSearchTopic(question, "笔记");
+        if (extracted != null) {
+            params.putIfAbsent("query", extracted);
+        }
+        String path = extractPathCandidate(question);
+        if (path != null && path.contains("/")) {
+            params.putIfAbsent("path", path);
+        }
+    }
+
+    private void extractObsidianReadParameters(String question, Map<String, Object> params) {
+        String path = extractPathCandidate(question);
+        if (path != null && (path.contains("/") || path.endsWith(".md"))) {
+            params.putIfAbsent("path", path);
+            return;
+        }
+        String title = extractQuotedTitle(question);
+        if (title != null) {
+            params.putIfAbsent("file", title);
+        }
+    }
+
+    private void extractObsidianListParameters(String question, Map<String, Object> params) {
+        if (question.contains("文件夹") || question.contains("目录")) {
+            params.putIfAbsent("type", "folders");
+        }
+        String path = extractPathCandidate(question);
+        if (path != null && path.contains("/")) {
+            params.putIfAbsent("folder", path.replaceAll("\\.md$", ""));
+        }
+    }
+
+    private void extractObsidianUpdateParameters(String question, Map<String, Object> params) {
+        LocalDate explicitDailyDate = extractExplicitDailyDate(question);
+        boolean todayDaily = containsTodayDailySemantic(question);
+        if (todayDaily || explicitDailyDate != null) {
+            params.putIfAbsent("daily", "true");
+        }
+        if (explicitDailyDate != null) {
+            params.putIfAbsent("date", explicitDailyDate.toString());
+            return;
+        }
+        if ("true".equals(String.valueOf(params.get("daily")))) {
+            return;
+        }
+        String path = extractPathCandidate(question);
+        if (path != null && (path.contains("/") || path.endsWith(".md"))) {
+            if (path.contains("/")) {
+                params.putIfAbsent("path", path);
+            } else {
+                params.putIfAbsent("file", path.replaceAll("\\.md$", ""));
+            }
+            return;
+        }
+        String title = extractQuotedTitle(question);
+        if (title != null) {
+            params.putIfAbsent("file", title);
+        }
+    }
+
+    private void extractWebSearchParameters(String question, Map<String, Object> params) {
+        String extracted = question
+                .replace("帮我", "")
+                .replace("联网", "")
+                .replace("上网", "")
+                .replace("搜索", "")
+                .replace("查一下", "")
+                .replace("查一查", "")
+                .replace("今天", "")
+                .trim();
+        extracted = extracted.replaceAll("的\\s*\\d+\\s*条新闻.*$", "")
+                .replaceAll("的\\s*热点.*$", "")
+                .replaceAll("新闻.*$", "")
+                .trim();
+        if (StrUtil.isNotBlank(extracted)) {
+            params.putIfAbsent("query", extracted);
+        }
+    }
+
+    private Integer extractLimit(String question) {
+        Matcher topMatcher = TOP_N_PATTERN.matcher(question);
+        if (topMatcher.find()) {
+            return safeParseInt(topMatcher.group(1));
+        }
+        Matcher countMatcher = COUNT_PATTERN.matcher(question);
+        if (countMatcher.find()) {
+            return safeParseInt(countMatcher.group(1));
+        }
+        return null;
+    }
+
+    private String extractDate(String question) {
+        String trimmed = question.trim();
+        if (trimmed.contains("今天")) {
+            return java.time.LocalDate.now().toString();
+        }
+        if (trimmed.contains("昨天")) {
+            return java.time.LocalDate.now().minusDays(1).toString();
+        }
+        if (trimmed.contains("明天")) {
+            return java.time.LocalDate.now().plusDays(1).toString();
+        }
+        Matcher isoMatcher = DATE_ISO_PATTERN.matcher(trimmed);
+        if (isoMatcher.find()) {
+            return buildDate(safeParseInt(isoMatcher.group(1)), safeParseInt(isoMatcher.group(2)), safeParseInt(isoMatcher.group(3)));
+        }
+        Matcher monthDayMatcher = DATE_MONTH_DAY_PATTERN.matcher(trimmed);
+        if (monthDayMatcher.find()) {
+            return buildDate(java.time.LocalDate.now().getYear(), safeParseInt(monthDayMatcher.group(1)), safeParseInt(monthDayMatcher.group(2)));
+        }
+        Matcher cnMonthDayMatcher = DATE_CN_MONTH_DAY_PATTERN.matcher(trimmed);
+        if (cnMonthDayMatcher.find()) {
+            return buildDate(java.time.LocalDate.now().getYear(), safeParseInt(cnMonthDayMatcher.group(1)), safeParseInt(cnMonthDayMatcher.group(2)));
+        }
+        return null;
+    }
+
+    private boolean containsTodayDailySemantic(String question) {
+        return StrUtil.isNotBlank(question) && TODAY_DAILY_PATTERN.matcher(question).find();
+    }
+
+    private LocalDate extractExplicitDailyDate(String question) {
+        if (StrUtil.isBlank(question)) {
+            return null;
+        }
+        Matcher isoMatcher = TARGET_DAILY_ISO_PATTERN.matcher(question);
+        if (isoMatcher.find()) {
+            return buildLocalDate(safeParseInt(isoMatcher.group(1)), safeParseInt(isoMatcher.group(2)), safeParseInt(isoMatcher.group(3)));
+        }
+        Matcher monthDayMatcher = TARGET_DAILY_MONTH_DAY_PATTERN.matcher(question);
+        if (monthDayMatcher.find()) {
+            return buildLocalDate(LocalDate.now().getYear(), safeParseInt(monthDayMatcher.group(1)), safeParseInt(monthDayMatcher.group(2)));
+        }
+        Matcher cnMonthDayMatcher = TARGET_DAILY_CN_MONTH_DAY_PATTERN.matcher(question);
+        if (cnMonthDayMatcher.find()) {
+            return buildLocalDate(LocalDate.now().getYear(), safeParseInt(cnMonthDayMatcher.group(1)), safeParseInt(cnMonthDayMatcher.group(2)));
+        }
+        return null;
+    }
+
+    private LocalDate buildLocalDate(int year, int month, int day) {
+        if (year <= 0 || month <= 0 || day <= 0) {
+            return null;
+        }
+        try {
+            return LocalDate.of(year, month, day);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String extractQuotedTitle(String question) {
+        Matcher matcher = QUOTED_TITLE_PATTERN.matcher(question);
+        return matcher.find() ? StrUtil.trim(matcher.group(1)) : null;
+    }
+
+    private String extractPathCandidate(String question) {
+        Matcher matcher = PATH_PATTERN.matcher(question);
+        while (matcher.find()) {
+            String candidate = StrUtil.trim(matcher.group(1));
+            if (candidate.contains("/") || candidate.endsWith(".md")) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private String extractSearchTopic(String question, String tailWord) {
+        Matcher intentMatcher = Pattern.compile("(搜索|查找|搜一下|搜搜|找一下)").matcher(question);
+        if (!intentMatcher.find()) {
+            return null;
+        }
+        String candidate = question.substring(intentMatcher.end());
+        candidate = candidate.replace("Obsidian", "")
+                .replace("obsidian", "")
+                .replace("里", "")
+                .replace("中", "")
+                .replace("相关", "")
+                .replace(tailWord, "")
+                .replace("资料", "")
+                .replace("学习", "")
+                .trim();
+        candidate = candidate.replaceAll("^[的是关于\\s]+", "").trim();
+        candidate = candidate.replaceAll("[？?。！!]+$", "").trim();
+        return StrUtil.isBlank(candidate) ? null : candidate;
+    }
+
+    private Integer safeParseInt(String raw) {
+        try {
+            return Integer.parseInt(raw);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String buildDate(int year, int month, int day) {
+        if (year <= 0 || month <= 0 || day <= 0) {
+            return null;
+        }
+        try {
+            return java.time.LocalDate.of(year, month, day).toString();
+        } catch (Exception e) {
+            return null;
         }
     }
 }

@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.rag.core.mcp.executor.obsidian;
 
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPRequest;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPResponse;
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPExecute;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPParam;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPToolDeclare;
@@ -38,14 +39,24 @@ import java.util.List;
 @MCPToolDeclare(
         toolId = "obsidian_replace",
         name = "替换 Obsidian 笔记内容",
-        description = "替换 Obsidian 笔记中的指定文本为新内容，支持按文件名或路径定位笔记",
+        description = "替换指定 Obsidian 笔记中的旧文本为新文本，适合精确改写局部内容。",
+        useWhen = "当用户明确给出旧文本和新文本，想对已有笔记做局部替换时使用。",
+        avoidWhen = "不要用于追加新内容、创建新笔记、删除笔记或仅按关键词搜索笔记。",
         examples = {"把笔记里的旧标题替换为新标题", "修改笔记中的某段描述", "将笔记中的 A 替换为 B"},
         requireUserId = false,
+        confirmationRequired = true,
+        timeoutSeconds = 15,
+        sensitivity = MCPTool.Sensitivity.HIGH,
+        fallbackMessage = "Obsidian 替换暂时不可用，本次不会执行替换。",
         parameters = {
-                @MCPParam(name = "file", description = "目标笔记文件名（不含 .md 后缀）", type = "string", required = false),
-                @MCPParam(name = "path", description = "目标笔记相对路径", type = "string", required = false),
-                @MCPParam(name = "oldContent", description = "要替换的原文本", type = "string", required = true),
-                @MCPParam(name = "newContent", description = "替换后的新文本", type = "string", required = true)
+                @MCPParam(name = "file", description = "目标笔记文件名（不含 .md 后缀）", type = "string",
+                        required = false, example = "README"),
+                @MCPParam(name = "path", description = "目标笔记相对路径", type = "string", required = false,
+                        example = "Projects/Ragent/README.md"),
+                @MCPParam(name = "oldContent", description = "要替换的原文本", type = "string",
+                        required = true, example = "旧标题"),
+                @MCPParam(name = "newContent", description = "替换后的新文本", type = "string",
+                        required = true, example = "新标题")
         }
 )
 public class ObsidianReplaceNoteTool {
@@ -79,9 +90,14 @@ public class ObsidianReplaceNoteTool {
         args.add("newContent=" + newContent);
 
         ObsidianCliExecutor.CliResult result = cliExecutor.execute("replace", args);
+        if (result == null) {
+            return MCPResponse.error("obsidian_replace", "REPLACE_ERROR", "Obsidian 替换执行器未返回结果");
+        }
         if (!result.isSuccess()) {
             return MCPResponse.error("obsidian_replace", "REPLACE_ERROR", result.stderr());
         }
-        return MCPResponse.success("obsidian_replace", result.stdout());
+        MCPResponse response = MCPResponse.success("obsidian_replace", result.stdout());
+        response.setFallbackUsed(result.stdout().contains("[fallback]"));
+        return response;
     }
 }

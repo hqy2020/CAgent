@@ -25,11 +25,13 @@ import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
 import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import com.nageoffer.ai.ragent.rag.enums.IntentKind;
+import com.nageoffer.ai.ragent.rag.util.NoteWriteIntentHelper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -43,6 +45,21 @@ public class AgentModeDecider {
             "(整理|总结|汇总|计划|先.*再|然后|并且|步骤|写入|落库|多源|multi-step)",
             Pattern.CASE_INSENSITIVE
     );
+    private static final Pattern DATE_TIME_LOOKUP_HINT = Pattern.compile(
+            "(今天几号|今天几月几号|今天几月几日|今天星期几|今天周几|现在几点|当前时间|当前日期|现在日期|几号|几月几号|几月几日|星期几|周几|日期|时间|date|time|day)",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern WEB_SEARCH_LOOKUP_HINT = Pattern.compile(
+            "(联网|上网|互联网|web|internet|google|bing|百度|新闻|热搜|实时|最新|天气|股价|汇率)",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Set<String> MCP_WRITE_TOOL_IDS = Set.of(
+            "obsidian_create",
+            "obsidian_update",
+            "obsidian_replace",
+            "obsidian_delete",
+            "obsidian_video_transcript"
+    );
 
     private final RAGConfigProperties ragConfigProperties;
 
@@ -54,8 +71,23 @@ public class AgentModeDecider {
             return AgentModeDecision.disabled("agent disabled");
         }
 
+        if (isDateTimeLookupQuestion(question)) {
+            return AgentModeDecision.disabled("datetime lookup question");
+        }
+        if (isWebSearchLookupQuestion(question)) {
+            return AgentModeDecision.disabled("web search lookup question");
+        }
+
+        if (isLikelyNoteWriteQuestion(question)) {
+            return AgentModeDecision.enabled("note write language hint", resolveBestScore(firstRoundContext));
+        }
+
         if (subIntents == null || subIntents.isEmpty()) {
             return AgentModeDecision.disabled("no intents");
+        }
+
+        if (containsWriteMcpIntent(subIntents)) {
+            return AgentModeDecision.enabled("write mcp intent", resolveBestScore(firstRoundContext));
         }
 
         if (subIntents.size() >= 2) {
@@ -70,8 +102,12 @@ public class AgentModeDecider {
             return AgentModeDecision.enabled("multi-step language hint", resolveBestScore(firstRoundContext));
         }
 
+        if (isReadOnlyMcpRequest(subIntents)) {
+            return AgentModeDecision.disabled("read-only mcp request");
+        }
+
         double bestScore = resolveBestScore(firstRoundContext);
-        if (bestScore < ragConfigProperties.getAgentLowConfidenceThreshold()) {
+        if (containsKbIntent(subIntents) && bestScore < ragConfigProperties.getAgentLowConfidenceThreshold()) {
             return AgentModeDecision.enabled("low first-round retrieval confidence", bestScore);
         }
 
@@ -111,6 +147,104 @@ public class AgentModeDecider {
         return MULTI_STEP_HINT.matcher(question).find();
     }
 
+    private boolean isDateTimeLookupQuestion(String question) {
+        if (StrUtil.isBlank(question)) {
+            return false;
+        }
+        String normalized = StrUtil.trim(question);
+        boolean dateTimeLookup = DATE_TIME_LOOKUP_HINT.matcher(normalized).find();
+        if (!dateTimeLookup) {
+            return false;
+        }
+        return !NoteWriteIntentHelper.isLikelyNoteWriteQuestion(normalized);
+    }
+
+    private boolean isWebSearchLookupQuestion(String question) {
+        if (StrUtil.isBlank(question)) {
+            return false;
+        }
+        String normalized = StrUtil.trim(question);
+        boolean webSearchLookup = WEB_SEARCH_LOOKUP_HINT.matcher(normalized).find();
+        if (!webSearchLookup) {
+            return false;
+        }
+        return !NoteWriteIntentHelper.isLikelyNoteWriteQuestion(normalized);
+    }
+
+    private boolean containsWriteMcpIntent(List<SubQuestionIntent> subIntents) {
+        for (SubQuestionIntent intent : subIntents) {
+            List<NodeScore> scores = intent.nodeScores();
+            if (scores == null) {
+                continue;
+            }
+            for (NodeScore nodeScore : scores) {
+                if (nodeScore == null || nodeScore.getNode() == null) {
+                    continue;
+                }
+                if (nodeScore.getNode().getKind() != IntentKind.MCP) {
+                    continue;
+                }
+                String toolId = nodeScore.getNode().getMcpToolId();
+                if (toolId != null && MCP_WRITE_TOOL_IDS.contains(toolId)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean isLikelyNoteWriteQuestion(String question) {
+        return NoteWriteIntentHelper.isLikelyNoteWriteQuestion(question);
+    }
+
+    private boolean isReadOnlyMcpRequest(List<SubQuestionIntent> subIntents) {
+        boolean hasMcp = false;
+        boolean hasKb = false;
+        for (SubQuestionIntent intent : subIntents) {
+            List<NodeScore> scores = intent.nodeScores();
+            if (scores == null) {
+                continue;
+            }
+            for (NodeScore nodeScore : scores) {
+                if (nodeScore == null || nodeScore.getNode() == null) {
+                    continue;
+                }
+                IntentKind kind = nodeScore.getNode().getKind();
+                if (kind == IntentKind.MCP) {
+                    hasMcp = true;
+                    String toolId = nodeScore.getNode().getMcpToolId();
+                    if (toolId != null && MCP_WRITE_TOOL_IDS.contains(toolId)) {
+                        return false;
+                    }
+                    continue;
+                }
+                if (kind == null || kind == IntentKind.KB) {
+                    hasKb = true;
+                }
+            }
+        }
+        return hasMcp && !hasKb;
+    }
+
+    private boolean containsKbIntent(List<SubQuestionIntent> subIntents) {
+        for (SubQuestionIntent intent : subIntents) {
+            List<NodeScore> scores = intent.nodeScores();
+            if (scores == null) {
+                continue;
+            }
+            for (NodeScore nodeScore : scores) {
+                if (nodeScore == null || nodeScore.getNode() == null) {
+                    continue;
+                }
+                IntentKind kind = nodeScore.getNode().getKind();
+                if (kind == null || kind == IntentKind.KB) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private double resolveBestScore(RetrievalContext context) {
         if (context == null || context.getIntentChunks() == null || context.getIntentChunks().isEmpty()) {
             return 0.0D;
@@ -130,4 +264,3 @@ public class AgentModeDecider {
         return best;
     }
 }
-

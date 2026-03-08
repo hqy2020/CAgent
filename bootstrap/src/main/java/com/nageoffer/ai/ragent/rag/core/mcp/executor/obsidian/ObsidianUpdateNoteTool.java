@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.rag.core.mcp.executor.obsidian;
 
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPRequest;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPResponse;
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPExecute;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPParam;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPToolDeclare;
@@ -41,18 +42,30 @@ import java.util.regex.Pattern;
 @MCPToolDeclare(
         toolId = "obsidian_update",
         name = "更新 Obsidian 笔记",
-        description = "向已有笔记追加或前插内容，也可向今日日记追加内容",
+        description = "向已有笔记追加或前插内容，也可向今日日记或指定日期日记追加内容。",
+        useWhen = "当用户明确要往已有笔记或日记中追加内容、插入摘要、补充待办或补写记录时使用。",
+        avoidWhen = "不要用于新建笔记、全文替换文本、删除笔记或仅仅读取笔记内容。",
         examples = {"在日记里追加一条待办", "往 README 笔记末尾添加内容", "在笔记开头插入摘要"},
+        sceneKeywords = {"Obsidian", "笔记更新", "日记写入"},
         requireUserId = false,
+        confirmationRequired = true,
+        timeoutSeconds = 15,
+        maxRetries = 0,
+        sensitivity = MCPTool.Sensitivity.HIGH,
+        fallbackMessage = "Obsidian 写入暂时不可用，本次不会执行更新。",
         parameters = {
-                @MCPParam(name = "content", description = "要追加/前插的内容（Markdown 格式）", type = "string", required = true),
-                @MCPParam(name = "file", description = "目标笔记文件名（不含 .md 后缀）", type = "string", required = false),
-                @MCPParam(name = "path", description = "目标笔记相对路径", type = "string", required = false),
-                @MCPParam(name = "position", description = "插入位置", type = "string", required = false,
-                        defaultValue = "append", enumValues = {"append", "prepend"}),
-                @MCPParam(name = "daily", description = "是否写入今日日记", type = "string", required = false,
-                        defaultValue = "false", enumValues = {"true", "false"}),
-                @MCPParam(name = "date", description = "目标日期（YYYY-MM-DD 格式），仅 daily=true 时生效，默认今天", type = "string", required = false)
+                @MCPParam(name = "content", description = "要追加或前插的 Markdown 内容", type = "string",
+                        required = true, example = "- [ ] 补充 RAG 工具调用设计"),
+                @MCPParam(name = "file", description = "目标笔记文件名（不含 .md 后缀）", type = "string",
+                        required = false, example = "README"),
+                @MCPParam(name = "path", description = "目标笔记相对路径", type = "string", required = false,
+                        example = "Projects/Ragent/README.md"),
+                @MCPParam(name = "position", description = "插入位置：append 追加到末尾，prepend 插入到开头", type = "string", required = false,
+                        defaultValue = "append", example = "append", enumValues = {"append", "prepend"}),
+                @MCPParam(name = "daily", description = "是否写入日记", type = "string", required = false,
+                        defaultValue = "false", example = "true", enumValues = {"true", "false"}),
+                @MCPParam(name = "date", description = "目标日期，仅 daily=true 时生效，格式 YYYY-MM-DD", type = "string",
+                        required = false, example = "2026-03-08", pattern = "^\\d{4}-\\d{2}-\\d{2}$")
         }
 )
 public class ObsidianUpdateNoteTool {
@@ -121,16 +134,22 @@ public class ObsidianUpdateNoteTool {
         }
 
         ObsidianCliExecutor.CliResult result = cliExecutor.execute(command, args);
+        if (result == null) {
+            return MCPResponse.error("obsidian_update", "CLI_ERROR", "Obsidian 更新执行器未返回结果");
+        }
         if (!result.isSuccess()) {
             return MCPResponse.error("obsidian_update", "CLI_ERROR", result.stderr());
         }
-        return MCPResponse.success("obsidian_update", "笔记更新成功。\n" + result.stdout());
+        MCPResponse response = MCPResponse.success("obsidian_update", "笔记更新成功。\n" + result.stdout());
+        response.setFallbackUsed(result.stdout().contains("[fallback]"));
+        return response;
     }
 
     private DailyDateDecision resolveDailyDate(String userQuestion, String extractedDate) {
         LocalDate today = LocalDate.now();
         boolean todayDailyMentioned = containsTodayDailySemantic(userQuestion);
         LocalDate explicitTargetDate = extractTargetDailyDate(userQuestion);
+        LocalDate extractedTargetDate = parseDateText(extractedDate);
 
         if (todayDailyMentioned && explicitTargetDate != null && !explicitTargetDate.equals(today)) {
             String conflict = String.format(
@@ -143,19 +162,16 @@ public class ObsidianUpdateNoteTool {
             return DailyDateDecision.conflict(conflict);
         }
 
-        if (explicitTargetDate != null) {
-            return DailyDateDecision.resolved(explicitTargetDate.toString());
-        }
-
         if (todayDailyMentioned) {
             return DailyDateDecision.resolved(today.toString());
         }
 
-        if ((userQuestion == null || userQuestion.isBlank()) && extractedDate != null && !extractedDate.isBlank()) {
-            LocalDate parsedDate = parseDateText(extractedDate);
-            if (parsedDate != null) {
-                return DailyDateDecision.resolved(parsedDate.toString());
-            }
+        if (explicitTargetDate != null) {
+            return DailyDateDecision.resolved(explicitTargetDate.toString());
+        }
+
+        if (extractedTargetDate != null) {
+            return DailyDateDecision.resolved(extractedTargetDate.toString());
         }
 
         return DailyDateDecision.resolved(null);
@@ -186,6 +202,9 @@ public class ObsidianUpdateNoteTool {
         Matcher cnMonthDayMatcher = TARGET_DAILY_CN_MONTH_DAY_PATTERN.matcher(userQuestion);
         while (cnMonthDayMatcher.find()) {
             parsed = buildDate(LocalDate.now().getYear(), safeParseInt(cnMonthDayMatcher.group(1)), safeParseInt(cnMonthDayMatcher.group(2)));
+        }
+        if (parsed != null) {
+            return parsed;
         }
         return parsed;
     }

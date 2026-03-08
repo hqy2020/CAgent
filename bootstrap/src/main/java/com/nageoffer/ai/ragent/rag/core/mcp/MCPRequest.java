@@ -17,6 +17,7 @@
 
 package com.nageoffer.ai.ragent.rag.core.mcp;
 
+import cn.hutool.core.util.StrUtil;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -35,6 +36,21 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class MCPRequest {
+
+    /**
+     * 请求 ID，用于审计和追踪
+     */
+    private String requestId;
+
+    /**
+     * 链路 Trace ID
+     */
+    private String traceId;
+
+    /**
+     * 幂等键
+     */
+    private String idempotencyKey;
 
     /**
      * 要调用的工具 ID
@@ -57,6 +73,12 @@ public class MCPRequest {
     private String userQuestion;
 
     /**
+     * 是否已通过确认链
+     */
+    @Builder.Default
+    private boolean confirmed = false;
+
+    /**
      * 调用参数
      */
     @Builder.Default
@@ -77,6 +99,9 @@ public class MCPRequest {
      */
     @SuppressWarnings("unchecked")
     public <T> T getParameter(String key) {
+        if (parameters == null) {
+            return null;
+        }
         Object value = parameters.get(key);
         if (value == null) {
             return null;
@@ -88,7 +113,19 @@ public class MCPRequest {
      * 获取字符串参数
      */
     public String getStringParameter(String key) {
+        if (parameters == null) {
+            return null;
+        }
         Object value = parameters.get(key);
         return value != null ? value.toString() : null;
+    }
+
+    public boolean hasParameter(String key) {
+        return parameters != null && parameters.containsKey(key);
+    }
+
+    public String getStringParameterOrDefault(String key, String defaultValue) {
+        String value = getStringParameter(key);
+        return StrUtil.isBlank(value) ? defaultValue : value;
     }
 }

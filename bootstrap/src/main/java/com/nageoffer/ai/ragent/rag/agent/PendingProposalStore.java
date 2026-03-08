@@ -28,6 +28,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -123,6 +124,33 @@ public class PendingProposalStore {
         return ProposalDecisionResult.success(proposal);
     }
 
+    public ProposalDecisionResult rollbackToPending(String proposalId,
+                                                    String conversationId,
+                                                    String userId,
+                                                    Map<String, Object> latestParameters) {
+        Optional<PendingProposal> proposalOpt = findById(proposalId);
+        if (proposalOpt.isEmpty()) {
+            return ProposalDecisionResult.failure("提案不存在或已过期");
+        }
+        PendingProposal proposal = proposalOpt.get();
+        if (!belongsToConversationAndUser(proposal, conversationId, userId)) {
+            return ProposalDecisionResult.failure("无权限更新该提案");
+        }
+        if (isExpired(proposal)) {
+            delete(proposalId);
+            return ProposalDecisionResult.failure("提案已过期");
+        }
+        if (STATUS_REJECTED.equals(proposal.getStatus())) {
+            return ProposalDecisionResult.failure("提案已被拒绝");
+        }
+        proposal.setStatus(STATUS_PENDING);
+        if (latestParameters != null && !latestParameters.isEmpty()) {
+            proposal.setParameters(new LinkedHashMap<>(latestParameters));
+        }
+        save(proposal, Duration.ofMillis(Math.max(1, proposal.getExpiresAt() - System.currentTimeMillis())));
+        return ProposalDecisionResult.success(proposal);
+    }
+
     public Optional<PendingProposal> findById(String proposalId) {
         if (proposalId == null || proposalId.isBlank()) {
             return Optional.empty();
@@ -182,4 +210,3 @@ public class PendingProposalStore {
         }
     }
 }
-

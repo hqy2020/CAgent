@@ -38,12 +38,12 @@ public class VectorTreeIntentClassifierTests {
     private final VectorIntentClassifier intentClassifier;
 
     /**
-     * 场景 1：考勤 + 处罚 混合语义
-     * 期望：能命中某个人事实体节点（比如“人事-考勤制度”之类的叶子节点）。
+     * 场景 1：人事制度类问题
+     * 期望：能命中某个人事制度相关节点。
      */
     @Test
-    public void classifyAttendancePunishment() {
-        String question = "早上九点十分打卡，有什么处罚？";
+    public void classifyHrPolicyQuestion() {
+        String question = "员工离职交接流程是什么？";
         runCase(question);
     }
 

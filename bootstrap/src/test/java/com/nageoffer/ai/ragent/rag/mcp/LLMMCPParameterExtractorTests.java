@@ -34,11 +34,14 @@ import java.util.Map;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MCP_PARAMETER_EXTRACT_PROMPT_PATH;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.MCP_PARAMETER_REPAIR_PROMPT_PATH;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.never;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -56,9 +59,9 @@ class LLMMCPParameterExtractorTests {
     @Test
     void shouldRetryAndRepairWhenRequiredEnumIsInvalid() {
         MCPTool tool = MCPTool.builder()
-                .toolId("sales_query")
-                .name("销售查询")
-                .description("查询销售数据")
+                .toolId("demo_query")
+                .name("演示查询")
+                .description("查询演示数据")
                 .parameters(Map.of(
                         "region", MCPTool.ParameterDef.builder()
                                 .type("string")
@@ -88,9 +91,9 @@ class LLMMCPParameterExtractorTests {
     @Test
     void shouldKeepRequiredKeyAsNullWhenStillUnknownAfterRepair() {
         MCPTool tool = MCPTool.builder()
-                .toolId("attendance_query")
-                .name("考勤查询")
-                .description("查询员工考勤")
+                .toolId("demo_required_query")
+                .name("演示必填查询")
+                .description("查询演示必填参数")
                 .parameters(Map.of(
                         "employee", MCPTool.ParameterDef.builder()
                                 .type("string")
@@ -113,5 +116,82 @@ class LLMMCPParameterExtractorTests {
         assertNull(params.get("employee"));
         assertEquals("current_week", params.get("period"));
         verify(llmService, times(2)).chat(any(ChatRequest.class));
+    }
+
+    @Test
+    void shouldPreferRuleBasedObsidianReadExtractionWithoutCallingLlm() {
+        MCPTool tool = MCPTool.builder()
+                .toolId("obsidian_read")
+                .name("读取笔记")
+                .description("读取指定笔记")
+                .parameters(Map.of(
+                        "file", MCPTool.ParameterDef.builder()
+                                .type("string")
+                                .build(),
+                        "path", MCPTool.ParameterDef.builder()
+                                .type("string")
+                                .build()
+                ))
+                .build();
+
+        Map<String, Object> params = extractor.extractParameters("打开《Spring AOP 总结》这篇笔记", tool, null);
+
+        assertEquals("Spring AOP 总结", params.get("file"));
+        verifyNoInteractions(llmService);
+    }
+
+    @Test
+    void shouldMapSnakeCaseKeysToCanonicalParameters() {
+        MCPTool tool = MCPTool.builder()
+                .toolId("obsidian_search")
+                .name("搜索笔记")
+                .description("搜索")
+                .parameters(Map.of(
+                        "query", MCPTool.ParameterDef.builder()
+                                .type("string")
+                                .required(true)
+                                .build(),
+                        "withContext", MCPTool.ParameterDef.builder()
+                                .type("string")
+                                .enumValues(List.of("true", "false"))
+                                .defaultValue("true")
+                                .build()
+                ))
+                .build();
+
+        when(promptTemplateLoader.load(MCP_PARAMETER_EXTRACT_PROMPT_PATH)).thenReturn("extract-prompt");
+        when(llmService.chat(any(ChatRequest.class))).thenReturn("{\"query\":\"HashMap\",\"with_context\":\"false\"}");
+
+        Map<String, Object> params = extractor.extractParameters("请帮我处理这个 Obsidian 查询请求", tool, null);
+
+        assertEquals("HashMap", params.get("query"));
+        assertEquals("false", params.get("withContext"));
+        verify(llmService, times(1)).chat(any(ChatRequest.class));
+        verify(promptTemplateLoader, never()).load(MCP_PARAMETER_REPAIR_PROMPT_PATH);
+    }
+
+    @Test
+    void shouldNotExtractDailyDateFromTodoTailForObsidianUpdate() {
+        MCPTool tool = MCPTool.builder()
+                .toolId("obsidian_update")
+                .name("更新笔记")
+                .description("更新日记")
+                .parameters(Map.of(
+                        "daily", MCPTool.ParameterDef.builder()
+                                .type("string")
+                                .enumValues(List.of("true", "false"))
+                                .defaultValue("false")
+                                .build(),
+                        "date", MCPTool.ParameterDef.builder()
+                                .type("string")
+                                .build()
+                ))
+                .build();
+
+        Map<String, Object> params = extractor.extractParameters("帮我往今日日记加一条待办，3.7答辩", tool, null);
+
+        assertEquals("true", params.get("daily"));
+        assertFalse(params.containsKey("date"));
+        verifyNoInteractions(llmService);
     }
 }

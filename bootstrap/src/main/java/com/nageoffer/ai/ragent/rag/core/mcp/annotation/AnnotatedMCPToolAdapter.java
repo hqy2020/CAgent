@@ -56,11 +56,21 @@ public class AnnotatedMCPToolAdapter implements MCPToolExecutor {
             return (MCPResponse) executeMethod.invoke(targetBean, request);
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause();
-            return MCPResponse.error(toolDefinition.getToolId(), "EXECUTION_ERROR",
-                    "工具执行异常: " + (cause != null ? cause.getMessage() : e.getMessage()));
+            return MCPResponse.error(
+                    toolDefinition.getToolId(),
+                    "EXECUTION_ERROR",
+                    "工具执行异常: " + (cause != null ? cause.getMessage() : e.getMessage()),
+                    MCPResponse.ErrorType.EXECUTION,
+                    false
+            );
         } catch (IllegalAccessException e) {
-            return MCPResponse.error(toolDefinition.getToolId(), "ACCESS_ERROR",
-                    "工具方法不可访问: " + e.getMessage());
+            return MCPResponse.error(
+                    toolDefinition.getToolId(),
+                    "ACCESS_ERROR",
+                    "工具方法不可访问: " + e.getMessage(),
+                    MCPResponse.ErrorType.EXECUTION,
+                    false
+            );
         }
     }
 
@@ -72,6 +82,8 @@ public class AnnotatedMCPToolAdapter implements MCPToolExecutor {
                     .type(param.type())
                     .required(param.required())
                     .defaultValue(param.defaultValue().isEmpty() ? null : param.defaultValue())
+                    .example(param.example().isEmpty() ? null : param.example())
+                    .pattern(param.pattern().isEmpty() ? null : param.pattern())
                     .enumValues(param.enumValues().length > 0 ? Arrays.asList(param.enumValues()) : null)
                     .build();
 
@@ -86,8 +98,17 @@ public class AnnotatedMCPToolAdapter implements MCPToolExecutor {
                 .toolId(annotation.toolId())
                 .name(annotation.name())
                 .description(annotation.description())
+                .useWhen(annotation.useWhen().isBlank() ? null : annotation.useWhen())
+                .avoidWhen(annotation.avoidWhen().isBlank() ? null : annotation.avoidWhen())
                 .examples(examples)
+                .sceneKeywords(annotation.sceneKeywords().length > 0 ? Arrays.asList(annotation.sceneKeywords()) : List.of())
                 .requireUserId(annotation.requireUserId())
+                .confirmationRequired(annotation.confirmationRequired())
+                .timeoutSeconds(annotation.timeoutSeconds())
+                .maxRetries(annotation.maxRetries())
+                .sensitivity(annotation.sensitivity())
+                .fallbackMessage(annotation.fallbackMessage().isBlank() ? null : annotation.fallbackMessage())
+                .visibleToModel(annotation.visibleToModel())
                 .parameters(parameters)
                 .build();
     }

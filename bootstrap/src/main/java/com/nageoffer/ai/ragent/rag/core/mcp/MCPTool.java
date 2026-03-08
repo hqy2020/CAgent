@@ -37,9 +37,15 @@ import java.util.Map;
 @AllArgsConstructor
 public class MCPTool {
 
+    public enum Sensitivity {
+        LOW,
+        MEDIUM,
+        HIGH
+    }
+
     /**
      * 工具唯一标识
-     * 例如：attendance_query、approval_list、leave_balance
+     * 例如：web_news_search、obsidian_read、obsidian_update
      */
     private String toolId;
 
@@ -54,6 +60,16 @@ public class MCPTool {
     private String description;
 
     /**
+     * 何时应优先使用该工具
+     */
+    private String useWhen;
+
+    /**
+     * 哪些场景不应使用该工具
+     */
+    private String avoidWhen;
+
+    /**
      * 示例问题（帮助意图识别匹配）
      */
     private List<String> examples;
@@ -65,10 +81,51 @@ public class MCPTool {
     private Map<String, ParameterDef> parameters;
 
     /**
+     * 场景关键词（供编排器和规则层快速匹配）
+     */
+    @Builder.Default
+    private List<String> sceneKeywords = List.of();
+
+    /**
      * 是否需要用户身份（调用时自动注入 userId）
      */
     @Builder.Default
     private boolean requireUserId = true;
+
+    /**
+     * 是否需要显式确认后才能执行
+     */
+    @Builder.Default
+    private boolean confirmationRequired = false;
+
+    /**
+     * 单次执行超时时间（秒）
+     */
+    @Builder.Default
+    private int timeoutSeconds = 15;
+
+    /**
+     * 瞬时错误最大重试次数
+     */
+    @Builder.Default
+    private int maxRetries = 0;
+
+    /**
+     * 敏感级别（影响执行门槛和日志）
+     */
+    @Builder.Default
+    private Sensitivity sensitivity = Sensitivity.MEDIUM;
+
+    /**
+     * 降级提示文案
+     */
+    private String fallbackMessage;
+
+    /**
+     * 是否对模型暴露，兼容别名工具可隐藏。
+     */
+    @Builder.Default
+    private boolean visibleToModel = true;
 
     /**
      * MCP Server 地址（可选，用于远程调用）
@@ -105,6 +162,16 @@ public class MCPTool {
          * 默认值
          */
         private Object defaultValue;
+
+        /**
+         * 示例值
+         */
+        private String example;
+
+        /**
+         * 参数格式约束（正则）
+         */
+        private String pattern;
 
         /**
          * 枚举值（可选）

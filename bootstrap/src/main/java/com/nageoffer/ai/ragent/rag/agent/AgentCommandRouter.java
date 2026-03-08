@@ -30,6 +30,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -124,8 +126,9 @@ public class AgentCommandRouter {
                                          String userId,
                                          SseEmitter emitter,
                                          StreamCallback callback) {
-        String proposalId = command.args() == null ? "" : command.args().trim();
-        if (proposalId.isBlank()) {
+        ProposalCommandArgs proposalCommandArgs = parseProposalCommandArgs(command.args());
+        String proposalId = proposalCommandArgs.proposalId();
+        if (StrUtil.isBlank(proposalId)) {
             callback.onContent("命令参数缺失。请使用 `/confirm <proposalId>` 或 `/reject <proposalId>`。");
             callback.onComplete();
             return;
@@ -151,9 +154,25 @@ public class AgentCommandRouter {
         }
 
         PendingProposal proposal = confirmed.proposal();
+        mergeProposalOverrides(proposal, proposalCommandArgs.parameterOverrides());
         MCPResponse response = mcpService.execute(proposal.toMcpRequest());
         if (!response.isSuccess()) {
-            callback.onContent("已确认提案，但执行失败：" + response.getErrorMessage());
+            pendingProposalStore.rollbackToPending(
+                    proposalId,
+                    conversationId,
+                    userId,
+                    proposal.getParameters()
+            );
+            StringBuilder error = new StringBuilder("已确认提案，但执行失败：")
+                    .append(StrUtil.blankToDefault(response.getErrorMessage(), "未知错误"));
+            if (StrUtil.isNotBlank(response.getUserActionHint())) {
+                error.append("。").append(response.getUserActionHint());
+            } else if ("MISSING_PARAM".equalsIgnoreCase(response.getErrorCode())) {
+                error.append("。可使用 `/confirm ")
+                        .append(proposalId)
+                        .append(" name=你的笔记名` 补全参数后重试。");
+            }
+            callback.onContent(error.toString());
             callback.onComplete();
             return;
         }
@@ -167,6 +186,75 @@ public class AgentCommandRouter {
 
         callback.onContent(StrUtil.blankToDefault(response.getTextResult(), "提案已确认并执行完成。"));
         callback.onComplete();
+    }
+
+    private ProposalCommandArgs parseProposalCommandArgs(String rawArgs) {
+        if (StrUtil.isBlank(rawArgs)) {
+            return new ProposalCommandArgs("", Map.of());
+        }
+        String trimmed = rawArgs.trim();
+        String[] parts = trimmed.split("\\s+", 2);
+        String proposalId = parts[0];
+        if (parts.length < 2 || StrUtil.isBlank(parts[1])) {
+            return new ProposalCommandArgs(proposalId, Map.of());
+        }
+
+        Map<String, Object> overrides = new LinkedHashMap<>();
+        String[] tokens = parts[1].trim().split("\\s+");
+        for (String token : tokens) {
+            int eqIndex = token.indexOf('=');
+            if (eqIndex <= 0 || eqIndex >= token.length() - 1) {
+                continue;
+            }
+            String key = token.substring(0, eqIndex).trim();
+            String value = token.substring(eqIndex + 1).trim();
+            if (StrUtil.isBlank(key) || StrUtil.isBlank(value)) {
+                continue;
+            }
+            overrides.put(key, parseOverrideValue(value));
+        }
+        return new ProposalCommandArgs(proposalId, overrides);
+    }
+
+    private void mergeProposalOverrides(PendingProposal proposal, Map<String, Object> overrides) {
+        if (proposal == null || overrides == null || overrides.isEmpty()) {
+            return;
+        }
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (proposal.getParameters() != null) {
+            merged.putAll(proposal.getParameters());
+        }
+        merged.putAll(overrides);
+        proposal.setParameters(merged);
+    }
+
+    private Object parseOverrideValue(String rawValue) {
+        String value = rawValue.trim();
+        if ((value.startsWith("\"") && value.endsWith("\""))
+                || (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.substring(1, value.length() - 1);
+        }
+        if ("true".equalsIgnoreCase(value)) {
+            return true;
+        }
+        if ("false".equalsIgnoreCase(value)) {
+            return false;
+        }
+        if (value.matches("[-+]?\\d+")) {
+            try {
+                return Long.parseLong(value);
+            } catch (NumberFormatException ignored) {
+                return value;
+            }
+        }
+        if (value.matches("[-+]?\\d+\\.\\d+")) {
+            try {
+                return Double.parseDouble(value);
+            } catch (NumberFormatException ignored) {
+                return value;
+            }
+        }
+        return value;
     }
 
     @RagTraceNode(name = "agent-workflow-summary", type = "AGENT_SUMMARY")
@@ -187,5 +275,10 @@ public class AgentCommandRouter {
         } catch (Exception e) {
             log.warn("发送 workflow SSE 事件失败", e);
         }
+    }
+
+    private record ProposalCommandArgs(
+            String proposalId,
+            Map<String, Object> parameterOverrides) {
     }
 }

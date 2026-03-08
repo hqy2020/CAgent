@@ -39,6 +39,7 @@ import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentTreeCacheManager;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentTreeFactory;
 import com.nageoffer.ai.ragent.ingestion.service.IntentTreeService;
+import com.nageoffer.ai.ragent.ingestion.service.IntentTreeSyncResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -363,6 +364,52 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
         return created;
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public IntentTreeSyncResult syncFromFactory() {
+        List<IntentNode> roots = IntentTreeFactory.buildIntentTree();
+        List<IntentNode> allNodes = flatten(roots);
+        Map<String, Long> collectionToKbId = knowledgeBaseMapper.selectList(
+                new LambdaQueryWrapper<KnowledgeBaseDO>()
+                        .eq(KnowledgeBaseDO::getDeleted, 0)
+                        .isNotNull(KnowledgeBaseDO::getCollectionName)
+        ).stream().collect(Collectors.toMap(
+                KnowledgeBaseDO::getCollectionName,
+                KnowledgeBaseDO::getId,
+                (existing, replacement) -> existing
+        ));
+
+        int created = 0;
+        int updated = 0;
+        int repaired = 0;
+        int nextSortOrder = resolveNextSortOrder();
+
+        for (IntentNode node : allNodes) {
+            IntentNodeDO existing = findByIntentCode(node.getId());
+            if (existing == null) {
+                IntentNodeCreateRequest request = buildCreateRequest(node, collectionToKbId, nextSortOrder++);
+                createNode(request);
+                created++;
+                continue;
+            }
+
+            if (syncManagedFields(existing, node)) {
+                existing.setUpdateBy(UserContext.getUsername());
+                baseMapper.updateById(existing);
+                updated++;
+            }
+
+            if (repairCollectionMapping(node, collectionToKbId)) {
+                repaired++;
+            }
+        }
+
+        if (created > 0 || updated > 0 || repaired > 0) {
+            intentTreeCacheManager.clearIntentTreeCache();
+        }
+        return new IntentTreeSyncResult(created, updated, repaired);
+    }
+
     /**
      * 展平树结构：保证父节点在前，子节点在后（先根遍历）
      */
@@ -409,6 +456,85 @@ public class IntentTreeServiceImpl extends ServiceImpl<IntentNodeMapper, IntentN
                         .eq(IntentNodeDO::getIntentCode, intentCode)
                         .eq(IntentNodeDO::getDeleted, 0)
         ) > 0;
+    }
+
+    private IntentNodeDO findByIntentCode(String intentCode) {
+        return baseMapper.selectOne(
+                new LambdaQueryWrapper<IntentNodeDO>()
+                        .eq(IntentNodeDO::getIntentCode, intentCode)
+                        .eq(IntentNodeDO::getDeleted, 0)
+        );
+    }
+
+    private IntentNodeCreateRequest buildCreateRequest(IntentNode node,
+                                                       Map<String, Long> collectionToKbId,
+                                                       int sortOrder) {
+        String resolvedKbId = node.getKbId();
+        if (resolvedKbId == null && node.getCollectionName() != null) {
+            Long kbId = collectionToKbId.get(node.getCollectionName());
+            if (kbId != null) {
+                resolvedKbId = String.valueOf(kbId);
+            } else {
+                log.warn("知识库未找到: collection={}, intentCode={}", node.getCollectionName(), node.getId());
+            }
+        }
+        return IntentNodeCreateRequest.builder()
+                .kbId(resolvedKbId)
+                .intentCode(node.getId())
+                .name(node.getName())
+                .level(mapLevel(node.getLevel()))
+                .parentCode(node.getParentId())
+                .description(node.getDescription())
+                .examples(node.getExamples())
+                .topK(normalizeTopK(node.getTopK()))
+                .kind(mapKind(node.getKind()))
+                .mcpToolId(node.getMcpToolId())
+                .sortOrder(sortOrder)
+                .enabled(1)
+                .promptTemplate(node.getPromptTemplate())
+                .promptSnippet(node.getPromptSnippet())
+                .paramPromptTemplate(node.getParamPromptTemplate())
+                .build();
+    }
+
+    private boolean syncManagedFields(IntentNodeDO existing, IntentNode factoryNode) {
+        boolean changed = false;
+        changed |= setIfChanged(existing.getName(), factoryNode.getName(), existing::setName);
+        changed |= setIfChanged(existing.getDescription(), factoryNode.getDescription(), existing::setDescription);
+        changed |= setIfChanged(existing.getExamples(), toExamplesJson(factoryNode.getExamples()), existing::setExamples);
+        changed |= setIfChanged(existing.getMcpToolId(), factoryNode.getMcpToolId(), existing::setMcpToolId);
+        changed |= setIfChanged(existing.getParentCode(), factoryNode.getParentId(), existing::setParentCode);
+        changed |= setIfChanged(existing.getLevel(), mapLevel(factoryNode.getLevel()), existing::setLevel);
+        changed |= setIfChanged(existing.getKind(), mapKind(factoryNode.getKind()), existing::setKind);
+        changed |= setIfChanged(existing.getPromptTemplate(), factoryNode.getPromptTemplate(), existing::setPromptTemplate);
+        changed |= setIfChanged(existing.getPromptSnippet(), factoryNode.getPromptSnippet(), existing::setPromptSnippet);
+        changed |= setIfChanged(existing.getParamPromptTemplate(), factoryNode.getParamPromptTemplate(), existing::setParamPromptTemplate);
+        return changed;
+    }
+
+    private String toExamplesJson(List<String> examples) {
+        return examples == null ? null : GSON.toJson(examples);
+    }
+
+    private <T> boolean setIfChanged(T oldValue, T newValue, java.util.function.Consumer<T> setter) {
+        if (Objects.equals(oldValue, newValue)) {
+            return false;
+        }
+        setter.accept(newValue);
+        return true;
+    }
+
+    private int resolveNextSortOrder() {
+        IntentNodeDO latest = baseMapper.selectOne(
+                new LambdaQueryWrapper<IntentNodeDO>()
+                        .eq(IntentNodeDO::getDeleted, 0)
+                        .orderByDesc(IntentNodeDO::getSortOrder, IntentNodeDO::getId)
+                        .last("limit 1")
+        );
+        if (latest == null || latest.getSortOrder() == null) {
+            return 0;
+        }
+        return latest.getSortOrder() + 1;
     }
 
     /**

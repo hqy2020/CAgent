@@ -127,6 +127,20 @@ class IntentTreeBootstrapServiceTests {
         }
     }
 
+    @Test
+    void shouldSyncFactoryDefinitionsManually() throws Exception {
+        stubLockAndInsertBehavior();
+        when(intentTreeService.syncFromFactory()).thenReturn(new IntentTreeSyncResult(0, 2, 1));
+
+        IntentTreeSyncResult result = service.syncManually();
+
+        assertEquals(0, result.created());
+        assertEquals(2, result.updated());
+        assertEquals(1, result.repaired());
+        verify(intentTreeService).syncFromFactory();
+        verify(intentTreeCacheManager).clearIntentTreeCache();
+    }
+
     private void stubLockAndInsertBehavior() throws InterruptedException {
         when(redissonClient.getLock(anyString())).thenReturn(lock);
         when(lock.tryLock(anyLong(), anyLong(), any())).thenReturn(true);

@@ -92,11 +92,11 @@ class RetrievalEngineTests {
 
     @Test
     void testMcpOnlyIntentShouldSkipKbRetrieval() {
-        String question = "华东区这个月销售额多少？";
+        String question = "帮我联网搜索今天 AI 领域的 3 条新闻";
         IntentNode mcpNode = IntentNode.builder()
-                .id("sales-intent")
+                .id("news-intent")
                 .kind(IntentKind.MCP)
-                .mcpToolId("sales_query")
+                .mcpToolId("web_news_search")
                 .build();
         SubQuestionIntent subIntent = new SubQuestionIntent(
                 question,
@@ -104,20 +104,20 @@ class RetrievalEngineTests {
         );
 
         MCPTool tool = MCPTool.builder()
-                .toolId("sales_query")
-                .name("销售查询")
-                .description("查询销售数据")
+                .toolId("web_news_search")
+                .name("联网新闻搜索")
+                .description("联网搜索近期新闻")
                 .parameters(Map.of(
-                        "region",
-                        MCPTool.ParameterDef.builder().type("string").required(false).build()
+                        "query",
+                        MCPTool.ParameterDef.builder().type("string").required(true).build()
                 ))
                 .build();
-        when(mcpToolRegistry.getExecutor("sales_query")).thenReturn(Optional.of(mcpToolExecutor));
+        when(mcpToolRegistry.getExecutor("web_news_search")).thenReturn(Optional.of(mcpToolExecutor));
         when(mcpToolExecutor.getToolDefinition()).thenReturn(tool);
         when(mcpParameterExtractor.extractParameters(eq(question), same(tool), isNull()))
-                .thenReturn(Map.of("region", "华东"));
+                .thenReturn(Map.of("query", "AI 领域"));
         when(mcpService.executeBatch(anyList(), any(CancellationToken.class)))
-                .thenReturn(List.of(MCPResponse.success("sales_query", "华东区本月销售额为 358.63 万元")));
+                .thenReturn(List.of(MCPResponse.success("web_news_search", "今天 AI 领域新闻 3 条")));
         when(contextFormatter.formatMcpContext(anyList(), anyList())).thenReturn("mcp-context");
 
         RetrievalContext context = retrievalEngine.retrieve(List.of(subIntent), 5, CancellationToken.NONE);
@@ -129,8 +129,8 @@ class RetrievalEngineTests {
                 any(CancellationToken.class));
         verify(mcpService).executeBatch(argThat(requests ->
                         requests.size() == 1
-                                && "sales_query".equals(requests.get(0).getToolId())
-                                && "华东".equals(requests.get(0).getParameter("region"))),
+                                && "web_news_search".equals(requests.get(0).getToolId())
+                                && "AI 领域".equals(requests.get(0).getParameter("query"))),
                 any(CancellationToken.class));
     }
 
@@ -138,9 +138,9 @@ class RetrievalEngineTests {
     void testLowConfidenceMcpIntentShouldFallbackToKbRetrieval() {
         String question = "公司数据安全规范里，敏感字段脱敏要求是什么？";
         IntentNode mcpNode = IntentNode.builder()
-                .id("sales-intent")
+                .id("news-intent")
                 .kind(IntentKind.MCP)
-                .mcpToolId("sales_query")
+                .mcpToolId("web_news_search")
                 .build();
         SubQuestionIntent subIntent = new SubQuestionIntent(
                 question,
@@ -167,15 +167,15 @@ class RetrievalEngineTests {
 
     @Test
     void testMixedIntentShouldMergeKbAndMcpContext() {
-        String question = "华东区这个月销售额多少，并说明销售口径定义";
+        String question = "帮我联网搜索今天 AI 新闻，并说明公司新闻摘要规范";
         IntentNode kbNode = IntentNode.builder()
-                .id("kb-sales-policy")
+                .id("kb-news-policy")
                 .kind(IntentKind.KB)
                 .build();
         IntentNode mcpNode = IntentNode.builder()
-                .id("sales-intent")
+                .id("news-intent")
                 .kind(IntentKind.MCP)
-                .mcpToolId("sales_query")
+                .mcpToolId("web_news_search")
                 .build();
         SubQuestionIntent subIntent = new SubQuestionIntent(
                 question,
@@ -187,7 +187,7 @@ class RetrievalEngineTests {
 
         RetrievedChunk kbChunk = RetrievedChunk.builder()
                 .id("chunk-1")
-                .text("销售口径说明：以合同签署金额为准。")
+                .text("公司新闻摘要规范：需要标注来源、发布日期和核心结论。")
                 .score(0.9F)
                 .build();
         when(multiChannelRetrievalEngine.retrieveKnowledgeChannels(anyList(), eq(6), any(CancellationToken.class)))
@@ -195,20 +195,20 @@ class RetrievalEngineTests {
         when(contextFormatter.formatKbContext(anyList(), anyMap(), eq(6))).thenReturn("kb-context");
 
         MCPTool tool = MCPTool.builder()
-                .toolId("sales_query")
-                .name("销售查询")
-                .description("查询销售数据")
+                .toolId("web_news_search")
+                .name("联网新闻搜索")
+                .description("联网搜索近期新闻")
                 .parameters(Map.of(
-                        "period",
-                        MCPTool.ParameterDef.builder().type("string").required(false).build()
+                        "query",
+                        MCPTool.ParameterDef.builder().type("string").required(true).build()
                 ))
                 .build();
-        when(mcpToolRegistry.getExecutor("sales_query")).thenReturn(Optional.of(mcpToolExecutor));
+        when(mcpToolRegistry.getExecutor("web_news_search")).thenReturn(Optional.of(mcpToolExecutor));
         when(mcpToolExecutor.getToolDefinition()).thenReturn(tool);
         when(mcpParameterExtractor.extractParameters(eq(question), same(tool), isNull()))
-                .thenReturn(Map.of("period", "本月"));
+                .thenReturn(Map.of("query", "AI 新闻"));
         when(mcpService.executeBatch(anyList(), any(CancellationToken.class)))
-                .thenReturn(List.of(MCPResponse.success("sales_query", "本月销售额 358.63 万元")));
+                .thenReturn(List.of(MCPResponse.success("web_news_search", "今天 AI 新闻 3 条")));
         when(contextFormatter.formatMcpContext(anyList(), anyList())).thenReturn("mcp-context");
 
         RetrievalContext context = retrievalEngine.retrieve(List.of(subIntent), 6, CancellationToken.NONE);
@@ -222,7 +222,7 @@ class RetrievalEngineTests {
     }
 
     @Test
-    void testMcpFailureResponseShouldStillBuildMcpContext() {
+    void testWriteMcpIntentShouldNotExecuteAndShouldFallbackToKb() {
         String question = "帮我写日记";
         IntentNode mcpNode = IntentNode.builder()
                 .id("obs-update-daily")
@@ -234,42 +234,76 @@ class RetrievalEngineTests {
                 List.of(NodeScore.builder().node(mcpNode).score(0.92D).build())
         );
 
-        MCPTool tool = MCPTool.builder()
-                .toolId("obsidian_update")
-                .name("更新 Obsidian")
-                .description("更新 Obsidian")
-                .parameters(Map.of(
-                        "content",
-                        MCPTool.ParameterDef.builder().type("string").required(true).build()
-                ))
+        RetrievedChunk kbChunk = RetrievedChunk.builder()
+                .id("chunk-1")
+                .text("日记模板与规范说明")
+                .score(0.81F)
                 .build();
-        when(mcpToolRegistry.getExecutor("obsidian_update")).thenReturn(Optional.of(mcpToolExecutor));
-        when(mcpToolExecutor.getToolDefinition()).thenReturn(tool);
-        when(mcpParameterExtractor.extractParameters(eq(question), same(tool), isNull()))
-                .thenReturn(Map.of("content", "测试内容"));
-        when(mcpService.executeBatch(anyList(), any(CancellationToken.class)))
-                .thenReturn(List.of(MCPResponse.error("obsidian_update", "DATE_CONFLICT", "冲突")));
-        when(contextFormatter.formatMcpContext(anyList(), anyList())).thenReturn("mcp-error-context");
+        when(multiChannelRetrievalEngine.retrieveKnowledgeChannels(anyList(), eq(5), any(CancellationToken.class)))
+                .thenReturn(List.of(kbChunk));
+        when(contextFormatter.formatKbContext(anyList(), anyMap(), eq(5))).thenReturn("kb-fallback-context");
 
         RetrievalContext context = retrievalEngine.retrieve(List.of(subIntent), 5, CancellationToken.NONE);
 
-        assertTrue(context.hasMcp());
-        assertTrue(context.getMcpContext().contains("mcp-error-context"));
+        assertTrue(context.hasKb());
+        assertFalse(context.hasMcp());
+        assertTrue(context.getKbContext().contains("kb-fallback-context"));
+        verify(mcpToolRegistry, never()).getExecutor("obsidian_update");
+        verify(mcpService, never()).executeBatch(anyList(), any(CancellationToken.class));
+    }
+
+    @Test
+    void testIncompatibleReadOnlyMcpIntentsShouldFallbackToKbWithoutExecutingTools() {
+        String question = "公司数据安全规范里，敏感字段脱敏要求是什么？";
+        IntentNode obsidianNode = IntentNode.builder()
+                .id("obsidian-intent")
+                .kind(IntentKind.MCP)
+                .mcpToolId("obsidian_search")
+                .build();
+        IntentNode newsNode = IntentNode.builder()
+                .id("news-intent")
+                .kind(IntentKind.MCP)
+                .mcpToolId("web_news_search")
+                .build();
+        SubQuestionIntent subIntent = new SubQuestionIntent(
+                question,
+                List.of(
+                        NodeScore.builder().node(obsidianNode).score(0.88D).build(),
+                        NodeScore.builder().node(newsNode).score(0.83D).build()
+                )
+        );
+
+        RetrievedChunk kbChunk = RetrievedChunk.builder()
+                .id("chunk-1")
+                .text("敏感字段必须按规则脱敏。")
+                .score(0.82F)
+                .build();
+        when(multiChannelRetrievalEngine.retrieveKnowledgeChannels(anyList(), eq(5), any(CancellationToken.class)))
+                .thenReturn(List.of(kbChunk));
+        when(contextFormatter.formatKbContext(anyList(), anyMap(), eq(5))).thenReturn("kb-security-context");
+
+        RetrievalContext context = retrievalEngine.retrieve(List.of(subIntent), 5, CancellationToken.NONE);
+
+        assertTrue(context.hasKb());
+        assertFalse(context.hasMcp());
+        assertTrue(context.getKbContext().contains("kb-security-context"));
+        verify(multiChannelRetrievalEngine).retrieveKnowledgeChannels(anyList(), eq(5), any(CancellationToken.class));
+        verify(mcpService, never()).executeBatch(anyList(), any(CancellationToken.class));
     }
 
     @Test
     void testMcpRequestsShouldDeduplicateByToolIdAndKeepHighestScore() {
-        String question = "更新今日日记";
+        String question = "帮我联网搜索今天 AI 新闻";
         IntentNode highNode = IntentNode.builder()
-                .id("obs-update-daily")
+                .id("news-query-high")
                 .kind(IntentKind.MCP)
-                .mcpToolId("obsidian_update")
+                .mcpToolId("web_news_search")
                 .paramPromptTemplate("HIGH_PROMPT")
                 .build();
         IntentNode lowNode = IntentNode.builder()
-                .id("obs-update-append")
+                .id("news-query-low")
                 .kind(IntentKind.MCP)
-                .mcpToolId("obsidian_update")
+                .mcpToolId("web_news_search")
                 .paramPromptTemplate("LOW_PROMPT")
                 .build();
         SubQuestionIntent subIntent = new SubQuestionIntent(
@@ -281,20 +315,20 @@ class RetrievalEngineTests {
         );
 
         MCPTool tool = MCPTool.builder()
-                .toolId("obsidian_update")
-                .name("更新 Obsidian")
-                .description("更新 Obsidian")
+                .toolId("web_news_search")
+                .name("联网新闻搜索")
+                .description("联网搜索近期新闻")
                 .parameters(Map.of(
-                        "content",
+                        "query",
                         MCPTool.ParameterDef.builder().type("string").required(true).build()
                 ))
                 .build();
-        when(mcpToolRegistry.getExecutor("obsidian_update")).thenReturn(Optional.of(mcpToolExecutor));
+        when(mcpToolRegistry.getExecutor("web_news_search")).thenReturn(Optional.of(mcpToolExecutor));
         when(mcpToolExecutor.getToolDefinition()).thenReturn(tool);
         when(mcpParameterExtractor.extractParameters(eq(question), same(tool), eq("HIGH_PROMPT")))
-                .thenReturn(Map.of("content", "high"));
+                .thenReturn(Map.of("query", "AI 新闻"));
         when(mcpService.executeBatch(anyList(), any(CancellationToken.class)))
-                .thenReturn(List.of(MCPResponse.success("obsidian_update", "ok")));
+                .thenReturn(List.of(MCPResponse.success("web_news_search", "ok")));
         when(contextFormatter.formatMcpContext(anyList(), anyList())).thenReturn("mcp-context");
 
         RetrievalContext context = retrievalEngine.retrieve(List.of(subIntent), 5, CancellationToken.NONE);
@@ -303,8 +337,8 @@ class RetrievalEngineTests {
         verify(mcpParameterExtractor, never()).extractParameters(eq(question), same(tool), eq("LOW_PROMPT"));
         verify(mcpService).executeBatch(argThat(requests ->
                         requests.size() == 1
-                                && "obsidian_update".equals(requests.get(0).getToolId())
-                                && "high".equals(requests.get(0).getParameter("content"))),
+                                && "web_news_search".equals(requests.get(0).getToolId())
+                                && "AI 新闻".equals(requests.get(0).getParameter("query"))),
                 any(CancellationToken.class));
     }
 }

@@ -56,7 +56,16 @@ class MCPToolAnnotationTests {
         assertEquals("sample_tool", toolDef.getToolId());
         assertEquals("示例工具", toolDef.getName());
         assertEquals("用于测试的示例工具", toolDef.getDescription());
+        assertEquals("当用户需要测试示例工具时使用", toolDef.getUseWhen());
+        assertEquals("不要在生产写操作中使用", toolDef.getAvoidWhen());
         assertTrue(toolDef.isRequireUserId());
+        assertEquals(List.of("测试", "查询"), toolDef.getSceneKeywords());
+        assertTrue(toolDef.isConfirmationRequired());
+        assertEquals(12, toolDef.getTimeoutSeconds());
+        assertEquals(1, toolDef.getMaxRetries());
+        assertEquals(MCPTool.Sensitivity.HIGH, toolDef.getSensitivity());
+        assertEquals("工具降级提示", toolDef.getFallbackMessage());
+        assertFalse(toolDef.isVisibleToModel());
         assertEquals(List.of("测试问题1", "测试问题2"), toolDef.getExamples());
 
         // 验证参数定义
@@ -69,6 +78,8 @@ class MCPToolAnnotationTests {
         assertEquals("搜索关键词", keywordParam.getDescription());
         assertEquals("string", keywordParam.getType());
         assertTrue(keywordParam.isRequired());
+        assertEquals("Spring", keywordParam.getExample());
+        assertEquals("^[A-Za-z]+$", keywordParam.getPattern());
 
         MCPTool.ParameterDef limitParam = params.get("limit");
         assertEquals("number", limitParam.getType());
@@ -177,10 +188,20 @@ class MCPToolAnnotationTests {
             toolId = "sample_tool",
             name = "示例工具",
             description = "用于测试的示例工具",
+            useWhen = "当用户需要测试示例工具时使用",
+            avoidWhen = "不要在生产写操作中使用",
             examples = {"测试问题1", "测试问题2"},
+            sceneKeywords = {"测试", "查询"},
             requireUserId = true,
+            confirmationRequired = true,
+            timeoutSeconds = 12,
+            maxRetries = 1,
+            sensitivity = MCPTool.Sensitivity.HIGH,
+            fallbackMessage = "工具降级提示",
+            visibleToModel = false,
             parameters = {
-                    @MCPParam(name = "keyword", description = "搜索关键词", type = "string", required = true),
+                    @MCPParam(name = "keyword", description = "搜索关键词", type = "string",
+                            required = true, example = "Spring", pattern = "^[A-Za-z]+$"),
                     @MCPParam(name = "limit", description = "结果数量", type = "number", required = false, defaultValue = "10")
             }
     )

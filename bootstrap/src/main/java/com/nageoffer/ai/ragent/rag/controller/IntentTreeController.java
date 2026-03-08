@@ -25,6 +25,7 @@ import com.nageoffer.ai.ragent.framework.convention.Result;
 import com.nageoffer.ai.ragent.framework.web.Results;
 import com.nageoffer.ai.ragent.ingestion.service.IntentTreeBootstrapService;
 import com.nageoffer.ai.ragent.ingestion.service.IntentTreeService;
+import com.nageoffer.ai.ragent.ingestion.service.IntentTreeSyncResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -69,6 +70,14 @@ public class IntentTreeController {
     @PostMapping("/intent-tree/init")
     public Result<Integer> init() {
         return Results.success(intentTreeBootstrapService.initializeManually());
+    }
+
+    /**
+     * 手动触发意图树覆盖同步
+     */
+    @PostMapping("/intent-tree/sync")
+    public Result<IntentTreeSyncResult> sync() {
+        return Results.success(intentTreeBootstrapService.syncManually());
     }
 
     /**

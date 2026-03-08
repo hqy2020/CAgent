@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.rag.core.mcp.executor.obsidian;
 
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPRequest;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPResponse;
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPExecute;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPParam;
 import com.nageoffer.ai.ragent.rag.core.mcp.annotation.MCPToolDeclare;
@@ -38,14 +39,26 @@ import java.util.List;
 @MCPToolDeclare(
         toolId = "obsidian_create",
         name = "创建 Obsidian 笔记",
-        description = "在 Obsidian 笔记库中创建新笔记，可指定路径、内容和模板",
+        description = "在 Obsidian 笔记库中创建新笔记，可指定目录、初始内容和模板。",
+        useWhen = "当用户明确要新建笔记、知识卡片、草稿或日记时使用。",
+        avoidWhen = "不要用于更新已有笔记、替换局部文本、删除笔记或按关键词搜索笔记。",
         examples = {"创建一个关于 Docker 的笔记", "在 3-Knowledge 下新建 Spring 笔记", "用日记模板创建今天的笔记"},
+        sceneKeywords = {"Obsidian", "笔记创建", "知识沉淀"},
         requireUserId = false,
+        confirmationRequired = true,
+        timeoutSeconds = 15,
+        maxRetries = 0,
+        sensitivity = MCPTool.Sensitivity.HIGH,
+        fallbackMessage = "Obsidian 写入暂时不可用，本次不会执行创建。",
         parameters = {
-                @MCPParam(name = "name", description = "笔记名称（不含 .md 后缀）", type = "string", required = true),
-                @MCPParam(name = "path", description = "目标文件夹路径", type = "string", required = false),
-                @MCPParam(name = "content", description = "笔记初始内容（Markdown 格式）", type = "string", required = false),
-                @MCPParam(name = "template", description = "使用的模板名称", type = "string", required = false)
+                @MCPParam(name = "name", description = "笔记名称（不含 .md 后缀）", type = "string",
+                        required = true, example = "AI 工具调用设计"),
+                @MCPParam(name = "path", description = "目标文件夹路径", type = "string", required = false,
+                        example = "3-Knowledge/AI"),
+                @MCPParam(name = "content", description = "笔记初始内容（Markdown 格式）", type = "string", required = false,
+                        example = "# AI 工具调用设计"),
+                @MCPParam(name = "template", description = "使用的模板名称", type = "string", required = false,
+                        example = "daily-note")
         }
 )
 public class ObsidianCreateNoteTool {
@@ -76,9 +89,14 @@ public class ObsidianCreateNoteTool {
         }
 
         ObsidianCliExecutor.CliResult result = cliExecutor.execute("create", args);
+        if (result == null) {
+            return MCPResponse.error("obsidian_create", "CLI_ERROR", "Obsidian 创建执行器未返回结果");
+        }
         if (!result.isSuccess()) {
             return MCPResponse.error("obsidian_create", "CLI_ERROR", result.stderr());
         }
-        return MCPResponse.success("obsidian_create", "笔记「" + name + "」创建成功。\n" + result.stdout());
+        MCPResponse response = MCPResponse.success("obsidian_create", "笔记「" + name + "」创建成功。\n" + result.stdout());
+        response.setFallbackUsed(result.stdout().contains("[fallback]"));
+        return response;
     }
 }

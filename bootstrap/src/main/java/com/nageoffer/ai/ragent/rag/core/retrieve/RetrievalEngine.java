@@ -47,10 +47,12 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.regex.Pattern;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.DEFAULT_TOP_K;
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.INTENT_MIN_SCORE;
@@ -69,6 +71,24 @@ public class RetrievalEngine {
      * MCP 意图最低置信度阈值（高于通用意图阈值），用于抑制误触发工具调用。
      */
     private static final double MCP_INTENT_MIN_SCORE = 0.60D;
+    /**
+     * 检索阶段禁止执行写工具，避免非确认链路产生副作用。
+     */
+    private static final Set<String> WRITE_TOOL_IDS = Set.of(
+            "obsidian_create",
+            "obsidian_update",
+            "obsidian_replace",
+            "obsidian_delete",
+            "obsidian_video_transcript"
+    );
+    private static final Pattern WEB_NEWS_QUERY_HINT = Pattern.compile(
+            "(联网|上网|互联网|web|internet|google|bing|百度|新闻|热搜|实时|最新|快讯|简报|热点)",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern OBSIDIAN_QUERY_HINT = Pattern.compile(
+            "(笔记|obsidian|日记|markdown|README|readme|目录|文件夹|路径|path|vault|\\.md\\b)",
+            Pattern.CASE_INSENSITIVE
+    );
 
     private final ContextFormatter contextFormatter;
     private final MCPService mcpService;
@@ -158,7 +178,7 @@ public class RetrievalEngine {
 
     private SubQuestionContext buildSubQuestionContext(SubQuestionIntent intent, int topK, CancellationToken token) {
         List<NodeScore> kbIntents = filterKbIntents(intent.nodeScores());
-        List<NodeScore> mcpIntents = filterMCPIntents(intent.nodeScores());
+        List<NodeScore> mcpIntents = filterMCPIntents(intent.subQuestion(), intent.nodeScores());
 
         // 仅在“强 MCP-only”时跳过 KB 检索；其余场景（含无意图）都允许 KB 通道兜底。
         KbResult kbResult = shouldRetrieveKb(kbIntents, mcpIntents)
@@ -195,11 +215,13 @@ public class RetrievalEngine {
                 .append(context).append("\n\n");
     }
 
-    private List<NodeScore> filterMCPIntents(List<NodeScore> nodeScores) {
+    private List<NodeScore> filterMCPIntents(String question, List<NodeScore> nodeScores) {
         return nodeScores.stream()
                 .filter(ns -> ns.getScore() >= MCP_INTENT_MIN_SCORE)
                 .filter(ns -> ns.getNode() != null && ns.getNode().getKind() == IntentKind.MCP)
                 .filter(ns -> StrUtil.isNotBlank(ns.getNode().getMcpToolId()))
+                .filter(ns -> !WRITE_TOOL_IDS.contains(ns.getNode().getMcpToolId()))
+                .filter(ns -> isQuestionCompatibleWithTool(question, ns.getNode().getMcpToolId()))
                 .toList();
     }
 
@@ -309,6 +331,12 @@ public class RetrievalEngine {
 
         String customParamPrompt = intentNode.getParamPromptTemplate();
         Map<String, Object> params = mcpParameterExtractor.extractParameters(question, tool, customParamPrompt);
+        MCPParameterExtractor.ParameterValidationResult validation = mcpParameterExtractor.validate(new LinkedHashMap<>(params), tool);
+        if (validation != null && !validation.valid()) {
+            log.info("MCP 参数校验未通过，跳过工具执行并回退知识库, toolId: {}, missingParams: {}",
+                    toolId, validation.missingParams());
+            return null;
+        }
 
         return MCPRequest.builder()
                 .toolId(toolId)
@@ -321,5 +349,17 @@ public class RetrievalEngine {
                                       String kbContext,
                                       String mcpContext,
                                       Map<String, List<RetrievedChunk>> intentChunks) {
+    }
+
+    private boolean isQuestionCompatibleWithTool(String question, String toolId) {
+        if (StrUtil.isBlank(toolId) || StrUtil.isBlank(question)) {
+            return true;
+        }
+        String normalized = StrUtil.trim(question);
+        return switch (toolId) {
+            case "web_news_search" -> WEB_NEWS_QUERY_HINT.matcher(normalized).find();
+            case "obsidian_read", "obsidian_search", "obsidian_list" -> OBSIDIAN_QUERY_HINT.matcher(normalized).find();
+            default -> true;
+        };
     }
 }

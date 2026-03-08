@@ -20,11 +20,13 @@ package com.nageoffer.ai.ragent.rag.mcp;
 import com.nageoffer.ai.ragent.rag.core.mcp.DefaultMCPToolRegistry;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPRequest;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPResponse;
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPServiceOrchestrator;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPToolExecutor;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -62,13 +64,13 @@ class MCPRegistryAndServiceTests {
 
     @Test
     void testGetExecutorByToolId() {
-        MCPToolExecutor exec = createExecutor("attendance", "Attendance Query");
+        MCPToolExecutor exec = createExecutor("query-tool", "Query Tool");
         DefaultMCPToolRegistry registry = new DefaultMCPToolRegistry(List.of(exec));
         registry.init();
 
-        Optional<MCPToolExecutor> found = registry.getExecutor("attendance");
+        Optional<MCPToolExecutor> found = registry.getExecutor("query-tool");
         assertTrue(found.isPresent());
-        assertEquals("attendance", found.get().getToolId());
+        assertEquals("query-tool", found.get().getToolId());
 
         Optional<MCPToolExecutor> notFound = registry.getExecutor("nonexistent");
         assertFalse(notFound.isPresent());
@@ -121,5 +123,248 @@ class MCPRegistryAndServiceTests {
 
         assertTrue(exec.supports(matching));
         assertFalse(exec.supports(nonMatching));
+    }
+
+    @Test
+    void testServiceShouldRequireConfirmationForSensitiveTool() {
+        MCPToolExecutor exec = new MCPToolExecutor() {
+            @Override
+            public MCPTool getToolDefinition() {
+                return MCPTool.builder()
+                        .toolId("obsidian_create")
+                        .name("Create Note")
+                        .description("create")
+                        .requireUserId(false)
+                        .confirmationRequired(true)
+                        .build();
+            }
+
+            @Override
+            public MCPResponse execute(MCPRequest request) {
+                return MCPResponse.success("obsidian_create", "created");
+            }
+        };
+
+        DefaultMCPToolRegistry registry = new DefaultMCPToolRegistry(List.of(exec));
+        registry.init();
+        MCPServiceOrchestrator service = new MCPServiceOrchestrator(registry, Runnable::run);
+
+        MCPResponse blocked = service.execute(MCPRequest.builder().toolId("obsidian_create").build());
+        assertFalse(blocked.isSuccess());
+        assertEquals("CONFIRMATION_REQUIRED", blocked.getErrorCode());
+
+        MCPResponse confirmed = service.execute(MCPRequest.builder()
+                .toolId("obsidian_create")
+                .confirmed(true)
+                .build());
+        assertTrue(confirmed.isSuccess());
+    }
+
+    @Test
+    void testBuildToolsDescriptionShouldHideLegacyAliasTools() {
+        MCPToolExecutor visible = new MCPToolExecutor() {
+            @Override
+            public MCPTool getToolDefinition() {
+                return MCPTool.builder()
+                        .toolId("visible_tool")
+                        .name("Visible Tool")
+                        .description("visible")
+                        .requireUserId(false)
+                        .build();
+            }
+
+            @Override
+            public MCPResponse execute(MCPRequest request) {
+                return MCPResponse.success("visible_tool", "ok");
+            }
+        };
+
+        MCPToolExecutor hidden = new MCPToolExecutor() {
+            @Override
+            public MCPTool getToolDefinition() {
+                return MCPTool.builder()
+                        .toolId("legacy_hidden_tool")
+                        .name("Hidden Tool")
+                        .description("hidden")
+                        .requireUserId(false)
+                        .visibleToModel(false)
+                        .build();
+            }
+
+            @Override
+            public MCPResponse execute(MCPRequest request) {
+                return MCPResponse.success("legacy_hidden_tool", "ok");
+            }
+        };
+
+        DefaultMCPToolRegistry registry = new DefaultMCPToolRegistry(List.of(visible, hidden));
+        registry.init();
+        MCPServiceOrchestrator service = new MCPServiceOrchestrator(registry, Runnable::run);
+
+        String description = service.buildToolsDescription();
+        assertTrue(description.contains("visible_tool"));
+        assertFalse(description.contains("legacy_hidden_tool"));
+    }
+
+    @Test
+    void testBuildToolsDescriptionShouldIncludeUseWhenAndParameterHints() {
+        MCPToolExecutor exec = new MCPToolExecutor() {
+            @Override
+            public MCPTool getToolDefinition() {
+                return MCPTool.builder()
+                        .toolId("obsidian_update")
+                        .name("更新笔记")
+                        .description("向已有笔记追加内容")
+                        .useWhen("当用户明确要补充已有笔记时使用。")
+                        .avoidWhen("不要用于新建笔记。")
+                        .requireUserId(false)
+                        .parameters(Map.of(
+                                "date", MCPTool.ParameterDef.builder()
+                                        .type("string")
+                                        .description("目标日期")
+                                        .example("2026-03-08")
+                                        .pattern("^\\d{4}-\\d{2}-\\d{2}$")
+                                        .build()
+                        ))
+                        .build();
+            }
+
+            @Override
+            public MCPResponse execute(MCPRequest request) {
+                return MCPResponse.success("obsidian_update", "ok");
+            }
+        };
+
+        DefaultMCPToolRegistry registry = new DefaultMCPToolRegistry(List.of(exec));
+        registry.init();
+        MCPServiceOrchestrator service = new MCPServiceOrchestrator(registry, Runnable::run);
+
+        String description = service.buildToolsDescription();
+        assertTrue(description.contains("何时使用"));
+        assertTrue(description.contains("避免使用"));
+        assertTrue(description.contains("示例: 2026-03-08"));
+        assertTrue(description.contains("格式: ^\\d{4}-\\d{2}-\\d{2}$"));
+    }
+
+    @Test
+    void testServiceShouldReturnStructuredValidationErrorForMissingParam() {
+        MCPToolExecutor exec = new MCPToolExecutor() {
+            @Override
+            public MCPTool getToolDefinition() {
+                return MCPTool.builder()
+                        .toolId("obsidian_create")
+                        .name("Create Note")
+                        .description("create")
+                        .requireUserId(false)
+                        .parameters(Map.of(
+                                "name", MCPTool.ParameterDef.builder()
+                                        .type("string")
+                                        .description("笔记名称")
+                                        .required(true)
+                                        .example("AI 工具调用设计")
+                                        .build()
+                        ))
+                        .build();
+            }
+
+            @Override
+            public MCPResponse execute(MCPRequest request) {
+                return MCPResponse.success("obsidian_create", "created");
+            }
+        };
+
+        DefaultMCPToolRegistry registry = new DefaultMCPToolRegistry(List.of(exec));
+        registry.init();
+        MCPServiceOrchestrator service = new MCPServiceOrchestrator(registry, Runnable::run);
+
+        MCPResponse response = service.execute(MCPRequest.builder().toolId("obsidian_create").build());
+
+        assertFalse(response.isSuccess());
+        assertEquals("MISSING_PARAM", response.getErrorCode());
+        assertEquals("INVALID_PARAMETER", response.getStandardErrorCode());
+        assertEquals("name", response.getErrorDetails().get("parameter"));
+        assertTrue(response.getUserActionHint().contains("AI 工具调用设计"));
+    }
+
+    @Test
+    void testServiceShouldNormalizeIntegerParametersBeforeExecuting() {
+        MCPToolExecutor exec = new MCPToolExecutor() {
+            @Override
+            public MCPTool getToolDefinition() {
+                return MCPTool.builder()
+                        .toolId("web_news_search")
+                        .name("Web Search")
+                        .description("search")
+                        .requireUserId(false)
+                        .parameters(Map.of(
+                                "limit", MCPTool.ParameterDef.builder()
+                                        .type("integer")
+                                        .description("条数")
+                                        .required(false)
+                                        .build()
+                        ))
+                        .build();
+            }
+
+            @Override
+            public MCPResponse execute(MCPRequest request) {
+                Object limit = request.getParameter("limit");
+                return MCPResponse.success("web_news_search", limit instanceof Integer ? "ok" : "bad");
+            }
+        };
+
+        DefaultMCPToolRegistry registry = new DefaultMCPToolRegistry(List.of(exec));
+        registry.init();
+        MCPServiceOrchestrator service = new MCPServiceOrchestrator(registry, Runnable::run);
+
+        MCPRequest request = MCPRequest.builder().toolId("web_news_search").build();
+        request.addParameter("limit", "5");
+        MCPResponse response = service.execute(request);
+
+        assertTrue(response.isSuccess());
+        assertEquals("ok", response.getTextResult());
+        assertTrue(request.getParameter("limit") instanceof Integer);
+    }
+
+    @Test
+    void testServiceShouldRejectPatternMismatchWithStructuredDetails() {
+        MCPToolExecutor exec = new MCPToolExecutor() {
+            @Override
+            public MCPTool getToolDefinition() {
+                return MCPTool.builder()
+                        .toolId("obsidian_update")
+                        .name("Update Note")
+                        .description("update")
+                        .requireUserId(false)
+                        .parameters(Map.of(
+                                "date", MCPTool.ParameterDef.builder()
+                                        .type("string")
+                                        .description("目标日期")
+                                        .required(true)
+                                        .example("2026-03-08")
+                                        .pattern("^\\d{4}-\\d{2}-\\d{2}$")
+                                        .build()
+                        ))
+                        .build();
+            }
+
+            @Override
+            public MCPResponse execute(MCPRequest request) {
+                return MCPResponse.success("obsidian_update", "ok");
+            }
+        };
+
+        DefaultMCPToolRegistry registry = new DefaultMCPToolRegistry(List.of(exec));
+        registry.init();
+        MCPServiceOrchestrator service = new MCPServiceOrchestrator(registry, Runnable::run);
+
+        MCPRequest request = MCPRequest.builder().toolId("obsidian_update").build();
+        request.addParameter("date", "03/08/2026");
+        MCPResponse response = service.execute(request);
+
+        assertFalse(response.isSuccess());
+        assertEquals("PARAM_PATTERN_MISMATCH", response.getErrorCode());
+        assertEquals("INVALID_PARAMETER", response.getStandardErrorCode());
+        assertEquals("^\\d{4}-\\d{2}-\\d{2}$", response.getErrorDetails().get("pattern"));
     }
 }

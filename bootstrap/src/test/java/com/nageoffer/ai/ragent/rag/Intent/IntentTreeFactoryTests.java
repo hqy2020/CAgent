@@ -34,23 +34,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class IntentTreeFactoryTests {
 
     @Test
-    void shouldContainSalesQueryMcpLeafNode() {
+    void shouldNotContainRemovedSalesMcpLeafNodes() {
         List<IntentNode> roots = IntentTreeFactory.buildIntentTree();
         List<IntentNode> allNodes = flatten(roots);
 
-        Optional<IntentNode> salesNodeOpt = allNodes.stream()
-                .filter(node -> "sales_query".equals(node.getMcpToolId()))
-                .findFirst();
-
-        assertTrue(salesNodeOpt.isPresent(), "意图树应包含 mcpToolId=sales_query 的节点");
-
-        IntentNode salesNode = salesNodeOpt.get();
-        assertEquals(IntentKind.MCP, salesNode.getKind(), "sales_query 节点应为 MCP 类型");
-        assertTrue(salesNode.isLeaf(), "sales_query 节点应为叶子节点");
-        assertTrue(
-                salesNode.getExamples().stream().anyMatch(each -> each.contains("销售")),
-                "sales_query 节点应包含销售问句示例"
-        );
+        assertTrue(allNodes.stream().noneMatch(node -> "sales_summary_query".equals(node.getMcpToolId())));
+        assertTrue(allNodes.stream().noneMatch(node -> "sales_ranking_query".equals(node.getMcpToolId())));
+        assertTrue(allNodes.stream().noneMatch(node -> "sales_detail_query".equals(node.getMcpToolId())));
+        assertTrue(allNodes.stream().noneMatch(node -> "sales_trend_query".equals(node.getMcpToolId())));
     }
 
     @Test
@@ -70,6 +61,48 @@ class IntentTreeFactoryTests {
         assertTrue(
                 transcriptNode.getExamples().stream().anyMatch(each -> each.contains("转录")),
                 "视频转录节点应包含转录问句示例"
+        );
+    }
+
+    @Test
+    void shouldContainSystemRealtimeCategory() {
+        List<IntentNode> roots = IntentTreeFactory.buildIntentTree();
+        List<IntentNode> allNodes = flatten(roots);
+
+        Optional<IntentNode> realtimeNodeOpt = allNodes.stream()
+                .filter(node -> "sys-realtime-query".equals(node.getId()))
+                .findFirst();
+
+        assertTrue(realtimeNodeOpt.isPresent(), "意图树应包含 sys-realtime-query 节点");
+
+        IntentNode realtimeNode = realtimeNodeOpt.get();
+        assertEquals(IntentKind.SYSTEM, realtimeNode.getKind(), "实时信息节点应为 SYSTEM 类型");
+        assertTrue(
+                realtimeNode.getExamples().stream().anyMatch(each -> each.contains("今天几号")),
+                "实时信息节点应包含日期时间问句示例"
+        );
+        assertTrue(
+                realtimeNode.getExamples().stream().noneMatch(each -> each.contains("联网搜索")),
+                "实时信息节点不应包含联网搜索问句，避免覆盖 MCP 联网工具意图"
+        );
+    }
+
+    @Test
+    void shouldContainWebNewsSearchMcpLeafNode() {
+        List<IntentNode> roots = IntentTreeFactory.buildIntentTree();
+        List<IntentNode> allNodes = flatten(roots);
+
+        Optional<IntentNode> webNewsNodeOpt = allNodes.stream()
+                .filter(node -> "web_news_search".equals(node.getMcpToolId()))
+                .findFirst();
+
+        assertTrue(webNewsNodeOpt.isPresent(), "意图树应包含 mcpToolId=web_news_search 的节点");
+
+        IntentNode webNewsNode = webNewsNodeOpt.get();
+        assertEquals(IntentKind.MCP, webNewsNode.getKind(), "web_news_search 节点应为 MCP 类型");
+        assertTrue(
+                webNewsNode.getExamples().stream().anyMatch(each -> each.contains("联网")),
+                "web_news_search 节点应包含联网问句示例"
         );
     }
 

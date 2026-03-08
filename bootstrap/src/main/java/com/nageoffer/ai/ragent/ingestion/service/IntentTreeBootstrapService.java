@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.ingestion.service;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.rag.config.IntentBootstrapProperties;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentTreeCacheManager;
+import com.nageoffer.ai.ragent.ingestion.service.IntentTreeSyncResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
@@ -64,6 +65,44 @@ public class IntentTreeBootstrapService {
      */
     public int initializeManually() {
         return initialize(true);
+    }
+
+    /**
+     * 手动触发工厂定义覆盖同步
+     */
+    public IntentTreeSyncResult syncManually() {
+        String strategy = StrUtil.blankToDefault(bootstrapProperties.getStrategy(), "from-existing-kb");
+        if (!"from-existing-kb".equalsIgnoreCase(strategy)) {
+            log.warn("意图树同步策略不支持: {}，跳过", strategy);
+            return new IntentTreeSyncResult(0, 0, 0);
+        }
+
+        RLock lock = redissonClient.getLock(BOOTSTRAP_LOCK_KEY);
+        boolean locked = false;
+        try {
+            locked = lock.tryLock(LOCK_WAIT_SECONDS, LOCK_LEASE_SECONDS, TimeUnit.SECONDS);
+            if (!locked) {
+                log.info("意图树同步未获取到分布式锁，跳过本次执行");
+                return new IntentTreeSyncResult(0, 0, 0);
+            }
+            IntentTreeSyncResult result = intentTreeService.syncFromFactory();
+            if (result.hasChanges()) {
+                intentTreeCacheManager.clearIntentTreeCache();
+                log.info("意图树覆盖同步完成, created={}, updated={}, repaired={}",
+                        result.created(), result.updated(), result.repaired());
+            } else {
+                log.info("意图树与工厂定义保持一致，无需覆盖同步");
+            }
+            return result;
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            log.warn("意图树同步被中断", ex);
+            return new IntentTreeSyncResult(0, 0, 0);
+        } finally {
+            if (locked && lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
     }
 
     /**

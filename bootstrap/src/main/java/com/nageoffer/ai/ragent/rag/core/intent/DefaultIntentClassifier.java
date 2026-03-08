@@ -19,18 +19,15 @@ package com.nageoffer.ai.ragent.rag.core.intent;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import com.nageoffer.ai.ragent.infra.util.LLMResponseCleaner;
 import com.nageoffer.ai.ragent.rag.dao.entity.IntentNodeDO;
 import com.nageoffer.ai.ragent.rag.dao.mapper.IntentNodeMapper;
 import com.nageoffer.ai.ragent.infra.convention.ChatMessage;
 import com.nageoffer.ai.ragent.infra.convention.ChatRequest;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
+import com.nageoffer.ai.ragent.rag.core.mcp.MCPToolRegistry;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -62,6 +59,7 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
     private final IntentNodeMapper intentNodeMapper;
     private final PromptTemplateLoader promptTemplateLoader;
     private final IntentTreeCacheManager intentTreeCacheManager;
+    private final MCPToolRegistry mcpToolRegistry;
 
     private volatile IntentTreeData cachedTreeData;
     private volatile long cachedTreeDataTimestamp;
@@ -115,6 +113,8 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
             return new IntentTreeData(List.of(), List.of(), Map.of());
         }
 
+        roots = pruneUnavailableMcpNodes(roots);
+
         List<IntentNode> allNodes = flatten(roots);
         List<IntentNode> leafNodes = allNodes.stream()
                 .filter(IntentNode::isLeaf)
@@ -128,6 +128,44 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
         cachedTreeData = result;
         cachedTreeDataTimestamp = System.currentTimeMillis();
         return result;
+    }
+
+    private List<IntentNode> pruneUnavailableMcpNodes(List<IntentNode> roots) {
+        if (CollUtil.isEmpty(roots)) {
+            return List.of();
+        }
+        List<IntentNode> result = new ArrayList<>();
+        for (IntentNode root : roots) {
+            IntentNode pruned = pruneUnavailableMcpNode(root);
+            if (pruned != null) {
+                result.add(pruned);
+            }
+        }
+        return result;
+    }
+
+    private IntentNode pruneUnavailableMcpNode(IntentNode node) {
+        if (node == null) {
+            return null;
+        }
+        List<IntentNode> children = node.getChildren();
+        if (CollUtil.isNotEmpty(children)) {
+            List<IntentNode> nextChildren = new ArrayList<>();
+            for (IntentNode child : children) {
+                IntentNode prunedChild = pruneUnavailableMcpNode(child);
+                if (prunedChild != null) {
+                    nextChildren.add(prunedChild);
+                }
+            }
+            node.setChildren(nextChildren);
+        }
+        if (!node.isMCP()) {
+            return node;
+        }
+        if (StrUtil.isNotBlank(node.getMcpToolId())) {
+            return mcpToolRegistry.contains(node.getMcpToolId()) ? node : null;
+        }
+        return CollUtil.isNotEmpty(node.getChildren()) ? node : null;
     }
 
     @Override
@@ -185,64 +223,44 @@ public class DefaultIntentClassifier implements IntentClassifier, IntentNodeRegi
                 .build();
 
         String raw = llmService.chat(request);
+        IntentClassificationResponseParser.ParseResult parseResult =
+                IntentClassificationResponseParser.parse(raw, data.id2Node);
 
-        try {
-            // 移除可能的 markdown 代码块标记
-            String cleanedRaw = LLMResponseCleaner.stripMarkdownCodeFence(raw);
-
-            JsonElement root = JsonParser.parseString(cleanedRaw);
-
-            JsonArray arr;
-            if (root.isJsonArray()) {
-                arr = root.getAsJsonArray();
-            } else if (root.isJsonObject() && root.getAsJsonObject().has("results")) {
-                // 容错：如果模型外面又包了一层 { "results": [...] }
-                arr = root.getAsJsonObject().getAsJsonArray("results");
-            } else {
-                log.warn("LLM 返回了非预期的 JSON 格式, 原始响应: {}", raw);
-                return List.of();
-            }
-
-            List<NodeScore> scores = new ArrayList<>();
-            for (JsonElement el : arr) {
-                if (!el.isJsonObject()) continue;
-                JsonObject obj = el.getAsJsonObject();
-
-                if (!obj.has("id") || !obj.has("score")) continue;
-
-                String id = obj.get("id").getAsString();
-                double score = obj.get("score").getAsDouble();
-
-                IntentNode node = data.id2Node.get(id);
-                if (node == null) {
-                    log.warn("LLM 返回了未知的意图节点 ID: {}, 已跳过", id);
-                    continue;
-                }
-
-                scores.add(new NodeScore(node, score));
-            }
-
-            // 降序排序
-            scores.sort(Comparator.comparingDouble(NodeScore::getScore).reversed());
-
-            if (log.isInfoEnabled()) {
-                List<Map<String, Object>> logEntries = scores.stream().map(each -> {
-                    IntentNode n = each.getNode();
-                    Map<String, Object> m = new HashMap<>();
-                    m.put("id", n.getId());
-                    m.put("name", n.getName());
-                    m.put("fullPath", n.getFullPath());
-                    m.put("kind", n.getKind());
-                    m.put("score", each.getScore());
-                    return m;
-                }).toList();
-                log.info("当前问题：{}\n意图识别结果：{}\n", question, JSONUtil.toJsonPrettyStr(logEntries));
-            }
-            return scores;
-        } catch (Exception e) {
-            log.warn("解析 LLM 响应失败, 原始内容: {}", raw, e);
+        if (parseResult.mode() == IntentClassificationResponseParser.ParseMode.SALVAGED) {
+            log.warn(
+                    "意图分类响应已部分恢复, recoveredCount={}, reason={}, raw={}",
+                    parseResult.scores().size(),
+                    parseResult.errorSummary(),
+                    parseResult.rawSummary()
+            );
+        } else if (parseResult.mode() == IntentClassificationResponseParser.ParseMode.FAILED) {
+            log.warn(
+                    "解析 LLM 响应失败且无法恢复, reason={}, raw={}",
+                    parseResult.errorSummary(),
+                    parseResult.rawSummary()
+            );
             return List.of();
         }
+
+        List<NodeScore> scores = new ArrayList<>(parseResult.scores());
+
+        // 降序排序
+        scores.sort(Comparator.comparingDouble(NodeScore::getScore).reversed());
+
+        if (log.isInfoEnabled()) {
+            List<Map<String, Object>> logEntries = scores.stream().map(each -> {
+                IntentNode n = each.getNode();
+                Map<String, Object> m = new HashMap<>();
+                m.put("id", n.getId());
+                m.put("name", n.getName());
+                m.put("fullPath", n.getFullPath());
+                m.put("kind", n.getKind());
+                m.put("score", each.getScore());
+                return m;
+            }).toList();
+            log.info("当前问题：{}\n意图识别结果：{}\n", question, JSONUtil.toJsonPrettyStr(logEntries));
+        }
+        return scores;
     }
 
     /**

@@ -57,6 +57,16 @@ public @interface MCPParam {
     String defaultValue() default "";
 
     /**
+     * 示例值
+     */
+    String example() default "";
+
+    /**
+     * 格式校验正则
+     */
+    String pattern() default "";
+
+    /**
      * 枚举值（可选）
      */
     String[] enumValues() default {};
