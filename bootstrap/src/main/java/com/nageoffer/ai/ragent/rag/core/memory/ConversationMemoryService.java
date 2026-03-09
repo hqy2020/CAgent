@@ -37,6 +37,15 @@ public interface ConversationMemoryService {
     List<ChatMessage> load(String conversationId, String userId);
 
     /**
+     * 加载会话记忆快照。
+     *
+     * @param conversationId 对话ID
+     * @param userId         用户ID
+     * @return 摘要 + 最近历史的快照
+     */
+    ConversationMemorySnapshot loadSnapshot(String conversationId, String userId);
+
+    /**
      * 追加消息到对话历史
      *
      * @param conversationId 对话ID

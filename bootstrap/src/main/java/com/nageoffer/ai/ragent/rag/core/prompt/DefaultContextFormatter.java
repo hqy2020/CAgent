@@ -20,6 +20,7 @@ package com.nageoffer.ai.ragent.rag.core.prompt;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.infra.token.TokenCounterService;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPResponse;
@@ -38,36 +39,43 @@ import java.util.stream.Collectors;
 public class DefaultContextFormatter implements ContextFormatter {
 
     private final MCPService mcpService;
+    private final TokenCounterService tokenCounterService;
 
     @Override
-    public String formatKbContext(List<NodeScore> kbIntents, Map<String, List<RetrievedChunk>> rerankedByIntent, int topK) {
+    public String formatKbContext(List<NodeScore> kbIntents,
+                                  Map<String, List<RetrievedChunk>> rerankedByIntent,
+                                  int topK,
+                                  int tokenBudget) {
         if (rerankedByIntent == null || rerankedByIntent.isEmpty()) {
             return "";
         }
         if (CollUtil.isEmpty(kbIntents)) {
-            return formatChunksWithoutIntent(rerankedByIntent, topK);
+            return formatChunksWithoutIntent(rerankedByIntent, topK, tokenBudget);
         }
 
         // 多意图场景：合并所有规则和文档
         if (kbIntents.size() > 1) {
-            return formatMultiIntentContext(kbIntents, rerankedByIntent, topK);
+            return formatMultiIntentContext(kbIntents, rerankedByIntent, topK, tokenBudget);
         }
 
         // 单意图场景：保持原有逻辑
-        return formatSingleIntentContext(kbIntents.get(0), rerankedByIntent, topK);
+        return formatSingleIntentContext(kbIntents.get(0), rerankedByIntent, topK, tokenBudget);
     }
 
     /**
      * 格式化单意图上下文
      */
-    private String formatSingleIntentContext(NodeScore nodeScore, Map<String, List<RetrievedChunk>> rerankedByIntent, int topK) {
+    private String formatSingleIntentContext(NodeScore nodeScore,
+                                             Map<String, List<RetrievedChunk>> rerankedByIntent,
+                                             int topK,
+                                             int tokenBudget) {
         List<RetrievedChunk> chunks = rerankedByIntent.get(nodeScore.getNode().getId());
         if (CollUtil.isEmpty(chunks)) {
             return "";
         }
         String snippet = StrUtil.emptyIfNull(nodeScore.getNode().getPromptSnippet()).trim();
-        String body = chunks.stream()
-                .limit(topK)
+        List<RetrievedChunk> limitedChunks = limitChunksByBudget(chunks, topK, tokenBudget, snippet);
+        String body = limitedChunks.stream()
                 .map(RetrievedChunk::getText)
                 .collect(Collectors.joining("\n"));
         StringBuilder block = new StringBuilder();
@@ -81,7 +89,10 @@ public class DefaultContextFormatter implements ContextFormatter {
     /**
      * 格式化多意图上下文
      */
-    private String formatMultiIntentContext(List<NodeScore> kbIntents, Map<String, List<RetrievedChunk>> rerankedByIntent, int topK) {
+    private String formatMultiIntentContext(List<NodeScore> kbIntents,
+                                            Map<String, List<RetrievedChunk>> rerankedByIntent,
+                                            int topK,
+                                            int tokenBudget) {
         StringBuilder result = new StringBuilder();
 
         // 1. 合并所有意图的回答规则
@@ -104,11 +115,16 @@ public class DefaultContextFormatter implements ContextFormatter {
         List<RetrievedChunk> allChunks = rerankedByIntent.values().stream()
                 .flatMap(List::stream)
                 .distinct()
-                .limit(topK)
                 .toList();
+        List<RetrievedChunk> limitedChunks = limitChunksByBudget(
+                allChunks,
+                topK,
+                tokenBudget,
+                snippets.isEmpty() ? "" : String.join("\n", snippets)
+        );
 
-        if (!allChunks.isEmpty()) {
-            String body = allChunks.stream()
+        if (!limitedChunks.isEmpty()) {
+            String body = limitedChunks.stream()
                     .map(RetrievedChunk::getText)
                     .collect(Collectors.joining("\n"));
             result.append("#### 知识库片段\n````text\n").append(body).append("\n````");
@@ -117,7 +133,9 @@ public class DefaultContextFormatter implements ContextFormatter {
         return result.toString();
     }
 
-    private String formatChunksWithoutIntent(Map<String, List<RetrievedChunk>> rerankedByIntent, int topK) {
+    private String formatChunksWithoutIntent(Map<String, List<RetrievedChunk>> rerankedByIntent,
+                                             int topK,
+                                             int tokenBudget) {
         int limit = topK > 0 ? topK : Integer.MAX_VALUE;
         List<RetrievedChunk> chunks = new ArrayList<>();
         for (List<RetrievedChunk> list : rerankedByIntent.values()) {
@@ -138,10 +156,47 @@ public class DefaultContextFormatter implements ContextFormatter {
             return "";
         }
 
-        String body = chunks.stream()
+        List<RetrievedChunk> limitedChunks = limitChunksByBudget(chunks, limit, tokenBudget, "");
+        String body = limitedChunks.stream()
                 .map(RetrievedChunk::getText)
                 .collect(Collectors.joining("\n"));
         return "#### 知识库片段\n````text\n" + body + "\n````";
+    }
+
+    private List<RetrievedChunk> limitChunksByBudget(List<RetrievedChunk> chunks,
+                                                     int topK,
+                                                     int tokenBudget,
+                                                     String snippet) {
+        if (CollUtil.isEmpty(chunks)) {
+            return List.of();
+        }
+        int chunkLimit = topK > 0 ? topK : Integer.MAX_VALUE;
+        int availableTokens = tokenBudget >= 0 ? Math.max(0, tokenBudget - countTokens(snippet)) : Integer.MAX_VALUE;
+        List<RetrievedChunk> limited = new ArrayList<>();
+        int usedTokens = 0;
+        for (RetrievedChunk chunk : chunks) {
+            if (limited.size() >= chunkLimit) {
+                break;
+            }
+            int chunkTokens = countTokens(chunk == null ? null : chunk.getText());
+            if (!limited.isEmpty() && usedTokens + chunkTokens > availableTokens) {
+                continue;
+            }
+            limited.add(chunk);
+            usedTokens += chunkTokens;
+            if (usedTokens >= availableTokens) {
+                break;
+            }
+        }
+        if (limited.isEmpty()) {
+            return List.of(chunks.get(0));
+        }
+        return limited;
+    }
+
+    private int countTokens(String content) {
+        Integer tokens = tokenCounterService.countTokens(content);
+        return tokens == null ? 0 : Math.max(tokens, 0);
     }
 
     @Override

@@ -37,6 +37,7 @@ import com.nageoffer.ai.ragent.rag.exception.TaskCancelledException;
 import com.nageoffer.ai.ragent.rag.service.RagTraceRecordService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -75,6 +76,7 @@ public class MCPServiceOrchestrator implements MCPService {
     private final MCPToolSecurityGuard securityGuard;
     private final MCPAuditRecorder auditRecorder;
 
+    @Autowired
     public MCPServiceOrchestrator(MCPToolRegistry toolRegistry,
                                   @Qualifier("mcpBatchThreadPoolExecutor") Executor mcpBatchThreadPoolExecutor,
                                   @Qualifier("mcpExecutionThreadPoolExecutor") Executor mcpExecutionThreadPoolExecutor,

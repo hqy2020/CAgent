@@ -24,12 +24,15 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.nageoffer.ai.ragent.infra.util.LLMResponseCleaner;
+import com.nageoffer.ai.ragent.framework.trace.RagTraceContext;
 import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.infra.convention.ChatMessage;
 import com.nageoffer.ai.ragent.infra.convention.ChatRequest;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
+import com.nageoffer.ai.ragent.infra.token.TokenCounterService;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
+import com.nageoffer.ai.ragent.rag.service.RagTraceRecordService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -37,6 +40,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -54,6 +58,8 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
     private final RAGConfigProperties ragConfigProperties;
     private final QueryTermMappingService queryTermMappingService;
     private final PromptTemplateLoader promptTemplateLoader;
+    private final TokenCounterService tokenCounterService;
+    private final RagTraceRecordService ragTraceRecordService;
 
     @Override
     @RagTraceNode(name = "query-rewrite", type = "REWRITE")
@@ -140,33 +146,18 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
         // 只保留最近几轮的 User 和 Assistant 消息，过滤掉 System 摘要避免 Token 浪费
         if (CollUtil.isNotEmpty(history)) {
             int maxMessages = ragConfigProperties.getQueryRewriteMaxHistoryMessages();
+            int maxTokens = ragConfigProperties.getQueryRewriteMaxHistoryTokens();
             int maxChars = ragConfigProperties.getQueryRewriteMaxHistoryChars();
 
             List<ChatMessage> filtered = history.stream()
-                    .filter(msg -> (msg.getRole() == ChatMessage.Role.USER
-                            || msg.getRole() == ChatMessage.Role.ASSISTANT)
-                            && StrUtil.isNotBlank(msg.getContent()))
+                    .filter(this::isRewriteHistoryMessage)
                     .toList();
-            List<ChatMessage> recentHistory = filtered.subList(
-                    Math.max(0, filtered.size() - maxMessages), filtered.size());
-
-            // 字符数上限检查：从尾部向头部累计，超过 maxChars 则从头部截断
-            if (maxChars > 0) {
-                int totalChars = 0;
-                int startIndex = recentHistory.size();
-                for (int i = recentHistory.size() - 1; i >= 0; i--) {
-                    totalChars += StrUtil.length(recentHistory.get(i).getContent());
-                    if (totalChars > maxChars) {
-                        break;
-                    }
-                    startIndex = i;
-                }
-                // 保证至少保留最近 1 条历史消息，避免单条超长消息导致全部丢弃
-                startIndex = Math.min(startIndex, Math.max(0, recentHistory.size() - 1));
-                recentHistory = recentHistory.subList(startIndex, recentHistory.size());
-            }
+            List<ChatMessage> recentHistory = trimRewriteHistory(filtered, maxMessages, maxTokens, maxChars);
 
             messages.addAll(recentHistory);
+            recordRewriteTrace(recentHistory);
+        } else {
+            recordRewriteTrace(List.of());
         }
 
         messages.add(ChatMessage.user(question));
@@ -177,6 +168,102 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
                 .topP(0.3D)
                 .thinking(false)
                 .build();
+    }
+
+    private List<ChatMessage> trimRewriteHistory(List<ChatMessage> history,
+                                                 int maxMessages,
+                                                 int maxTokens,
+                                                 int maxChars) {
+        if (CollUtil.isEmpty(history)) {
+            return List.of();
+        }
+        List<ChatMessage> mutable = new ArrayList<>(history);
+        ChatMessage summary = extractSummary(mutable);
+
+        if (maxMessages > 0) {
+            shrinkToLimit(mutable, maxMessages, this::messageCount, summary);
+        }
+        if (maxTokens > 0) {
+            shrinkToLimit(mutable, maxTokens, this::tokenCount, summary);
+        }
+        if (maxChars > 0) {
+            shrinkToLimit(mutable, maxChars, this::charCount, summary);
+        }
+        return List.copyOf(mutable);
+    }
+
+    private void shrinkToLimit(List<ChatMessage> messages,
+                               int limit,
+                               java.util.function.ToIntFunction<List<ChatMessage>> metric,
+                               ChatMessage summary) {
+        if (limit <= 0 || CollUtil.isEmpty(messages)) {
+            return;
+        }
+        while (messages.size() > 1 && metric.applyAsInt(messages) > limit) {
+            if (summary != null && messages.contains(summary)) {
+                messages.remove(summary);
+                summary = null;
+                continue;
+            }
+            messages.remove(0);
+        }
+    }
+
+    private int messageCount(List<ChatMessage> messages) {
+        return messages.size();
+    }
+
+    private int tokenCount(List<ChatMessage> messages) {
+        return messages.stream()
+                .filter(this::isRewriteHistoryMessage)
+                .mapToInt(message -> {
+                    Integer tokens = tokenCounterService.countTokens(message.getContent());
+                    return tokens == null ? 0 : Math.max(tokens, 0);
+                })
+                .sum();
+    }
+
+    private int charCount(List<ChatMessage> messages) {
+        return messages.stream()
+                .filter(this::isRewriteHistoryMessage)
+                .map(ChatMessage::getContent)
+                .mapToInt(StrUtil::length)
+                .sum();
+    }
+
+    private ChatMessage extractSummary(List<ChatMessage> history) {
+        if (CollUtil.isEmpty(history)) {
+            return null;
+        }
+        ChatMessage first = history.get(0);
+        if (first != null && first.getRole() == ChatMessage.Role.SYSTEM && StrUtil.isNotBlank(first.getContent())) {
+            return first;
+        }
+        return null;
+    }
+
+    private boolean isRewriteHistoryMessage(ChatMessage msg) {
+        if (msg == null || StrUtil.isBlank(msg.getContent())) {
+            return false;
+        }
+        if (msg.getRole() == ChatMessage.Role.USER || msg.getRole() == ChatMessage.Role.ASSISTANT) {
+            return true;
+        }
+        return msg.getRole() == ChatMessage.Role.SYSTEM
+                && (msg.getContent().startsWith("对话摘要：") || msg.getContent().startsWith("摘要："));
+    }
+
+    private void recordRewriteTrace(List<ChatMessage> history) {
+        String traceId = RagTraceContext.getTraceId();
+        String nodeId = RagTraceContext.currentNodeId();
+        if (StrUtil.isBlank(traceId) || StrUtil.isBlank(nodeId)) {
+            return;
+        }
+        ragTraceRecordService.updateNodeExtraData(traceId, nodeId, Map.of(
+                "rewriteHistoryTokens", tokenCount(history),
+                "rewriteHistoryMessages", history.size(),
+                "rewriteSummaryIncluded", extractSummary(history) != null
+        ));
     }
 
 

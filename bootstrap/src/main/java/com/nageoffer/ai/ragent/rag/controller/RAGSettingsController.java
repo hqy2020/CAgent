@@ -60,6 +60,7 @@ public class RAGSettingsController {
                         .queryRewrite(SystemSettingsVO.QueryRewriteSettings.builder()
                                 .enabled(ragConfigProperties.getQueryRewriteEnabled())
                                 .maxHistoryMessages(ragConfigProperties.getQueryRewriteMaxHistoryMessages())
+                                .maxHistoryTokens(ragConfigProperties.getQueryRewriteMaxHistoryTokens())
                                 .maxHistoryChars(ragConfigProperties.getQueryRewriteMaxHistoryChars())
                                 .build())
                         .rateLimit(SystemSettingsVO.RateLimitSettings.builder()
@@ -89,9 +90,13 @@ public class RAGSettingsController {
     private MemorySettings toMemorySettings(MemoryProperties props) {
         return MemorySettings.builder()
                 .historyKeepTurns(props.getHistoryKeepTurns())
+                .inputBudgetTokens(props.getInputBudgetTokens())
+                .historyBudgetTokens(props.getHistoryBudgetTokens())
+                .retrievalBudgetTokens(props.getRetrievalBudgetTokens())
                 .ttlMinutes(props.getTtlMinutes())
                 .summaryEnabled(props.getSummaryEnabled())
                 .summaryStartTurns(props.getSummaryStartTurns())
+                .summaryTriggerTokens(props.getSummaryTriggerTokens())
                 .summaryMaxChars(props.getSummaryMaxChars())
                 .titleMaxLength(props.getTitleMaxLength())
                 .build();

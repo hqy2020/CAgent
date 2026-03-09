@@ -23,6 +23,7 @@ import com.nageoffer.ai.ragent.rag.core.mcp.MCPResponse;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPService;
 import com.nageoffer.ai.ragent.rag.core.prompt.DefaultContextFormatter;
 import com.nageoffer.ai.ragent.rag.enums.IntentKind;
+import com.nageoffer.ai.ragent.infra.token.TokenCounterService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,12 +43,14 @@ class DefaultContextFormatterTests {
 
     @Mock
     private MCPService mcpService;
+    @Mock
+    private TokenCounterService tokenCounterService;
 
     private DefaultContextFormatter formatter;
 
     @BeforeEach
     void setUp() {
-        formatter = new DefaultContextFormatter(mcpService);
+        formatter = new DefaultContextFormatter(mcpService, tokenCounterService);
     }
 
     @Test
@@ -92,4 +95,3 @@ class DefaultContextFormatterTests {
         verify(mcpService).mergeResponsesToText(argThat(each -> each.size() == 2));
     }
 }
-

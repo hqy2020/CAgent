@@ -29,6 +29,7 @@ import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.rag.service.ConversationGroupService;
 import com.nageoffer.ai.ragent.rag.service.ConversationMessageService;
 import com.nageoffer.ai.ragent.rag.service.bo.ConversationSummaryBO;
+import com.nageoffer.ai.ragent.infra.token.TokenCounterService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
@@ -64,6 +65,7 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
     private final LLMService llmService;
     private final PromptTemplateLoader promptTemplateLoader;
     private final RedissonClient redissonClient;
+    private final TokenCounterService tokenCounterService;
 
     @Qualifier("memorySummaryThreadPoolExecutor")
     private final Executor memorySummaryExecutor;
@@ -119,6 +121,8 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
         try {
             long total = conversationGroupService.countUserMessages(conversationId, userId);
             if (total < triggerTurns) {
+                log.debug("摘要跳过 - conversationId: {}, userId: {}, reason: not_enough_turns, totalTurns: {}, triggerTurns: {}",
+                        conversationId, userId, total, triggerTurns);
                 return;
             }
 
@@ -148,6 +152,18 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
                     cutoffId
             );
             if (CollUtil.isEmpty(toSummarize)) {
+                log.debug("摘要跳过 - conversationId: {}, userId: {}, reason: empty_window", conversationId, userId);
+                return;
+            }
+
+            String existingSummary = latestSummary == null ? "" : latestSummary.getContent();
+            int existingSummaryTokens = countTokens(existingSummary);
+            int pendingTokens = countTokens(toHistoryMessages(toSummarize));
+            int triggerTokens = memoryProperties.getSummaryTriggerTokens();
+            int preSummaryTokens = existingSummaryTokens + pendingTokens;
+            if (preSummaryTokens < triggerTokens) {
+                log.debug("摘要跳过 - conversationId: {}, userId: {}, reason: below_token_threshold, tokens: {}, triggerTokens: {}",
+                        conversationId, userId, preSummaryTokens, triggerTokens);
                 return;
             }
 
@@ -156,15 +172,16 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
                 return;
             }
 
-            String existingSummary = latestSummary == null ? "" : latestSummary.getContent();
             String summary = summarizeMessages(toSummarize, existingSummary);
             if (StrUtil.isBlank(summary)) {
                 return;
             }
 
             createSummary(conversationId, userId, summary, lastMessageId);
-            log.info("摘要成功 - conversationId：{}，userId：{}，消息数：{}，耗时：{}ms",
+            log.info("摘要成功 - conversationId：{}，userId：{}，消息数：{}，触发前token：{}，摘要后token：{}，耗时：{}ms",
                     conversationId, userId, toSummarize.size(),
+                    preSummaryTokens,
+                    countTokens(summary),
                     System.currentTimeMillis() - startTime);
         } catch (Exception e) {
             log.error("摘要失败 - conversationId：{}，userId：{}", conversationId, userId, e);
@@ -304,5 +321,21 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
 
     private String buildLockKey(String conversationId, String userId) {
         return userId.trim() + ":" + conversationId.trim();
+    }
+
+    private int countTokens(String content) {
+        Integer tokens = tokenCounterService.countTokens(content);
+        return tokens == null ? 0 : Math.max(tokens, 0);
+    }
+
+    private int countTokens(List<ChatMessage> messages) {
+        if (CollUtil.isEmpty(messages)) {
+            return 0;
+        }
+        return messages.stream()
+                .filter(Objects::nonNull)
+                .map(ChatMessage::getContent)
+                .mapToInt(this::countTokens)
+                .sum();
     }
 }

@@ -44,6 +44,9 @@ import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
 import com.nageoffer.ai.ragent.rag.core.guidance.GuidanceDecision;
 import com.nageoffer.ai.ragent.rag.core.guidance.IntentGuidanceService;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentResolver;
+import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryPlan;
+import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryPlanner;
+import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemorySnapshot;
 import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryService;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptContext;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
@@ -83,7 +86,6 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.CHAT_SYSTEM_PROMPT_PATH;
-import static com.nageoffer.ai.ragent.rag.constant.RAGConstant.DEFAULT_TOP_K;
 
 /**
  * RAG 对话服务默认实现
@@ -111,12 +113,17 @@ public class RAGChatServiceImpl implements RAGChatService {
     );
     private static final DateTimeFormatter DATE_CN_FORMATTER = DateTimeFormatter.ofPattern("yyyy年MM月dd日");
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
+    private static final Set<String> CHITCHAT_KEYWORDS = Set.of(
+            "你好", "您好", "谢谢", "感谢", "再见", "拜拜",
+            "哈哈", "嗯嗯", "好的", "收到", "明白了", "ok"
+    );
 
     private final LLMService llmService;
     private final RAGConfigProperties ragConfigProperties;
     private final RAGPromptService promptBuilder;
     private final PromptTemplateLoader promptTemplateLoader;
     private final ConversationMemoryService memoryService;
+    private final ConversationMemoryPlanner memoryPlanner;
     private final StreamTaskManager taskManager;
     private final IntentGuidanceService guidanceService;
     private final StreamCallbackFactory callbackFactory;
@@ -157,7 +164,9 @@ public class RAGChatServiceImpl implements RAGChatService {
                         .build());
             }
 
-            List<ChatMessage> history = memoryService.loadAndAppend(actualConversationId, userId, ChatMessage.user(question));
+            ConversationMemorySnapshot memorySnapshot = memoryService.loadSnapshot(actualConversationId, userId);
+            memoryService.append(actualConversationId, userId, ChatMessage.user(question));
+            ConversationMemoryPlan memoryPlan = memoryPlanner.plan(memorySnapshot, question);
 
             boolean handledByAgent = agentCommandRouter.tryRoute(
                     question,
@@ -178,8 +187,14 @@ public class RAGChatServiceImpl implements RAGChatService {
                 return;
             }
 
+            if (isQuickChitchat(question)) {
+                StreamCancellationHandle handle = streamSystemResponse(question, callback);
+                taskManager.bindHandle(taskId, handle);
+                return;
+            }
+
             token.throwIfCancelled();
-            RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(question, history);
+            RewriteResult rewriteResult = queryRewriteService.rewriteWithSplit(question, memoryPlan.getRewriteHistory());
 
             token.throwIfCancelled();
             List<SubQuestionIntent> subIntents = intentResolver.resolve(rewriteResult, token);
@@ -200,10 +215,25 @@ public class RAGChatServiceImpl implements RAGChatService {
                 return;
             }
 
+            boolean allEmpty = subIntents.stream()
+                    .allMatch(si -> CollUtil.isEmpty(si.nodeScores()));
+            if (allEmpty) {
+                log.info("所有子问题意图为空，降级为通用 LLM 回答。conversationId={}", actualConversationId);
+                StreamCancellationHandle handle = streamSystemResponse(rewriteResult.rewrittenQuestion(), callback);
+                taskManager.bindHandle(taskId, handle);
+                return;
+            }
+
             token.throwIfCancelled();
             RetrievalContext ctx;
             try {
-                ctx = retrievalEngine.retrieve(subIntents, DEFAULT_TOP_K, token);
+                ctx = retrievalEngine.retrieve(
+                        subIntents,
+                        memoryPlan.getRetrievalTopK(),
+                        memoryPlan.getRetrievalBudgetTokens(),
+                        memoryPlan,
+                        token
+                );
             } catch (TaskCancelledException e) {
                 throw e;
             } catch (Exception e) {
@@ -241,7 +271,7 @@ public class RAGChatServiceImpl implements RAGChatService {
                         .question(question)
                         .conversationId(actualConversationId)
                         .userId(userId)
-                        .history(history)
+                        .history(memoryPlan.getAnswerHistory())
                         .subIntents(subIntents)
                         .firstRoundContext(ctx)
                         .emitter(emitter)
@@ -272,7 +302,7 @@ public class RAGChatServiceImpl implements RAGChatService {
                     rewriteResult,
                     ctx,
                     mergedGroup,
-                    history,
+                    memoryPlan.getAnswerHistory(),
                     thinkingEnabled,
                     callback
             );
@@ -302,6 +332,14 @@ public class RAGChatServiceImpl implements RAGChatService {
             return false;
         }
         return !NoteWriteIntentHelper.isLikelyNoteWriteQuestion(normalized);
+    }
+
+    private boolean isQuickChitchat(String question) {
+        if (StrUtil.isBlank(question)) {
+            return false;
+        }
+        String q = question.trim();
+        return q.length() <= 6 && CHITCHAT_KEYWORDS.contains(q);
     }
 
     private String buildDateTimeReply(String question) {

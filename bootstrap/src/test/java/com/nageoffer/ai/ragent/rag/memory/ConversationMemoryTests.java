@@ -18,6 +18,7 @@
 package com.nageoffer.ai.ragent.rag.memory;
 
 import com.nageoffer.ai.ragent.infra.convention.ChatMessage;
+import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemorySnapshot;
 import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryStore;
 import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemorySummaryService;
 import com.nageoffer.ai.ragent.rag.core.memory.DefaultConversationMemoryService;
@@ -81,6 +82,21 @@ class ConversationMemoryTests {
     }
 
     @Test
+    void testLoadSnapshotShouldKeepDecoratedSummary() {
+        ChatMessage summary = ChatMessage.system("raw summary");
+        ChatMessage decorated = ChatMessage.system("对话摘要：raw summary");
+        when(summaryService.loadLatestSummary("conv-s1", "user-s1")).thenReturn(summary);
+        when(summaryService.decorateIfNeeded(summary)).thenReturn(decorated);
+        when(memoryStore.loadHistory("conv-s1", "user-s1")).thenReturn(List.of(ChatMessage.user("hello")));
+
+        ConversationMemorySnapshot snapshot = service.loadSnapshot("conv-s1", "user-s1");
+
+        assertNotNull(snapshot.getSummary());
+        assertEquals("对话摘要：raw summary", snapshot.getSummary().getContent());
+        assertEquals(1, snapshot.getRecentHistory().size());
+    }
+
+    @Test
     void testLoadFallbackWhenSummaryFails() {
         List<ChatMessage> history = List.of(ChatMessage.user("test"));
 
@@ -136,6 +152,20 @@ class ConversationMemoryTests {
         List<ChatMessage> result = service.load("conv-4", "user-4");
 
         assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void testLoadShouldReturnSummaryEvenWhenHistoryEmpty() {
+        ChatMessage summary = ChatMessage.system("raw summary");
+        ChatMessage decorated = ChatMessage.system("对话摘要：raw summary");
+        when(summaryService.loadLatestSummary("conv-summary", "user-summary")).thenReturn(summary);
+        when(summaryService.decorateIfNeeded(summary)).thenReturn(decorated);
+        when(memoryStore.loadHistory("conv-summary", "user-summary")).thenReturn(List.of());
+
+        List<ChatMessage> result = service.load("conv-summary", "user-summary");
+
+        assertEquals(1, result.size());
+        assertEquals("对话摘要：raw summary", result.get(0).getContent());
     }
 
     @Test

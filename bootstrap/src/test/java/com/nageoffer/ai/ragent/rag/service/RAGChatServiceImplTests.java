@@ -33,6 +33,9 @@ import com.nageoffer.ai.ragent.rag.core.guidance.IntentGuidanceService;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentResolver;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
+import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryPlan;
+import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryPlanner;
+import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemorySnapshot;
 import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryService;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.rag.core.prompt.RAGPromptService;
@@ -82,6 +85,8 @@ class RAGChatServiceImplTests {
     @Mock
     private ConversationMemoryService memoryService;
     @Mock
+    private ConversationMemoryPlanner memoryPlanner;
+    @Mock
     private RAGConfigProperties ragConfigProperties;
     @Mock
     private StreamTaskManager taskManager;
@@ -115,26 +120,27 @@ class RAGChatServiceImplTests {
     void testRetrieveFailureShouldFallbackToSystemResponse() {
         StreamCallback callback = org.mockito.Mockito.mock(StreamCallback.class);
         StreamCancellationHandle handle = org.mockito.Mockito.mock(StreamCancellationHandle.class);
+        IntentNode kbNode = IntentNode.builder().id("kb-intent").kind(IntentKind.KB).build();
 
         when(callbackFactory.createChatEventHandler(any(), anyString(), anyString())).thenReturn(callback);
         mockChatConfig();
         when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
-        when(memoryService.loadAndAppend(anyString(), any(), any()))
-                .thenReturn(List.of(ChatMessage.user("history")));
+        mockMemoryPlan();
         when(agentCommandRouter.tryRoute(anyString(), anyString(), any(), anyString(), any(), same(callback), any(CancellationToken.class)))
                 .thenReturn(false);
         when(queryRewriteService.rewriteWithSplit(anyString(), anyList()))
                 .thenReturn(new RewriteResult("改写问题", List.of("改写问题")));
         when(intentResolver.resolve(any(RewriteResult.class), any(CancellationToken.class)))
-                .thenReturn(List.of(new SubQuestionIntent("改写问题", List.of())));
+                .thenReturn(List.of(new SubQuestionIntent("改写问题",
+                        List.of(NodeScore.builder().node(kbNode).score(0.9D).build()))));
         when(guidanceService.detectAmbiguity(anyString(), anyList())).thenReturn(GuidanceDecision.none());
         when(intentResolver.isSystemOnly(anyList())).thenReturn(false);
         when(agentModeDecider.decide(anyString(), anyList(), any())).thenReturn(AgentModeDecision.disabled("test"));
-        when(retrievalEngine.retrieve(anyList(), anyInt(), any(CancellationToken.class))).thenThrow(new RuntimeException("milvus unavailable"));
+        when(retrievalEngine.retrieve(anyList(), anyInt(), anyInt(), any(), any(CancellationToken.class))).thenThrow(new RuntimeException("milvus unavailable"));
         when(promptTemplateLoader.load(anyString())).thenReturn("system prompt");
         when(llmService.streamChat(any(ChatRequest.class), same(callback))).thenReturn(handle);
 
-        ragChatService.streamChat("你好", null, false, new SseEmitter(0L));
+        ragChatService.streamChat("请说明退款规则", null, false, new SseEmitter(0L));
 
         verify(callback).onContent(contains("知识库检索服务暂时不可用"));
         verify(llmService).streamChat(any(ChatRequest.class), same(callback));
@@ -148,8 +154,7 @@ class RAGChatServiceImplTests {
         when(callbackFactory.createChatEventHandler(any(), anyString(), anyString())).thenReturn(callback);
         mockChatConfig();
         when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
-        when(memoryService.loadAndAppend(anyString(), any(), any()))
-                .thenReturn(List.of(ChatMessage.user("history")));
+        mockMemoryPlan();
         when(agentCommandRouter.tryRoute(anyString(), anyString(), any(), anyString(), any(), same(callback), any(CancellationToken.class)))
                 .thenReturn(false);
         when(queryRewriteService.rewriteWithSplit(anyString(), anyList()))
@@ -161,7 +166,7 @@ class RAGChatServiceImplTests {
         when(promptTemplateLoader.load(anyString())).thenReturn("system prompt");
         when(llmService.streamChat(any(ChatRequest.class), same(callback))).thenThrow(new RuntimeException("llm down"));
 
-        ragChatService.streamChat("你好", null, false, new SseEmitter(0L));
+        ragChatService.streamChat("请总结退款规则", null, false, new SseEmitter(0L));
 
         verify(callback).onError(any(RuntimeException.class));
         verify(taskManager, never()).bindHandle(anyString(), any());
@@ -174,8 +179,7 @@ class RAGChatServiceImplTests {
         when(callbackFactory.createChatEventHandler(any(), anyString(), anyString())).thenReturn(callback);
         mockChatConfig();
         when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
-        when(memoryService.loadAndAppend(anyString(), any(), any()))
-                .thenReturn(List.of(ChatMessage.user("history")));
+        mockMemoryPlan();
         when(agentCommandRouter.tryRoute(anyString(), anyString(), any(), anyString(), any(), same(callback), any(CancellationToken.class)))
                 .thenReturn(true);
 
@@ -184,7 +188,7 @@ class RAGChatServiceImplTests {
         verify(agentCommandRouter).tryRoute(anyString(), anyString(), any(), anyString(), any(), same(callback), any(CancellationToken.class));
         verify(queryRewriteService, never()).rewriteWithSplit(anyString(), anyList());
         verify(intentResolver, never()).resolve(any(RewriteResult.class), any(CancellationToken.class));
-        verify(retrievalEngine, never()).retrieve(anyList(), anyInt(), any(CancellationToken.class));
+        verify(retrievalEngine, never()).retrieve(anyList(), anyInt(), anyInt(), any(), any(CancellationToken.class));
         verify(llmService, never()).streamChat(any(ChatRequest.class), any(StreamCallback.class));
         verify(taskManager, never()).bindHandle(anyString(), any());
     }
@@ -192,20 +196,21 @@ class RAGChatServiceImplTests {
     @Test
     void testAgentModeShouldBeHandledByOrchestrator() {
         StreamCallback callback = org.mockito.Mockito.mock(StreamCallback.class);
+        IntentNode kbNode = IntentNode.builder().id("kb-intent").kind(IntentKind.KB).build();
         when(callbackFactory.createChatEventHandler(any(), anyString(), anyString())).thenReturn(callback);
         mockChatConfig();
         when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
-        when(memoryService.loadAndAppend(anyString(), any(), any()))
-                .thenReturn(List.of(ChatMessage.user("history")));
+        mockMemoryPlan();
         when(agentCommandRouter.tryRoute(anyString(), anyString(), any(), anyString(), any(), same(callback), any(CancellationToken.class)))
                 .thenReturn(false);
         when(queryRewriteService.rewriteWithSplit(anyString(), anyList()))
                 .thenReturn(new RewriteResult("改写问题", List.of("改写问题")));
         when(intentResolver.resolve(any(RewriteResult.class), any(CancellationToken.class)))
-                .thenReturn(List.of(new SubQuestionIntent("改写问题", List.of())));
+                .thenReturn(List.of(new SubQuestionIntent("改写问题",
+                        List.of(NodeScore.builder().node(kbNode).score(0.9D).build()))));
         when(guidanceService.detectAmbiguity(anyString(), anyList())).thenReturn(GuidanceDecision.none());
         when(intentResolver.isSystemOnly(anyList())).thenReturn(false);
-        when(retrievalEngine.retrieve(anyList(), anyInt(), any(CancellationToken.class)))
+        when(retrievalEngine.retrieve(anyList(), anyInt(), anyInt(), any(), any(CancellationToken.class)))
                 .thenReturn(com.nageoffer.ai.ragent.rag.dto.RetrievalContext.builder()
                         .kbContext("kb")
                         .mcpContext("")
@@ -226,8 +231,7 @@ class RAGChatServiceImplTests {
         StreamCallback callback = org.mockito.Mockito.mock(StreamCallback.class);
         when(callbackFactory.createChatEventHandler(any(), anyString(), anyString())).thenReturn(callback);
         when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
-        when(memoryService.loadAndAppend(anyString(), any(), any()))
-                .thenReturn(List.of(ChatMessage.user("history")));
+        mockMemoryPlan();
         when(agentCommandRouter.tryRoute(anyString(), anyString(), any(), anyString(), any(), same(callback), any(CancellationToken.class)))
                 .thenReturn(false);
 
@@ -237,7 +241,7 @@ class RAGChatServiceImplTests {
         verify(callback).onComplete();
         verify(queryRewriteService, never()).rewriteWithSplit(anyString(), anyList());
         verify(intentResolver, never()).resolve(any(RewriteResult.class), any(CancellationToken.class));
-        verify(retrievalEngine, never()).retrieve(anyList(), anyInt(), any(CancellationToken.class));
+        verify(retrievalEngine, never()).retrieve(anyList(), anyInt(), anyInt(), any(), any(CancellationToken.class));
         verify(llmService, never()).streamChat(any(ChatRequest.class), any(StreamCallback.class));
     }
 
@@ -247,8 +251,7 @@ class RAGChatServiceImplTests {
         when(callbackFactory.createChatEventHandler(any(), anyString(), anyString())).thenReturn(callback);
         mockChatConfig();
         when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
-        when(memoryService.loadAndAppend(anyString(), any(), any()))
-                .thenReturn(List.of(ChatMessage.user("history")));
+        mockMemoryPlan();
         when(agentCommandRouter.tryRoute(anyString(), anyString(), any(), anyString(), any(), same(callback), any(CancellationToken.class)))
                 .thenReturn(false);
         when(queryRewriteService.rewriteWithSplit(anyString(), anyList()))
@@ -271,8 +274,7 @@ class RAGChatServiceImplTests {
         when(callbackFactory.createChatEventHandler(any(), anyString(), anyString())).thenReturn(callback);
         mockChatConfig();
         when(taskManager.createToken(anyString())).thenReturn(CancellationToken.NONE);
-        when(memoryService.loadAndAppend(anyString(), any(), any()))
-                .thenReturn(List.of(ChatMessage.user("history")));
+        mockMemoryPlan();
         when(agentCommandRouter.tryRoute(anyString(), anyString(), any(), anyString(), any(), same(callback), any(CancellationToken.class)))
                 .thenReturn(false);
         when(queryRewriteService.rewriteWithSplit(anyString(), anyList()))
@@ -289,7 +291,7 @@ class RAGChatServiceImplTests {
                 )));
         when(guidanceService.detectAmbiguity(anyString(), anyList())).thenReturn(GuidanceDecision.none());
         when(intentResolver.isSystemOnly(anyList())).thenReturn(false);
-        when(retrievalEngine.retrieve(anyList(), anyInt(), any(CancellationToken.class)))
+        when(retrievalEngine.retrieve(anyList(), anyInt(), anyInt(), any(), any(CancellationToken.class)))
                 .thenReturn(RetrievalContext.builder()
                         .kbContext("")
                         .mcpContext("""
@@ -318,6 +320,27 @@ class RAGChatServiceImplTests {
         verify(callback).onContent(contains("来源链接：https://example.com/a"));
         verify(callback).onComplete();
         verify(llmService, never()).streamChat(any(ChatRequest.class), any(StreamCallback.class));
+    }
+
+    private void mockMemoryPlan() {
+        ConversationMemorySnapshot snapshot = ConversationMemorySnapshot.builder()
+                .recentHistory(List.of(ChatMessage.user("history")))
+                .build();
+        ConversationMemoryPlan plan = ConversationMemoryPlan.builder()
+                .rewriteHistory(List.of(ChatMessage.user("history")))
+                .answerHistory(List.of(ChatMessage.user("history")))
+                .historyTokens(20)
+                .summaryTokens(0)
+                .recentTurnsKept(1)
+                .summaryIncluded(false)
+                .retrievalTopK(8)
+                .retrievalBudgetTokens(4000)
+                .rewriteHistoryTokens(20)
+                .rewriteSummaryIncluded(false)
+                .build();
+        when(memoryService.loadSnapshot(anyString(), any())).thenReturn(snapshot);
+        when(memoryService.append(anyString(), any(), any())).thenReturn(1L);
+        when(memoryPlanner.plan(any(ConversationMemorySnapshot.class), anyString())).thenReturn(plan);
     }
 
     private void mockChatConfig() {

@@ -30,7 +30,7 @@ import com.nageoffer.ai.ragent.rag.core.mcp.MCPTool;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPToolExecutor;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPToolRegistry;
 import com.nageoffer.ai.ragent.rag.util.NoteWriteIntentHelper;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -41,7 +41,6 @@ import java.util.regex.Pattern;
  * Agent 模式判定器
  */
 @Component
-@RequiredArgsConstructor
 public class AgentModeDecider {
 
     private static final Pattern MULTI_STEP_HINT = Pattern.compile(
@@ -59,6 +58,12 @@ public class AgentModeDecider {
 
     private final RAGConfigProperties ragConfigProperties;
     private final MCPToolRegistry mcpToolRegistry;
+
+    @Autowired
+    public AgentModeDecider(RAGConfigProperties ragConfigProperties, MCPToolRegistry mcpToolRegistry) {
+        this.ragConfigProperties = ragConfigProperties;
+        this.mcpToolRegistry = mcpToolRegistry;
+    }
 
     public AgentModeDecider(RAGConfigProperties ragConfigProperties) {
         this(ragConfigProperties, new DefaultMCPToolRegistry(List.of()));

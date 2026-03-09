@@ -79,6 +79,7 @@ rag:
   query-rewrite:
     enabled: true
     max-history-messages: 4
+    max-history-tokens: 600
     max-history-chars: 500
 
   prompt-progressive:
@@ -98,8 +99,12 @@ rag:
 
   memory:
     history-keep-turns: 4
+    input-budget-tokens: 8000
+    history-budget-tokens: 4000
+    retrieval-budget-tokens: 5000
     summary-start-turns: 5
     summary-enabled: true
+    summary-trigger-tokens: 3000
     ttl-minutes: 60
     summary-max-chars: 200
     title-max-length: 30

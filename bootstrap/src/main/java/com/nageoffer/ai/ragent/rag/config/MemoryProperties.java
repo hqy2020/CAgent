@@ -45,6 +45,27 @@ public class MemoryProperties {
     private Integer historyKeepTurns = 8;
 
     /**
+     * 单轮对话总输入预算（history + retrieval + system + question）
+     */
+    @Min(1000)
+    @Max(64000)
+    private Integer inputBudgetTokens = 8000;
+
+    /**
+     * 历史记忆预算
+     */
+    @Min(200)
+    @Max(32000)
+    private Integer historyBudgetTokens = 4000;
+
+    /**
+     * 检索上下文预算
+     */
+    @Min(200)
+    @Max(32000)
+    private Integer retrievalBudgetTokens = 5000;
+
+    /**
      * 缓存过期时间（分钟）
      */
     private Integer ttlMinutes = 60;
@@ -58,6 +79,13 @@ public class MemoryProperties {
      * 开始摘要的轮数阈值
      */
     private Integer summaryStartTurns = 9;
+
+    /**
+     * 触发摘要的 token 阈值
+     */
+    @Min(200)
+    @Max(32000)
+    private Integer summaryTriggerTokens = 3000;
 
     /**
      * 摘要最大字数

@@ -20,12 +20,14 @@ package com.nageoffer.ai.ragent.rag.rewrite;
 import com.nageoffer.ai.ragent.infra.convention.ChatMessage;
 import com.nageoffer.ai.ragent.infra.convention.ChatRequest;
 import com.nageoffer.ai.ragent.infra.chat.LLMService;
+import com.nageoffer.ai.ragent.infra.token.TokenCounterService;
 import com.nageoffer.ai.ragent.rag.config.RAGConfigProperties;
 import com.nageoffer.ai.ragent.rag.core.prompt.PromptTemplateLoader;
 import com.nageoffer.ai.ragent.rag.core.rewrite.MultiQuestionRewriteService;
 import com.nageoffer.ai.ragent.rag.core.rewrite.QueryTermMappingService;
 import com.nageoffer.ai.ragent.rag.core.rewrite.RewriteResult;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
+import com.nageoffer.ai.ragent.rag.service.RagTraceRecordService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -60,6 +62,10 @@ class QueryRewriteSplitTests {
 
     @Mock
     private PromptTemplateLoader promptTemplateLoader;
+    @Mock
+    private TokenCounterService tokenCounterService;
+    @Mock
+    private RagTraceRecordService ragTraceRecordService;
 
     @InjectMocks
     private MultiQuestionRewriteService rewriteService;
@@ -68,9 +74,14 @@ class QueryRewriteSplitTests {
     void setUp() {
         lenient().when(ragConfigProperties.getQueryRewriteEnabled()).thenReturn(true);
         lenient().when(ragConfigProperties.getQueryRewriteMaxHistoryMessages()).thenReturn(4);
+        lenient().when(ragConfigProperties.getQueryRewriteMaxHistoryTokens()).thenReturn(600);
         lenient().when(ragConfigProperties.getQueryRewriteMaxHistoryChars()).thenReturn(500);
         lenient().when(queryTermMappingService.normalize(anyString())).thenAnswer(inv -> inv.getArgument(0));
         lenient().when(promptTemplateLoader.load(anyString())).thenReturn("system prompt");
+        lenient().when(tokenCounterService.countTokens(anyString())).thenAnswer(inv -> {
+            String text = inv.getArgument(0);
+            return text == null ? 0 : Math.max(1, text.length() / 4);
+        });
     }
 
     // ────────────────────────────────────────
@@ -217,6 +228,30 @@ class QueryRewriteSplitTests {
                     .filter(m -> m.getRole() != ChatMessage.Role.SYSTEM)
                     .count();
             assertEquals(3, nonSystemCount, "应过滤掉 blank content 消息，保留2条有效历史 + 1条当前问题");
+        }
+
+        @Test
+        @DisplayName("摘要中的老实体应参与改写上下文")
+        void shouldKeepSummaryWhenOnlySummaryContainsEntity() {
+            List<ChatMessage> history = List.of(
+                    ChatMessage.system("对话摘要：历史讨论：用户咨询了 iPhone 16 Pro 保修政策（已解答）。实体：iPhone 16 Pro。"),
+                    ChatMessage.user("最近在聊手机售后")
+            );
+
+            when(llmService.chat(any(ChatRequest.class))).thenReturn(
+                    "{\"rewrite\": \"iPhone 16 Pro 的保修期是什么\", \"should_split\": false}");
+
+            rewriteService.rewriteWithSplit("那它的保修期呢？", history);
+
+            ArgumentCaptor<ChatRequest> captor = ArgumentCaptor.forClass(ChatRequest.class);
+            verify(llmService).chat(captor.capture());
+            List<ChatMessage> messages = captor.getValue().getMessages();
+
+            long systemCount = messages.stream()
+                    .filter(m -> m.getRole() == ChatMessage.Role.SYSTEM)
+                    .count();
+            assertEquals(2, systemCount, "应同时包含系统提示词和摘要系统消息");
+            assertTrue(messages.stream().anyMatch(m -> "对话摘要：历史讨论：用户咨询了 iPhone 16 Pro 保修政策（已解答）。实体：iPhone 16 Pro。".equals(m.getContent())));
         }
     }
 

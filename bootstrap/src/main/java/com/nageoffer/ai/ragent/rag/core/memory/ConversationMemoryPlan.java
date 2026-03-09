@@ -15,18 +15,40 @@
  * limitations under the License.
  */
 
-package com.nageoffer.ai.ragent.rag.core.prompt;
+package com.nageoffer.ai.ragent.rag.core.memory;
 
-import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
-import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
-import com.nageoffer.ai.ragent.rag.core.mcp.MCPResponse;
+import com.nageoffer.ai.ragent.infra.convention.ChatMessage;
+import lombok.Builder;
+import lombok.Data;
 
 import java.util.List;
-import java.util.Map;
 
-public interface ContextFormatter {
+/**
+ * 会话记忆预算规划结果。
+ */
+@Data
+@Builder
+public class ConversationMemoryPlan {
 
-    String formatKbContext(List<NodeScore> kbIntents, Map<String, List<RetrievedChunk>> rerankedByIntent, int topK, int tokenBudget);
+    @Builder.Default
+    private List<ChatMessage> rewriteHistory = List.of();
 
-    String formatMcpContext(List<MCPResponse> responses, List<NodeScore> mcpIntents);
+    @Builder.Default
+    private List<ChatMessage> answerHistory = List.of();
+
+    private int historyTokens;
+
+    private int summaryTokens;
+
+    private int recentTurnsKept;
+
+    private boolean summaryIncluded;
+
+    private int retrievalTopK;
+
+    private int retrievalBudgetTokens;
+
+    private int rewriteHistoryTokens;
+
+    private boolean rewriteSummaryIncluded;
 }

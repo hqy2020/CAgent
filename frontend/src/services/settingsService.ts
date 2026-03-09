@@ -10,6 +10,7 @@ export interface SystemSettings {
     queryRewrite: {
       enabled: boolean;
       maxHistoryMessages: number;
+      maxHistoryTokens: number;
       maxHistoryChars: number;
     };
     rateLimit: {
@@ -23,8 +24,12 @@ export interface SystemSettings {
     };
     memory: {
       historyKeepTurns: number;
+      inputBudgetTokens: number;
+      historyBudgetTokens: number;
+      retrievalBudgetTokens: number;
       summaryStartTurns: number;
       summaryEnabled: boolean;
+      summaryTriggerTokens: number;
       ttlMinutes: number;
       summaryMaxChars: number;
       titleMaxLength: number;

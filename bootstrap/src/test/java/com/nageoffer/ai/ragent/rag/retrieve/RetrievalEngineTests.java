@@ -18,6 +18,8 @@
 package com.nageoffer.ai.ragent.rag.retrieve;
 
 import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
+import com.nageoffer.ai.ragent.infra.token.TokenCounterService;
+import com.nageoffer.ai.ragent.rag.service.RagTraceRecordService;
 import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
@@ -39,6 +41,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 import java.util.List;
 import java.util.Map;
@@ -51,15 +55,18 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class RetrievalEngineTests {
 
     @Mock
@@ -74,6 +81,10 @@ class RetrievalEngineTests {
     private MultiChannelRetrievalEngine multiChannelRetrievalEngine;
     @Mock
     private MCPToolExecutor mcpToolExecutor;
+    @Mock
+    private TokenCounterService tokenCounterService;
+    @Mock
+    private RagTraceRecordService ragTraceRecordService;
 
     private RetrievalEngine retrievalEngine;
     private final Executor directExecutor = Runnable::run;
@@ -86,8 +97,11 @@ class RetrievalEngineTests {
                 mcpParameterExtractor,
                 mcpToolRegistry,
                 multiChannelRetrievalEngine,
+                tokenCounterService,
+                ragTraceRecordService,
                 directExecutor
         );
+        lenient().when(tokenCounterService.countTokens(anyString())).thenReturn(10);
     }
 
     @Test
@@ -154,7 +168,7 @@ class RetrievalEngineTests {
                 .build();
         when(multiChannelRetrievalEngine.retrieveKnowledgeChannels(anyList(), eq(5), any(CancellationToken.class)))
                 .thenReturn(List.of(kbChunk));
-        when(contextFormatter.formatKbContext(anyList(), anyMap(), eq(5))).thenReturn("kb-fallback-context");
+        when(contextFormatter.formatKbContext(anyList(), anyMap(), eq(5), anyInt())).thenReturn("kb-fallback-context");
 
         RetrievalContext context = retrievalEngine.retrieve(List.of(subIntent), 5, CancellationToken.NONE);
 
@@ -192,7 +206,7 @@ class RetrievalEngineTests {
                 .build();
         when(multiChannelRetrievalEngine.retrieveKnowledgeChannels(anyList(), eq(6), any(CancellationToken.class)))
                 .thenReturn(List.of(kbChunk));
-        when(contextFormatter.formatKbContext(anyList(), anyMap(), eq(6))).thenReturn("kb-context");
+        when(contextFormatter.formatKbContext(anyList(), anyMap(), eq(6), anyInt())).thenReturn("kb-context");
 
         MCPTool tool = MCPTool.builder()
                 .toolId("web_news_search")
@@ -239,16 +253,23 @@ class RetrievalEngineTests {
                 .text("日记模板与规范说明")
                 .score(0.81F)
                 .build();
+        MCPTool writeTool = MCPTool.builder()
+                .toolId("obsidian_update")
+                .name("写 Obsidian")
+                .operationType(MCPTool.OperationType.WRITE)
+                .build();
+        when(mcpToolRegistry.getExecutor("obsidian_update")).thenReturn(Optional.of(mcpToolExecutor));
+        when(mcpToolExecutor.getToolDefinition()).thenReturn(writeTool);
         when(multiChannelRetrievalEngine.retrieveKnowledgeChannels(anyList(), eq(5), any(CancellationToken.class)))
                 .thenReturn(List.of(kbChunk));
-        when(contextFormatter.formatKbContext(anyList(), anyMap(), eq(5))).thenReturn("kb-fallback-context");
+        when(contextFormatter.formatKbContext(anyList(), anyMap(), eq(5), anyInt())).thenReturn("kb-fallback-context");
 
         RetrievalContext context = retrievalEngine.retrieve(List.of(subIntent), 5, CancellationToken.NONE);
 
         assertTrue(context.hasKb());
         assertFalse(context.hasMcp());
         assertTrue(context.getKbContext().contains("kb-fallback-context"));
-        verify(mcpToolRegistry, never()).getExecutor("obsidian_update");
+        verify(mcpToolRegistry).getExecutor("obsidian_update");
         verify(mcpService, never()).executeBatch(anyList(), any(CancellationToken.class));
     }
 
@@ -280,7 +301,7 @@ class RetrievalEngineTests {
                 .build();
         when(multiChannelRetrievalEngine.retrieveKnowledgeChannels(anyList(), eq(5), any(CancellationToken.class)))
                 .thenReturn(List.of(kbChunk));
-        when(contextFormatter.formatKbContext(anyList(), anyMap(), eq(5))).thenReturn("kb-security-context");
+        when(contextFormatter.formatKbContext(anyList(), anyMap(), eq(5), anyInt())).thenReturn("kb-security-context");
 
         RetrievalContext context = retrievalEngine.retrieve(List.of(subIntent), 5, CancellationToken.NONE);
 

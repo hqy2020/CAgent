@@ -56,6 +56,12 @@ public class RAGConfigProperties {
     private Integer queryRewriteMaxHistoryMessages;
 
     /**
+     * 改写时用于承接上下文的最大历史 token 数
+     */
+    @Value("${rag.query-rewrite.max-history-tokens:600}")
+    private Integer queryRewriteMaxHistoryTokens;
+
+    /**
      * 改写时用于承接上下文的最大字符数
      */
     @Value("${rag.query-rewrite.max-history-chars:500}")

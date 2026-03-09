@@ -17,14 +17,12 @@
 
 package com.nageoffer.ai.ragent.rag.core.memory;
 
-import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
 import com.nageoffer.ai.ragent.infra.convention.ChatMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -47,9 +45,14 @@ public class DefaultConversationMemoryService implements ConversationMemoryServi
 
     @Override
     public List<ChatMessage> load(String conversationId, String userId) {
+        return loadSnapshot(conversationId, userId).toHistoryMessages();
+    }
+
+    @Override
+    public ConversationMemorySnapshot loadSnapshot(String conversationId, String userId) {
         // 参数校验
         if (StrUtil.isBlank(conversationId) || StrUtil.isBlank(userId)) {
-            return List.of();
+            return ConversationMemorySnapshot.empty();
         }
 
         long startTime = System.currentTimeMillis();
@@ -67,14 +70,18 @@ public class DefaultConversationMemoryService implements ConversationMemoryServi
                     .thenApply(v -> {
                         ChatMessage summary = summaryFuture.join();
                         List<ChatMessage> history = historyFuture.join();
+                        ChatMessage decoratedSummary = summary == null ? null : summaryService.decorateIfNeeded(summary);
                         log.debug("加载对话记忆 - conversationId: {}, userId: {}, 摘要: {}, 历史消息数: {}, 耗时: {}ms",
                                 conversationId, userId, summary != null, history.size(), System.currentTimeMillis() - startTime);
-                        return attachSummary(summary, history);
+                        return ConversationMemorySnapshot.builder()
+                                .summary(decoratedSummary)
+                                .recentHistory(history == null ? List.of() : history)
+                                .build();
                     })
                     .join();
         } catch (Exception e) {
             log.error("加载对话记忆失败 - conversationId: {}, userId: {}", conversationId, userId, e);
-            return List.of();
+            return ConversationMemorySnapshot.empty();
         }
     }
 
@@ -113,17 +120,4 @@ public class DefaultConversationMemoryService implements ConversationMemoryServi
         return messageId;
     }
 
-    private List<ChatMessage> attachSummary(ChatMessage summary, List<ChatMessage> messages) {
-        // 确保返回值不为 null
-        if (CollUtil.isEmpty(messages)) {
-            return List.of();
-        }
-        if (summary == null) {
-            return messages;
-        }
-        List<ChatMessage> result = new ArrayList<>();
-        result.add(summaryService.decorateIfNeeded(summary));
-        result.addAll(messages);
-        return result;
-    }
 }

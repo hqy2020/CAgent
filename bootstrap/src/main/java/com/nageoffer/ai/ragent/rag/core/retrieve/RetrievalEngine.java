@@ -19,6 +19,7 @@ package com.nageoffer.ai.ragent.rag.core.retrieve;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
+import com.nageoffer.ai.ragent.framework.trace.RagTraceContext;
 import com.nageoffer.ai.ragent.rag.core.cancel.CancellationToken;
 import com.nageoffer.ai.ragent.rag.dto.KbResult;
 import com.nageoffer.ai.ragent.rag.dto.RetrievalContext;
@@ -26,8 +27,10 @@ import com.nageoffer.ai.ragent.rag.dto.SubQuestionIntent;
 import com.nageoffer.ai.ragent.rag.enums.IntentKind;
 import com.nageoffer.ai.ragent.infra.convention.RetrievedChunk;
 import com.nageoffer.ai.ragent.framework.trace.RagTraceNode;
+import com.nageoffer.ai.ragent.infra.token.TokenCounterService;
 import com.nageoffer.ai.ragent.rag.core.intent.IntentNode;
 import com.nageoffer.ai.ragent.rag.core.intent.NodeScore;
+import com.nageoffer.ai.ragent.rag.core.memory.ConversationMemoryPlan;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPParameterExtractor;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPRequest;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPRequestSource;
@@ -38,6 +41,7 @@ import com.nageoffer.ai.ragent.rag.core.mcp.MCPToolExecutor;
 import com.nageoffer.ai.ragent.rag.core.mcp.MCPToolRegistry;
 import com.nageoffer.ai.ragent.rag.core.prompt.ContextFormatter;
 import com.nageoffer.ai.ragent.rag.exception.TaskCancelledException;
+import com.nageoffer.ai.ragent.rag.service.RagTraceRecordService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -85,6 +89,8 @@ public class RetrievalEngine {
     private final MCPParameterExtractor mcpParameterExtractor;
     private final MCPToolRegistry mcpToolRegistry;
     private final MultiChannelRetrievalEngine multiChannelRetrievalEngine;
+    private final TokenCounterService tokenCounterService;
+    private final RagTraceRecordService ragTraceRecordService;
     @Qualifier("ragContextThreadPoolExecutor")
     private final Executor ragContextExecutor;
 
@@ -105,6 +111,23 @@ public class RetrievalEngine {
      */
     @RagTraceNode(name = "retrieval-engine", type = "RETRIEVE")
     public RetrievalContext retrieve(List<SubQuestionIntent> subIntents, int topK, CancellationToken token) {
+        return retrieveInternal(subIntents, topK, 0, null, token);
+    }
+
+    @RagTraceNode(name = "retrieval-engine", type = "RETRIEVE")
+    public RetrievalContext retrieve(List<SubQuestionIntent> subIntents,
+                                     int topK,
+                                     int tokenBudget,
+                                     ConversationMemoryPlan memoryPlan,
+                                     CancellationToken token) {
+        return retrieveInternal(subIntents, topK, tokenBudget, memoryPlan, token);
+    }
+
+    private RetrievalContext retrieveInternal(List<SubQuestionIntent> subIntents,
+                                              int topK,
+                                              int tokenBudget,
+                                              ConversationMemoryPlan memoryPlan,
+                                              CancellationToken token) {
         if (CollUtil.isEmpty(subIntents)) {
             return RetrievalContext.builder()
                     .mcpContext("")
@@ -116,6 +139,7 @@ public class RetrievalEngine {
         token.throwIfCancelled();
 
         int finalTopK = topK > 0 ? topK : DEFAULT_TOP_K;
+        int perQuestionBudget = tokenBudget > 0 ? Math.max(1, tokenBudget / subIntents.size()) : tokenBudget;
         List<CompletableFuture<SubQuestionContext>> tasks = subIntents.stream()
                 .map(si -> CompletableFuture.supplyAsync(
                         () -> {
@@ -123,6 +147,7 @@ public class RetrievalEngine {
                             return buildSubQuestionContext(
                                     si,
                                     resolveSubQuestionTopK(si, finalTopK),
+                                    perQuestionBudget,
                                     token
                             );
                         },
@@ -159,20 +184,25 @@ public class RetrievalEngine {
             }
         }
 
-        return RetrievalContext.builder()
+        RetrievalContext result = RetrievalContext.builder()
                 .mcpContext(mcpBuilder.toString().trim())
                 .kbContext(kbBuilder.toString().trim())
                 .intentChunks(mergedIntentChunks)
                 .build();
+        recordRetrievalTrace(memoryPlan, result, finalTopK, tokenBudget);
+        return result;
     }
 
-    private SubQuestionContext buildSubQuestionContext(SubQuestionIntent intent, int topK, CancellationToken token) {
+    private SubQuestionContext buildSubQuestionContext(SubQuestionIntent intent,
+                                                       int topK,
+                                                       int tokenBudget,
+                                                       CancellationToken token) {
         List<NodeScore> kbIntents = filterKbIntents(intent.nodeScores());
         List<NodeScore> mcpIntents = filterMCPIntents(intent.subQuestion(), intent.nodeScores());
 
         // 仅在“强 MCP-only”时跳过 KB 检索；其余场景（含无意图）都允许 KB 通道兜底。
         KbResult kbResult = shouldRetrieveKb(kbIntents, mcpIntents)
-                ? retrieveAndRerank(intent, kbIntents, topK, token)
+                ? retrieveAndRerank(intent, kbIntents, topK, tokenBudget, token)
                 : KbResult.empty();
 
         String mcpContext = CollUtil.isNotEmpty(mcpIntents)
@@ -244,8 +274,11 @@ public class RetrievalEngine {
         return contextFormatter.formatMcpContext(responses, deduplicatedIntents);
     }
 
-    private KbResult retrieveAndRerank(SubQuestionIntent intent, List<NodeScore> kbIntents, int topK,
-                                        CancellationToken token) {
+    private KbResult retrieveAndRerank(SubQuestionIntent intent,
+                                       List<NodeScore> kbIntents,
+                                       int topK,
+                                       int tokenBudget,
+                                       CancellationToken token) {
         // 使用多通道检索引擎（是否启用全局检索由置信度阈值决定）
         List<SubQuestionIntent> subIntents = List.of(intent);
         List<RetrievedChunk> chunks = multiChannelRetrievalEngine.retrieveKnowledgeChannels(subIntents, topK, token);
@@ -270,7 +303,7 @@ public class RetrievalEngine {
             intentChunks.put(MULTI_CHANNEL_KEY, chunks);
         }
 
-        String groupedContext = contextFormatter.formatKbContext(kbIntents, intentChunks, topK);
+        String groupedContext = contextFormatter.formatKbContext(kbIntents, intentChunks, topK, tokenBudget);
         return new KbResult(groupedContext, intentChunks);
     }
 
@@ -363,5 +396,32 @@ public class RetrievalEngine {
             case "obsidian_read", "obsidian_search", "obsidian_list" -> OBSIDIAN_QUERY_HINT.matcher(normalized).find();
             default -> true;
         };
+    }
+
+    private void recordRetrievalTrace(ConversationMemoryPlan memoryPlan,
+                                      RetrievalContext context,
+                                      int effectiveTopK,
+                                      int tokenBudget) {
+        String traceId = RagTraceContext.getTraceId();
+        String nodeId = RagTraceContext.currentNodeId();
+        if (StrUtil.isBlank(traceId) || StrUtil.isBlank(nodeId)) {
+            return;
+        }
+        Map<String, Object> extraData = new LinkedHashMap<>();
+        extraData.put("effectiveTopK", effectiveTopK);
+        extraData.put("retrievalBudgetTokens", tokenBudget);
+        extraData.put("kbContextTokens", countTokens(context == null ? null : context.getKbContext()));
+        if (memoryPlan != null) {
+            extraData.put("historyTokens", memoryPlan.getHistoryTokens());
+            extraData.put("summaryTokens", memoryPlan.getSummaryTokens());
+            extraData.put("recentTurnsKept", memoryPlan.getRecentTurnsKept());
+            extraData.put("summaryIncluded", memoryPlan.isSummaryIncluded());
+        }
+        ragTraceRecordService.updateNodeExtraData(traceId, nodeId, extraData);
+    }
+
+    private int countTokens(String content) {
+        Integer tokens = tokenCounterService.countTokens(content);
+        return tokens == null ? 0 : Math.max(tokens, 0);
     }
 }
