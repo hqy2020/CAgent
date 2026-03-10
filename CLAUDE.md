@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Positioning
 
-- 本仓库的工程基线是 **Ragent 企业级 RAG 系统**，采用 Monorepo：后端 Maven 多模块 + 前端 React。
-- 当前仓库在文档和部分界面仍保留 `CAgent` 命名；技术事实以代码为准（`com.nageoffer.ai.ragent`）。
+- 本仓库的工程基线是 **RAgent Second Brain**，采用 Monorepo：后端 Maven 多模块 + 前端 React。
+- 当前技术命名以代码为准：Java 包前缀为 `com.openingcloud.ai.ragent`，产品定位为个人第二大脑与知识中枢。
 - 技术栈（以 `pom.xml`/`frontend/package.json` 为准）：Java 17、Spring Boot 3.5.7、MyBatis-Plus、React 18、Vite、TypeScript、Milvus 2.6.6、Redis、MySQL、S3 兼容存储。
 - 本文件是执行规范，不是宣传文档。新增内容必须可在仓库中被命令、配置、类名或路径验证。
 
@@ -33,7 +33,7 @@ RAG v3 对话链路（`GET /rag/v3/chat`）：
 - 引擎入口：`ingestion.engine.IngestionEngine`
 - 节点接口：`ingestion.node.IngestionNode`
 - 节点类型（`IngestionNodeType`）：`fetcher -> parser -> enhancer -> chunker -> enricher -> indexer`
-- 节点实现位置：`bootstrap/src/main/java/com/nageoffer/ai/ragent/ingestion/node/`
+- 节点实现位置：`bootstrap/src/main/java/com/openingcloud/ai/ragent/ingestion/node/`
 - 常见数据源抓取器：`ingestion.strategy.fetcher`（`LocalFileFetcher`、`HttpUrlFetcher`、`S3Fetcher`、`FeishuFetcher`）
 - Pipeline/任务编排服务：`ingestion.service.IngestionPipelineService`、`IngestionTaskService`
 - 知识库上传后触发链路：`knowledge.service.impl.KnowledgeDocumentServiceImpl` -> `IngestionEngine`
@@ -188,4 +188,3 @@ RAG v3 对话链路（`GET /rag/v3/chat`）：
 - **Surefire Mockito agent 不要随意改**：`pom.xml` 中 `maven-surefire-plugin` 依赖 `-javaagent:${org.mockito:mockito-core:jar}`。
 - **macOS 大小写陷阱**：包路径目录名与 `package` 声明大小写不一致会触发类加载问题。
 - **限流参数默认偏保守**：`rag.rate-limit.global.max-concurrent=1`，并发压测前先评估并调参。
-

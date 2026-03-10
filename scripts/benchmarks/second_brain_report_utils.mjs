@@ -4,8 +4,10 @@ import path from "node:path";
 export const FALLBACK_HINTS = ["未能建立浏览器连接", "联网检索结果不足", "通用回答", "[fallback]"];
 
 const DATE_REPLY_PATTERN = /(今天是|现在是|现在时间是)/;
-const SALES_PATTERN = /(销售|销售额|营收|成交额|口径)/;
+const OBSIDIAN_PATTERN = /(Obsidian|笔记|日记|目录|搜索结果|已找到|已创建|已追加)/i;
 const SECURITY_BLOCK_PATTERN = /(SECURITY|安全|非法|拒绝|禁止|路径|穿越|不允许|仅允许|blocked|阻止|拦截)/i;
+const WEB_SEARCH_SOURCE_PATTERN = /(https?:\/\/|来源[:：]|链接[:：]|阿里巴巴|Alibaba)/i;
+const WEB_SEARCH_BAD_PATTERN = /(BeanFactory|FactoryBean|工厂模式)/i;
 
 export function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -151,12 +153,12 @@ function inferExpectedTools(expectation) {
       return ["direct_datetime_reply"];
     case "kb":
       return ["knowledge_base"];
-    case "sales":
-      return ["sales_summary_query"];
-    case "sales_plus_kb":
-      return ["sales_summary_query", "knowledge_base"];
+    case "web_search":
+      return ["web_search"];
     case "obsidian_read":
       return ["obsidian_search"];
+    case "obsidian_plus_kb":
+      return ["obsidian_search", "knowledge_base"];
     case "obsidian_write_confirm":
       return ["obsidian_create"];
     case "security_block":
@@ -201,22 +203,27 @@ function evaluateCaseSignals(caseDef, observation) {
         reason = "知识库问答缺少引用或输出为空";
       }
       break;
-    case "sales":
-      toolSelectionMatched = SALES_PATTERN.test(text) && !hasConfirm;
+    case "web_search": {
+      const mentions1688 = /1688/i.test(text);
+      const mentionsAlibaba = /(阿里巴巴|Alibaba)/i.test(text);
+      const hasSourceEvidence = WEB_SEARCH_SOURCE_PATTERN.test(text);
+      const avoidsFactoryPattern = !WEB_SEARCH_BAD_PATTERN.test(text);
+      toolSelectionMatched = !hasConfirm && hasText && mentions1688 && mentionsAlibaba && hasSourceEvidence && avoidsFactoryPattern;
       if (!toolSelectionMatched) {
-        reason = "销售问答未返回销售信息";
+        reason = "外部实体联网问答未正确命中阿里巴巴语义、来源证据不足，或仍回到了工厂模式解释";
       }
       break;
-    case "sales_plus_kb":
-      toolSelectionMatched = SALES_PATTERN.test(text) && hasReferences && !hasConfirm;
-      if (!toolSelectionMatched) {
-        reason = "销售+知识库问答未同时命中动态数据与引用";
-      }
-      break;
+    }
     case "obsidian_read":
-      toolSelectionMatched = !hasConfirm && hasText;
+      toolSelectionMatched = !hasConfirm && hasText && OBSIDIAN_PATTERN.test(text);
       if (!toolSelectionMatched) {
         reason = "Obsidian 只读问答输出为空或误触发确认";
+      }
+      break;
+    case "obsidian_plus_kb":
+      toolSelectionMatched = !hasConfirm && hasText && hasReferences && OBSIDIAN_PATTERN.test(text);
+      if (!toolSelectionMatched) {
+        reason = "Obsidian + 知识库问答未同时命中笔记结果与引用";
       }
       break;
     case "obsidian_write_confirm":

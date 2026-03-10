@@ -6,6 +6,7 @@ import type {
   AgentStepPayload,
   CompletionPayload,
   MessageDeltaPayload,
+  QueueStatusPayload,
   ReferenceItem,
   StreamMetaPayload,
   WorkflowEventPayload
@@ -25,6 +26,7 @@ export interface StreamHandlers {
   onFinish?: (payload: CompletionPayload) => void;
   onDone?: () => void;
   onCancel?: (payload: CompletionPayload) => void;
+  onQueue?: (payload: QueueStatusPayload) => void;
   onReject?: (payload: MessageDeltaPayload) => void;
   onTitle?: (payload: { title: string }) => void;
   onError?: (error: Error) => void;
@@ -130,6 +132,9 @@ async function readSseStream(response: Response, handlers: StreamHandlers, signa
       case "cancel":
         hasTerminalEvent = true;
         handlers.onCancel?.(payload as CompletionPayload);
+        break;
+      case "queue":
+        handlers.onQueue?.(payload as QueueStatusPayload);
         break;
       case "reject":
         hasTerminalEvent = true;

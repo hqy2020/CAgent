@@ -260,6 +260,60 @@ describe("chatStore - 深度思考模式", () => {
     expect(calledUrl).not.toContain("deepThinking");
   });
 
+  it("sendMessage 应显示排队进度并在进入执行后收敛为已处理", async () => {
+    const chunks = [
+      'event:queue\ndata:{"position":2,"total":5}\n\n',
+      'event:meta\ndata:{"conversationId":"c1","taskId":"t1"}\n\n',
+      'event:agent_step\ndata:{"loop":0,"stepIndex":1,"type":"分析问题","status":"RUNNING","summary":"开始分析"}\n\n',
+      'event:finish\ndata:{"messageId":"m1","title":"天气"}\n\n',
+      "event:done\ndata:[DONE]\n\n"
+    ];
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(buildSseResponse(chunks)));
+
+    await useChatStore.getState().sendMessage("今天上海天气怎么样");
+
+    const assistantMsg = useChatStore.getState().messages.find((m) => m.role === "assistant");
+    const queueStep = assistantMsg?.agentTimeline?.find(
+      (item) => item.kind === "step" && item.payload.stepIndex === 0
+    );
+    const analyzeStep = assistantMsg?.agentTimeline?.find(
+      (item) => item.kind === "step" && item.payload.stepIndex === 1
+    );
+
+    expect(queueStep && queueStep.kind === "step" ? queueStep.payload.status : undefined).toBe("SUCCESS");
+    expect(queueStep && queueStep.kind === "step" ? queueStep.payload.summary : undefined).toBe(
+      "已开始处理，进入执行阶段。"
+    );
+    expect(analyzeStep && analyzeStep.kind === "step" ? analyzeStep.payload.status : undefined).toBe("SUCCESS");
+  });
+
+  it("sendMessage 应对同一步骤做增量更新而不是重复追加", async () => {
+    const chunks = [
+      'event:meta\ndata:{"conversationId":"c1","taskId":"t1"}\n\n',
+      'event:agent_step\ndata:{"loop":0,"stepIndex":2,"type":"识别意图","status":"RUNNING","summary":"正在识别"}\n\n',
+      'event:agent_step\ndata:{"loop":0,"stepIndex":2,"type":"识别意图","status":"SUCCESS","summary":"识别完成"}\n\n',
+      'event:finish\ndata:{"messageId":"m1","title":"天气"}\n\n',
+      "event:done\ndata:[DONE]\n\n"
+    ];
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(buildSseResponse(chunks)));
+
+    await useChatStore.getState().sendMessage("今天上海天气怎么样");
+
+    const assistantMsg = useChatStore.getState().messages.find((m) => m.role === "assistant");
+    const intentSteps =
+      assistantMsg?.agentTimeline?.filter(
+        (item) => item.kind === "step" && item.payload.stepIndex === 2
+      ) ?? [];
+
+    expect(intentSteps).toHaveLength(1);
+    expect(intentSteps[0] && intentSteps[0].kind === "step" ? intentSteps[0].payload.status : undefined).toBe(
+      "SUCCESS"
+    );
+    expect(intentSteps[0] && intentSteps[0].kind === "step" ? intentSteps[0].payload.summary : undefined).toBe(
+      "识别完成"
+    );
+  });
+
   // ─── 取消生成时的思考状态清理 ───
 
   it("取消生成后应清理思考状态", async () => {

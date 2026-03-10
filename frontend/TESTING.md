@@ -33,7 +33,7 @@ curl http://localhost:8080/api/ragent/knowledge-base
 
 #### 2. 重启前端开发服务器
 ```bash
-cd /Users/machen/workspace/nageoffer/ragent/frontend
+cd /Users/openingcloud/IdeaProjects/ragent/frontend
 
 # 停止旧的服务器（如果有）
 pkill -f "vite"
@@ -46,10 +46,10 @@ npm run dev
 打开浏览器访问：http://localhost:5173 或 http://localhost:5174
 
 #### 4. 登录测试
-1. 使用管理员账号登录（role='admin'）
-2. 点击左侧边栏底部的用户头像
-3. 选择"管理后台"
-4. 进入知识库管理页面
+1. 使用任意可登录账号进入系统
+2. 点击顶部或侧边栏里的“知识空间”
+3. 进入 `/workspace/knowledge`
+4. 验证知识库列表正常加载
 
 #### 5. 测试知识库功能
 - 点击"新建知识库"
@@ -69,12 +69,6 @@ A: 确保重启了开发服务器，配置修改后需要重启
 
 **Q: 后端API返回401？**
 A: 正常现象，需要先登录获取token
-
-**Q: 如何创建管理员账号？**
-A: 在数据库中手动设置用户的role字段为'admin'：
-```sql
-UPDATE t_user SET role = 'admin' WHERE username = 'your_username';
-```
 
 ### API路径说明
 
@@ -106,6 +100,6 @@ UPDATE t_user SET role = 'admin' WHERE username = 'your_username';
 ### 下一步
 
 1. 登录系统
-2. 进入管理后台
+2. 进入知识空间
 3. 测试知识库CRUD功能
 4. 如有问题，查看浏览器控制台和Network标签

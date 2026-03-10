@@ -66,8 +66,8 @@ echo ""
 # ────────────────────────────────────────
 # 场景 A：首轮提问 — 单一明确问题
 # ────────────────────────────────────────
-log_info "场景 A：首轮提问 — '12306的订单流程是什么？'"
-SSE_A=$(do_chat "12306的订单流程是什么？")
+log_info "场景 A：首轮提问 — 'RAG系统的检索流程是什么？'"
+SSE_A=$(do_chat "RAG系统的检索流程是什么？")
 
 if echo "$SSE_A" | grep -q "event: message"; then
     log_pass "场景 A：收到 message 事件"
@@ -88,8 +88,8 @@ echo ""
 # 场景 B：二轮指代 — 上下文消解
 # ────────────────────────────────────────
 if [ -n "$CONV_ID" ]; then
-    log_info "场景 B：二轮指代 — '它的支付环节怎么处理？' (conversationId=${CONV_ID})"
-    SSE_B=$(do_chat "它的支付环节怎么处理？" "$CONV_ID")
+    log_info "场景 B：二轮指代 — '它的重写模块怎么工作？' (conversationId=${CONV_ID})"
+    SSE_B=$(do_chat "它的重写模块怎么工作？" "$CONV_ID")
 
     if echo "$SSE_B" | grep -q "event: message"; then
         log_pass "场景 B：收到 message 事件"
@@ -112,8 +112,8 @@ echo ""
 # ────────────────────────────────────────
 # 场景 C：复合问题 — 多问句拆分
 # ────────────────────────────────────────
-log_info "场景 C：复合问题 — 'OA审批流程怎么走？Redis地址是多少？'"
-SSE_C=$(do_chat "OA审批流程怎么走？Redis地址是多少？")
+log_info "场景 C：复合问题 — '帮我在 Obsidian 里搜索线程池笔记？HashMap 的底层原理是什么？'"
+SSE_C=$(do_chat "帮我在 Obsidian 里搜索线程池笔记？HashMap 的底层原理是什么？")
 
 if echo "$SSE_C" | grep -q "event: message"; then
     log_pass "场景 C：收到 message 事件"
@@ -137,7 +137,7 @@ echo -e "  结果: ${GREEN}${pass} passed${NC}, ${RED}${fail} failed${NC}"
 echo "========================================"
 echo ""
 echo "提示：请检查后端日志中 'RAG用户问题查询改写+拆分' 条目，验证："
-echo "  1. 场景 B 的改写结果中应包含 '12306'（指代消解）"
+echo "  1. 场景 B 的改写结果中应包含 'RAG系统'（指代消解）"
 echo "  2. 场景 C 应出现 2 个子问题（多问句拆分）"
 
 exit $fail

@@ -1,4 +1,8 @@
-# CAgent — 我的个人 AI 知识中枢
+# Ragent
+
+Ragent 是一个面向个人知识库场景的 RAG 应用，提供流式对话、知识库管理、文档入库流水线、热点监控和 MCP 工具接入能力。
+
+这份 README 的目标只有一件事：让第一次拿到仓库的人，能尽快把项目跑起来，并知道从哪里开始二次开发。
 
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
 ![Java](https://img.shields.io/badge/Java-17-ff7f2a.svg)
@@ -6,170 +10,166 @@
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
 ![Milvus](https://img.shields.io/badge/Milvus-2.6.x-00b3ff.svg)
 
-基于 RAG + LLM 构建的个人知识管理与问答系统，服务于我的第二大脑 **GardenOfOpeningClouds**。
+## 功能概览
 
-后端入口：`http://localhost:8080/api/ragent`
+- RAG 对话：SSE 流式输出、Query Rewrite、多问句拆分、意图识别、多通道检索
+- 知识库：知识库管理、文档上传、分块、向量化、Milvus 检索
+- 入库流水线：解析、增强、富集、索引，支持异步执行
+- 热点监控：热点聚合、定时扫描、WebSocket 推送
+- MCP 集成：可接 Browser MCP、Obsidian MCP 等外部工具
+- 会话能力：会话记忆、摘要、链路追踪
 
----
+## 技术栈
 
-## 这是什么
+- 后端：Java 17、Spring Boot 3.5、MyBatis-Plus、SA-Token、RocketMQ
+- 前端：React 18、Vite 5、TypeScript、Tailwind
+- 基础设施：MySQL、Redis、Milvus、RustFS、RocketMQ、Neo4j
+- 模型接入：MiniMax、SiliconFlow、百炼、Ollama
 
-我有一个长期维护的知识体系 GardenOfOpeningClouds，里面积累了大量技术笔记、学习路线和面试复盘。但随着内容增长，我遇到了几个让人头疼的问题：
+## 仓库结构
 
-- **碎片知识检索慢**：笔记散落在各处，想起一个概念却找不到当时的上下文
-- **笔记不可对话**：静态 Markdown 文件无法追问，只能反复翻页
-- **面试复习分散**：题目、答案、难度分级散落在不同地方，临时抱佛脚效率极低
-
-CAgent 是我为解决这些问题搭建的系统：把知识库向量化，用 RAG 实现对话式检索，同时把学习笔记和面试题库结构化沉淀进来，让知识真正"可被问"。
-
----
-
-## 我做了什么扩展
-
-在原有 RAG 底座基础上，我新增了两个核心模块：
-
-### 学习中心（Study Center）
-
-用于系统化存储我的技术笔记和学习路线，采用三层结构：
-
-```
-模块（Module）
-  └── 章节（Chapter）
-        └── 文档（Document）
-```
-
-- **模块**：对应一个大方向，例如"Java 并发"、"系统设计"、"数据库原理"
-- **章节**：模块下的主题划分，例如"AQS 源码"、"锁机制"
-- **文档**：具体的知识内容，支持 Markdown 格式
-
-这套结构让我把过去散乱的笔记按学科树组织起来，方便在 RAG 对话时精准定位到具体领域的文档。
-
-### 面试题库（Interview Hub）
-
-用于按分类管理面试题，复习时随时提问：
-
-```
-分类（Category）
-  └── 题目（Question）
-        ├── 难度等级（1-5）
-        ├── 参考答案（Markdown）
-        └── 标签（逗号分隔）
+```text
+.
+├── bootstrap/                 # Spring Boot 应用入口和主要业务实现
+├── framework/                 # 通用基础设施封装
+├── infra-ai/                  # Chat / Embedding / Rerank 模型路由
+├── frontend/                  # React 前端
+├── resources/
+│   ├── database/              # 建表和初始化数据
+│   └── docker/                # 基础设施 compose
+├── scripts/                   # 启动、测试、回归脚本
+├── docs/                      # 架构、说明和测试报告
+└── Makefile                   # macOS 本地一键启动入口
 ```
 
-- 按技术方向分类（Java、Redis、MySQL、系统设计…）
-- 难度分级，可按需筛选
-- 答案支持 Markdown，保留代码块、对比表格等格式
+## 启动前准备
 
----
+最低要求：
 
-## 系统架构
-
-### 总览
-
-![CAgent Architecture](docs/assets/ragent-architecture-overview.svg)
-
-### 模块组成
-
-```
-frontend (React + Vite)
-  └── bootstrap (Spring Boot 应用入口 + 全部业务实现)
-        ├── rag            — RAG 对话主链路（v3）
-        ├── study          — 学习中心（我新增）
-        ├── interview      — 面试题库（我新增）
-        ├── knowledge      — 知识库 CRUD + 向量集合管理
-        ├── ingestion      — 文档入库 Pipeline
-        ├── admin          — 管理后台 Dashboard
-        └── user           — 用户认证（SA-Token）
-
-  依赖层：
-        ├── framework      — 通用基础（Result/Exception/Trace/Idempotent）
-        └── infra-ai       — AI 路由（Chat/Embedding/Rerank 多模型容错）
-```
-
-### 运行时拓扑
-
-```
-Browser (localhost:5173)
-  -> /api/ragent/* (Vite Proxy)
-  -> Spring Boot (8080)
-       -> rag core (rewrite / intent / retrieve / prompt / memory / mcp)
-       -> ingestion engine (pipeline + nodes)
-       -> infra-ai (chat / embedding / rerank 多模型路由)
-       -> MySQL / Redis / Milvus / RustFS
-```
-
----
-
-## 核心功能
-
-### 对话式知识检索
-
-- RAG v3 流式对话（SSE），支持深度思考模式
-- Query Rewrite + 多问句拆分，一个问题自动拆解为多个子查询
-- 意图识别 + 意图定向检索：不同意图命中不同知识库分区
-- 全局向量兜底：意图置信度不足时自动回退到全局检索
-- 后处理器链：去重 → Rerank，提升召回质量
-- MCP 工具调用：工具结果与文档上下文统一进入 Prompt
-- **Obsidian MCP 集成**：支持读取和更新 Obsidian 笔记（vault: GardenOfOpeningClouds）
-- **视频转录入库**：可调用 VideoTranscriptAPI 将 B 站/YouTube/小宇宙链接转录并写入 Obsidian
-
-### 知识沉淀
-
-- 学习中心：模块 → 章节 → 文档三层结构，系统化存储技术笔记
-- 知识库：文档上传 → Ingestion Pipeline（解析/分块/向量化）→ Milvus 索引
-- 支持 PDF、Word、Markdown 等格式（Apache Tika 解析）
-- 多种分块策略：固定大小 / 段落 / 句子 / 结构感知
-- **批量上传**：支持批量上传文档，实时追踪上传进度和状态
-- **RocketMQ 异步处理**：文档入库通过 RocketMQ 5.x 异步处理，提升大规模导入性能
-
-### 复盘备战
-
-- 面试题库：分类管理题目，难度分级，Markdown 答案
-- 会话记忆与摘要：长对话自动摘要，支持跨会话记忆
-- RAG Trace 链路追踪：每次对话可查看检索链路详情
-
----
-
-## 快速启动
-
-### 环境依赖
-
-- JDK 17+
-- Maven 3.9+
+- Docker Desktop
+- JDK 17
 - Node.js 18+
-- MySQL 8+
-- Redis
-- Docker（用于 Milvus + RustFS）
+- npm 9+
 
-### 1. 启动向量库与对象存储
+推荐额外准备：
+
+- `cp .env.example .env`
+- 至少填写 `MINIMAX_API_KEY` 和 `SILICONFLOW_API_KEY`
+
+为什么是这两个：
+
+- 当前默认聊天模型是 `minimax-m2.5`
+- 当前默认 embedding / rerank 模型来自 SiliconFlow
+- 不填这两个 Key，服务可以启动，但问答和向量化能力不会完整可用
+
+如果你要改成纯本地模型，需要同步调整 [bootstrap/src/main/resources/application.yaml](/Users/openingcloud/IdeaProjects/ragent/bootstrap/src/main/resources/application.yaml) 里的默认模型和启用项。
+
+## 方式一：macOS 一键启动
+
+这是仓库里最快的本地启动方式。
+
+### 1. 配置环境变量
 
 ```bash
-cd resources/docker/milvus
-docker compose -f milvus-stack-2.6.6.compose.yaml up -d
+cp .env.example .env
 ```
 
-启动内容：Milvus（19530）、RustFS（9000/9001）、etcd、Attu（8000，Milvus 可视化）
+编辑 `.env`，至少补齐：
 
-### 2. 配置后端
-
-编辑 `bootstrap/src/main/resources/application.yaml`，检查：
-
-```yaml
-spring.datasource.*        # MySQL 连接
-spring.data.redis.*        # Redis 连接
-milvus.uri                 # 向量库地址
-rustfs.*                   # 对象存储地址
-ai.providers.*.api-key     # 模型 API Key（百炼 / SiliconFlow）
-video-transcript.*         # 视频转录 API 配置（可选）
+```env
+MINIMAX_API_KEY=your-minimax-api-key
+SILICONFLOW_API_KEY=your-siliconflow-api-key
 ```
 
-初始化数据库：执行 `resources/database/schema_table.sql`
+可选项：
+
+- `OBSIDIAN_API_KEY`：启用 Obsidian MCP 时需要
+- `VIDEO_TRANSCRIPT_*`：启用视频转录时需要
+
+### 2. 启动项目
+
+```bash
+make start
+```
+
+这个命令会做几件事：
+
+- 启动 Docker 基础设施
+- 启动后端 `Spring Boot`
+- 启动前端 `Vite`
+- 自动打开浏览器
+
+### 3. 访问系统
+
+- 前端：[http://localhost:5173](http://localhost:5173)
+- 后端：[http://localhost:8080/api/ragent](http://localhost:8080/api/ragent)
+- Milvus 管理界面 Attu：[http://localhost:8000](http://localhost:8000)
+- RocketMQ Dashboard：[http://localhost:8082](http://localhost:8082)
+
+默认账号：
+
+- 用户名：`admin`
+- 密码：`admin`
+
+数据库会在容器首次启动时自动执行 [resources/database/schema_table.sql](/Users/openingcloud/IdeaProjects/ragent/resources/database/schema_table.sql) 和 [resources/database/init_data.sql](/Users/openingcloud/IdeaProjects/ragent/resources/database/init_data.sql)。
+
+### 4. 常用命令
+
+```bash
+make status
+make logs
+make stop
+make restart
+make clean
+```
+
+说明：
+
+- `make start` / `make restart` 偏向本地开发
+- `make clean` 会停止服务并清理日志，但不会删除 Docker volume
+
+## 方式二：跨平台手动启动
+
+如果你不是 macOS，或者不想使用 `make start`，按下面步骤执行。
+
+### 1. 启动基础设施
+
+```bash
+docker compose -f resources/docker/ragent-infra.compose.yaml up -d
+```
+
+这会启动：
+
+- MySQL 8
+- Redis 7
+- Milvus 2.6
+- RustFS
+- RocketMQ 5
+- Neo4j
+
+### 2. 配置环境变量
+
+```bash
+cp .env.example .env
+```
+
+然后在当前 shell 导出：
+
+```bash
+set -a
+source .env
+set +a
+```
 
 ### 3. 启动后端
 
 ```bash
-./mvnw -pl bootstrap spring-boot:run
+./mvnw -pl bootstrap spring-boot:run -Dspring-boot.run.profiles=local
 ```
+
+后端默认地址：
+
+- `http://localhost:8080/api/ragent`
 
 ### 4. 启动前端
 
@@ -179,146 +179,185 @@ npm install
 npm run dev
 ```
 
-创建 `frontend/.env.local`：
+前端开发环境默认通过 Vite 代理 `/api` 到 `http://localhost:8080`，本地开发通常不需要额外配置。
 
+如果前端和后端不在同一地址，可以在启动前设置：
+
+```bash
+VITE_API_TARGET=http://your-backend-host:8080 npm run dev
 ```
-VITE_API_BASE_URL=/api/ragent
+
+## 首次验证
+
+项目启动后，建议按这个顺序检查：
+
+1. 打开 [http://localhost:5173/login](http://localhost:5173/login)，用 `admin / admin` 登录
+2. 进入聊天页，确认可以创建会话和发送消息
+3. 进入工作区 `/workspace/knowledge`，创建一个知识库
+4. 上传一份 Markdown 或 PDF 文档
+5. 等待入库完成后回到聊天页，确认可以命中文档内容
+
+如果第 2 步失败，通常是模型 Key 没配好。
+
+如果第 4 步失败，通常先看：
+
+- 后端日志：`/tmp/ragent-backend.log`
+- Docker 容器状态：`docker ps`
+
+## 端口说明
+
+| 组件 | 端口 |
+| --- | --- |
+| 前端 Vite | `5173` |
+| 后端 Spring Boot | `8080` |
+| MySQL | `3306` |
+| Redis | `6379` |
+| Milvus | `19530` |
+| RustFS | `9000` |
+| RustFS Console | `9001` |
+| Attu | `8000` |
+| RocketMQ NameServer | `9876` |
+| RocketMQ Broker | `10911` / `10909` |
+| RocketMQ Dashboard | `8082` |
+| Neo4j Browser | `7474` |
+| Neo4j Bolt | `7687` |
+
+## 关键配置
+
+主要配置文件是 [bootstrap/src/main/resources/application.yaml](/Users/openingcloud/IdeaProjects/ragent/bootstrap/src/main/resources/application.yaml)。
+
+重点看这些配置块：
+
+- `spring.datasource`：MySQL
+- `spring.data.redis`：Redis
+- `milvus`：Milvus 连接
+- `rustfs`：对象存储
+- `rocketmq`：异步入库消息队列
+- `ai.providers`：模型服务商地址和 API Key
+- `ai.chat / ai.embedding / ai.rerank`：默认模型和候选列表
+- `rag.search`：检索策略
+- `rag.memory`：会话记忆
+- `rag.external-mcp`：外部 MCP 桥接
+
+当前默认模型配置是：
+
+- Chat：`minimax-m2.5`
+- Embedding：`qwen-emb-8b`
+- Rerank：`sf-rerank`
+
+## 生产部署建议
+
+仓库里提供了基础设施 compose，但没有把前后端打成完整生产镜像。生产环境通常按下面方式部署。
+
+### 1. 构建后端
+
+```bash
+./mvnw -pl bootstrap -am clean package -DskipTests
 ```
 
-访问地址：
+### 2. 构建前端
 
-- 前端：`http://localhost:5173`
-- 后端：`http://localhost:8080/api/ragent`
+```bash
+cd frontend
+npm install
+VITE_API_BASE_URL=/api/ragent npm run build
+```
 
-默认管理员账号：`admin / admin`
+### 3. 反向代理
 
----
+建议用 Nginx：
 
-## 测试验证
+- 静态文件指向 `frontend/dist`
+- `/api/ragent/` 代理到 Spring Boot
+- `/api/ragent/ws/hotspots` 开启 WebSocket 代理
 
-### 单元测试
+如果不走同域部署，就把 `VITE_API_BASE_URL` 在构建时改成后端完整地址。
 
-项目包含丰富的单元测试，覆盖核心业务逻辑：
+## 二次开发入口
 
-- `IntentTreeFactoryTests` — 意图树工厂测试
-- `MySQLConversationMemoryStoreTests` — MySQL 会话记忆存储测试
-- `RetrievalEngineTests` — 检索引擎测试
-- `IngestionPipelineServiceImplTests` — 入库流水线服务测试
-- `IngestionTaskServiceImplTests` — 入库任务服务测试
+第一次接手代码，建议按这个顺序看：
 
-运行测试：
+1. [frontend/src/router.tsx](/Users/openingcloud/IdeaProjects/ragent/frontend/src/router.tsx)
+2. [bootstrap/src/main/resources/application.yaml](/Users/openingcloud/IdeaProjects/ragent/bootstrap/src/main/resources/application.yaml)
+3. [bootstrap/src/main/java/com/openingcloud/ai/ragent/rag/service/impl/RAGChatServiceImpl.java](/Users/openingcloud/IdeaProjects/ragent/bootstrap/src/main/java/com/openingcloud/ai/ragent/rag/service/impl/RAGChatServiceImpl.java)
+4. [bootstrap/src/main/java/com/openingcloud/ai/ragent/rag/core/retrieve/RetrievalEngine.java](/Users/openingcloud/IdeaProjects/ragent/bootstrap/src/main/java/com/openingcloud/ai/ragent/rag/core/retrieve/RetrievalEngine.java)
+5. [bootstrap/src/main/java/com/openingcloud/ai/ragent/ingestion/](/Users/openingcloud/IdeaProjects/ragent/bootstrap/src/main/java/com/openingcloud/ai/ragent/ingestion)
+6. [infra-ai/src/main/java/com/openingcloud/ai/ragent/infra/](/Users/openingcloud/IdeaProjects/ragent/infra-ai/src/main/java/com/openingcloud/ai/ragent/infra)
+
+模块分工：
+
+- `bootstrap/rag`：问答主链路、意图、检索、记忆、MCP、Trace
+- `bootstrap/knowledge`：知识库和文档管理
+- `bootstrap/ingestion`：入库流水线和任务编排
+- `bootstrap/admin`：热点监控相关能力
+- `infra-ai`：模型选择、熔断、降级、provider 适配
+- `frontend/src/pages/workspace`：工作区页面
+
+## 测试
+
+后端测试：
+
 ```bash
 ./mvnw test
 ```
 
-### 质量测试脚本
-
-项目提供多个端到端测试脚本，位于 `scripts/` 目录：
-
-| 脚本 | 用途 |
-|------|------|
-| `chat_quality_test.sh` | 对话质量测试 |
-| `prompt_regression_matrix.sh` | 提示词与路由回归矩阵（日期/联网/数据库/KB/Obsidian） |
-| `trace_fullchain_smoke.sh` | 全链路追踪冒烟测试 |
-| `ingestion_pipeline_user_test.sh` | 入库流水线用户测试 |
-| `mcp_kb_integration_test.sh` | MCP 与知识库集成测试 |
-
----
-
-## 配置说明
-
-### 模型配置（`ai.*`）
-
-支持 Ollama / 百炼 / SiliconFlow 三类提供商，每类配置候选列表和优先级：
-
-```yaml
-ai:
-  selection:
-    failure-threshold: 3        # 失败次数阈值，超过则熔断
-    open-duration-ms: 60000     # 熔断打开时长
-  providers:
-    bailian:
-      api-key: ${BAILIAN_API_KEY}
-    siliconflow:
-      api-key: ${SILICONFLOW_API_KEY}
-```
-
-### RAG 检索调参（`rag.*`）
-
-```yaml
-rag:
-  search.channels:
-    vector-global.confidence-threshold: 0.7   # 全局向量检索触发阈值
-    intent-directed.min-intent-score: 0.6      # 意图定向最低置信度
-  memory:
-    max-history: 10                            # 最大记忆轮数
-```
-
-### 视频转录配置（`video-transcript.*`）
-
-```yaml
-video-transcript:
-  enabled: true
-  base-url: http://localhost:8000
-  auth-token: <YOUR_VIDEO_TRANSCRIPT_API_TOKEN>
-  default-note-path: 2-Resource（参考资源）/30_学习输入/视频转录
-```
-
-配置完成后，你可以直接在对话里说：
-- `把这个 B 站链接转录并写进 Obsidian`
-- `转录这个小宇宙链接，放到视频转录目录`
-
-### Agentic RAG 配置（`rag.agent.*`）
-
-```yaml
-rag:
-  agent:
-    enabled: true
-    max-loops: 3
-    max-steps-per-loop: 6
-    low-confidence-threshold: 0.55
-    confirmation-ttl-minutes: 30
-```
-
-说明：
-- 复杂请求会进入 Planner-Executor-Replan 流程；
-- 写操作默认不会直接执行，会先产生确认提案；
-- 用户可通过 `/confirm <proposalId>` 或 `/reject <proposalId>` 决定是否落盘。
-
----
-
-## SSE 事件协议（v3）
-
-`GET /rag/v3/chat` 流式返回：
-
-| 事件 | 数据 | 说明 |
-|------|------|------|
-| `meta` | `{ conversationId, taskId }` | 会话初始化 |
-| `message` | `{ type: "response"\|"think", delta }` | 流式 token |
-| `references` | `ReferenceItem[]` | 文档引用 |
-| `workflow` | `{ workflowId, changedFiles, opsCount, warnings }` | 工作流摘要 |
-| `agent_plan` | `{ loop, goal, steps[] }` | Agent 规划 |
-| `agent_step` | `{ loop, stepIndex, type, status, summary }` | Agent 执行步骤 |
-| `agent_replan` | `{ loop, reason, nextSteps[] }` | Agent 重规划 |
-| `agent_confirm_required` | `{ proposalId, toolId, parameters, targetPath, expiresAt }` | 待确认写操作 |
-| `finish` | `{ messageId, title }` | 正常结束 |
-| `cancel` | `{ messageId, title }` | 用户取消 |
-| `reject` | `{ type: "response", delta }` | 被拒绝 |
-| `done` | `[DONE]` | 流结束 |
-
-调试示例：
+前端测试：
 
 ```bash
-curl -N -G 'http://localhost:8080/api/ragent/rag/v3/chat' \
-  -H 'Accept: text/event-stream' \
-  -H 'Authorization: <YOUR_TOKEN>' \
-  --data-urlencode 'question=帮我总结一下 AQS 的核心原理'
+cd frontend
+npm test
 ```
 
----
+仓库里还有一批脚本化回归测试，位于 [scripts/](/Users/openingcloud/IdeaProjects/ragent/scripts)：
 
-## 致谢 & 基于
+- `chat_quality_test.sh`
+- `prompt_regression_matrix.sh`
+- `trace_fullchain_smoke.sh`
+- `ingestion_pipeline_user_test.sh`
+- `mcp_kb_integration_test.sh`
 
-CAgent 基于一个开源 RAG 智能体平台搭建，在其 RAG 检索、Ingestion Pipeline、多模型路由等底层能力之上，我新增了学习中心和面试题库两个模块，并将整套系统改造为服务个人知识管理的工具。
+## 常见问题
 
-原始项目遵循 Apache License 2.0，本项目同样开源，协议不变。
+### 1. 项目能启动，但聊天报错
+
+先检查：
+
+- `.env` 里的 `MINIMAX_API_KEY`
+- `.env` 里的 `SILICONFLOW_API_KEY`
+- [bootstrap/src/main/resources/application.yaml](/Users/openingcloud/IdeaProjects/ragent/bootstrap/src/main/resources/application.yaml) 里的默认模型是否和你的 provider 对得上
+
+### 2. 数据库没有初始化
+
+通常是因为 MySQL volume 已存在，`docker-entrypoint-initdb.d` 只会在首次初始化时执行。
+
+处理方式（会清空 MySQL 等容器数据）：
+
+```bash
+docker compose -f resources/docker/ragent-infra.compose.yaml down -v
+docker compose -f resources/docker/ragent-infra.compose.yaml up -d
+```
+
+### 3. 前端能打开，但接口 404
+
+本地开发确认两件事：
+
+- 后端是否启动在 `8080`
+- 前端是否通过 `npm run dev` 启动，而不是直接打开静态文件
+
+### 4. MCP / Obsidian 不可用
+
+这部分是可选能力。首次部署可以先不接。
+
+如果要启用，需要额外确认：
+
+- 本机已安装 `npx`
+- 使用 Obsidian MCP 时本机可用 `uvx`
+- `OBSIDIAN_API_KEY`、`OBSIDIAN_HOST`、`OBSIDIAN_PORT` 配置正确
+
+## 参考文档
+
+- [docs/multi-channel-retrieval.md](/Users/openingcloud/IdeaProjects/ragent/docs/multi-channel-retrieval.md)
+- [docs/highlights/01-multi-channel-retrieval.md](/Users/openingcloud/IdeaProjects/ragent/docs/highlights/01-multi-channel-retrieval.md)
+- [docs/highlights/03-model-routing-circuit-breaker.md](/Users/openingcloud/IdeaProjects/ragent/docs/highlights/03-model-routing-circuit-breaker.md)
+- [docs/highlights/06-ingestion-pipeline.md](/Users/openingcloud/IdeaProjects/ragent/docs/highlights/06-ingestion-pipeline.md)
+- [docs/highlights/10-mcp-tool-registry.md](/Users/openingcloud/IdeaProjects/ragent/docs/highlights/10-mcp-tool-registry.md)

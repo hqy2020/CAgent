@@ -95,6 +95,28 @@ describe("createStreamResponse", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it("should dispatch queue events before meta", async () => {
+    const chunks = [
+      'event:queue\ndata:{"position":2,"total":4}\n\n',
+      'event:meta\ndata:{"conversationId":"c1","taskId":"t1"}\n\n',
+      'event:done\ndata:[DONE]\n\n'
+    ];
+
+    const onQueue = vi.fn();
+    const onMeta = vi.fn();
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(buildSseResponse(chunks)));
+
+    const stream = createStreamResponse(
+      { url: "http://localhost/sse" },
+      { onQueue, onMeta }
+    );
+    await stream.start();
+
+    expect(onQueue).toHaveBeenCalledWith({ position: 2, total: 4 });
+    expect(onMeta).toHaveBeenCalledWith({ conversationId: "c1", taskId: "t1" });
+  });
+
   // ─── 深度思考模式 SSE 事件测试 ───
 
   it("should dispatch onThinking for think-type message events", async () => {

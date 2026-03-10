@@ -12,6 +12,7 @@ import type {
   FeedbackValue,
   Message,
   MessageDeltaPayload,
+  QueueStatusPayload,
   ReferenceItem,
   Session,
   WorkflowEventPayload
@@ -102,6 +103,102 @@ function computeThinkingDuration(startAt?: number | null) {
   if (!startAt) return undefined;
   const seconds = Math.round((Date.now() - startAt) / 1000);
   return Math.max(1, seconds);
+}
+
+function upsertStepTimeline(
+  timeline: AgentTimelineItem[] | undefined,
+  payload: AgentStepPayload
+): AgentTimelineItem[] {
+  const nextItem = {
+    kind: "step",
+    at: Date.now(),
+    payload
+  } satisfies AgentTimelineItem;
+  const nextTimeline = [...(timeline ?? [])];
+  const existingIndex = nextTimeline.findIndex(
+    (item) =>
+      item.kind === "step" &&
+      item.payload.loop === payload.loop &&
+      item.payload.stepIndex === payload.stepIndex
+  );
+  if (existingIndex >= 0) {
+    nextTimeline[existingIndex] = nextItem;
+    return nextTimeline;
+  }
+  nextTimeline.push(nextItem);
+  return nextTimeline;
+}
+
+function summarizeQueue(payload: QueueStatusPayload) {
+  const ahead = Math.max(0, (payload.position ?? 1) - 1);
+  return ahead > 0
+    ? `前方还有 ${ahead} 个请求，当前队列共 ${payload.total} 个。`
+    : `已进入队列，当前队列共 ${payload.total} 个。`;
+}
+
+function upsertQueueTimeline(
+  timeline: AgentTimelineItem[] | undefined,
+  payload: QueueStatusPayload
+): AgentTimelineItem[] {
+  return upsertStepTimeline(timeline, {
+    loop: 0,
+    stepIndex: 0,
+    type: "排队",
+    status: "RUNNING",
+    summary: summarizeQueue(payload)
+  });
+}
+
+function updateTimelineStepStatus(
+  timeline: AgentTimelineItem[] | undefined,
+  stepIndex: number,
+  status: string,
+  summary?: string
+): AgentTimelineItem[] | undefined {
+  if (!timeline || timeline.length === 0) return timeline;
+  return timeline.map((item) =>
+    item.kind === "step" && item.payload.loop === 0 && item.payload.stepIndex === stepIndex
+      ? {
+          ...item,
+          at: Date.now(),
+          payload: {
+            ...item.payload,
+            status,
+            summary: summary ?? item.payload.summary
+          }
+        }
+      : item
+  );
+}
+
+function finalizeLatestRunningStep(
+  timeline: AgentTimelineItem[] | undefined,
+  status: "SUCCESS" | "FAILED",
+  summary: string
+): AgentTimelineItem[] | undefined {
+  if (!timeline || timeline.length === 0) return timeline;
+  let targetIndex = -1;
+  for (let index = timeline.length - 1; index >= 0; index -= 1) {
+    const item = timeline[index];
+    if (item.kind === "step" && item.payload.status === "RUNNING") {
+      targetIndex = index;
+      break;
+    }
+  }
+  if (targetIndex < 0) return timeline;
+  return timeline.map((item, index) =>
+    index === targetIndex && item.kind === "step"
+      ? {
+          ...item,
+          at: Date.now(),
+          payload: {
+            ...item.payload,
+            status,
+            summary
+          }
+        }
+      : item
+  );
 }
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
@@ -306,6 +403,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
           currentSessionId: nextId,
           isCreatingNew: false,
           streamTaskId: payload.taskId,
+          messages: state.messages.map((msg) =>
+            msg.id === state.streamingMessageId
+              ? {
+                  ...msg,
+                  agentTimeline: updateTimelineStepStatus(
+                    msg.agentTimeline,
+                    0,
+                    "SUCCESS",
+                    "已开始处理，进入执行阶段。"
+                  )
+                }
+              : msg
+          ),
           sessions: upsertSession(state.sessions, {
             id: nextId,
             title: existing?.title || "新对话",
@@ -315,6 +425,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (get().cancelRequested) {
           stopTask(payload.taskId).catch(() => null);
         }
+      },
+      onQueue: (payload: QueueStatusPayload) => {
+        if (get().streamingMessageId !== assistantId) return;
+        if (!payload || typeof payload !== "object") return;
+        set((state) => ({
+          messages: state.messages.map((msg) =>
+            msg.id === state.streamingMessageId
+              ? {
+                  ...msg,
+                  agentTimeline: upsertQueueTimeline(msg.agentTimeline, payload)
+                }
+              : msg
+          )
+        }));
       },
       onReferences: (payload: ReferenceItem[]) => {
         if (get().streamingMessageId !== assistantId) return;
@@ -388,14 +512,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             msg.id === state.streamingMessageId
               ? {
                   ...msg,
-                  agentTimeline: [
-                    ...(msg.agentTimeline ?? []),
-                    {
-                      kind: "step",
-                      at: Date.now(),
-                      payload
-                    } satisfies AgentTimelineItem
-                  ]
+                  agentTimeline: upsertStepTimeline(msg.agentTimeline, payload)
                 }
               : msg
           )
@@ -445,6 +562,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
       },
       onReject: (payload: MessageDeltaPayload) => {
         if (!payload || typeof payload !== "object") return;
+        set((state) => ({
+          messages: state.messages.map((msg) =>
+            msg.id === state.streamingMessageId
+              ? {
+                  ...msg,
+                  agentTimeline: updateTimelineStepStatus(
+                    msg.agentTimeline,
+                    0,
+                    "FAILED",
+                    payload.delta || "排队超时，系统繁忙。"
+                  )
+                }
+              : msg
+          )
+        }));
         get().appendStreamContent(payload.delta);
       },
       onFinish: (payload: CompletionPayload) => {
@@ -476,6 +608,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     id: String(payload.messageId),
                     status: "done",
                     isThinking: false,
+                    agentTimeline: finalizeLatestRunningStep(
+                      message.agentTimeline,
+                      "SUCCESS",
+                      "当前阶段已完成。"
+                    ),
                     thinkingDuration:
                       message.thinkingDuration ?? computeThinkingDuration(state.thinkingStartAt)
                   }
@@ -490,6 +627,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     ...message,
                     status: "done",
                     isThinking: false,
+                    agentTimeline: finalizeLatestRunningStep(
+                      message.agentTimeline,
+                      "SUCCESS",
+                      "当前阶段已完成。"
+                    ),
                     thinkingDuration:
                       message.thinkingDuration ?? computeThinkingDuration(state.thinkingStartAt)
                   }
@@ -516,6 +658,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
               content: message.content + suffix,
               status: "cancelled",
               isThinking: false,
+              agentTimeline: finalizeLatestRunningStep(
+                message.agentTimeline,
+                "FAILED",
+                "请求已取消。"
+              ),
               thinkingDuration:
                 message.thinkingDuration ?? computeThinkingDuration(state.thinkingStartAt)
             };
@@ -544,6 +691,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
                   ...message,
                   status: "done",
                   isThinking: false,
+                  agentTimeline: finalizeLatestRunningStep(
+                    message.agentTimeline,
+                    "SUCCESS",
+                    "当前阶段已完成。"
+                  ),
                   thinkingDuration:
                     message.thinkingDuration ?? computeThinkingDuration(state.thinkingStartAt)
                 }
@@ -578,6 +730,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
                   ...message,
                   status: "error",
                   isThinking: false,
+                  agentTimeline: finalizeLatestRunningStep(
+                    message.agentTimeline,
+                    "FAILED",
+                    error.message || "生成失败"
+                  ),
                   thinkingDuration:
                     message.thinkingDuration ?? computeThinkingDuration(currentState.thinkingStartAt)
                 }

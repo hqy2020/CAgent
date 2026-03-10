@@ -151,14 +151,14 @@ export function WelcomeScreen() {
         >
           <span className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/70 px-3 py-1 text-xs font-medium text-[#2563EB] shadow-sm">
             <Bot className="h-3.5 w-3.5" />
-            RAG 智能问答
+            第二大脑助手
           </span>
           <h1 className="mt-4 font-display text-4xl leading-tight tracking-tight text-[#111827] sm:text-5xl md:text-6xl">
             把问题变成
             <span className="text-gradient">清晰答案</span>
           </h1>
           <p className="mt-4 text-base text-[#4B5563] sm:text-lg">
-            结构化提问、知识检索与深度思考，一次对话给出可执行方案
+            连接知识库、Obsidian 与灵感输入，把零散信息沉淀成可追问的个人系统
           </p>
         </div>
 

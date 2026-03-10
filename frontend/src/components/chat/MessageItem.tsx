@@ -15,6 +15,21 @@ interface MessageItemProps {
   isLast?: boolean;
 }
 
+function formatStepStatus(status?: string) {
+  switch ((status || "").toUpperCase()) {
+    case "RUNNING":
+      return "进行中";
+    case "SUCCESS":
+      return "已完成";
+    case "FAILED":
+      return "失败";
+    case "CONFIRM_REQUIRED":
+      return "待确认";
+    default:
+      return status || "-";
+  }
+}
+
 function buildReferenceDetailHref(reference: ReferenceItem) {
   if (reference.documentUrl) {
     return reference.documentUrl;
@@ -22,7 +37,7 @@ function buildReferenceDetailHref(reference: ReferenceItem) {
   if (!reference.knowledgeBaseId || !reference.documentId) {
     return null;
   }
-  return `/admin/knowledge/${encodeURIComponent(reference.knowledgeBaseId)}/docs/${encodeURIComponent(reference.documentId)}`;
+  return `/workspace/knowledge/${encodeURIComponent(reference.knowledgeBaseId)}/docs/${encodeURIComponent(reference.documentId)}`;
 }
 
 export const MessageItem = React.memo(function MessageItem({ message, isLast }: MessageItemProps) {
@@ -42,7 +57,8 @@ export const MessageItem = React.memo(function MessageItem({ message, isLast }: 
   const hasThinking = Boolean(message.thinking && message.thinking.trim().length > 0);
   const animatedContent = useAnimatedText(message.content, isStreamingMsg && !isThinking);
   const hasContent = animatedContent.trim().length > 0;
-  const isWaiting = isStreamingMsg && !isThinking && !hasContent;
+  const hasTimeline = Boolean(message.agentTimeline && message.agentTimeline.length > 0);
+  const isWaiting = isStreamingMsg && !isThinking && !hasContent && !hasTimeline;
   const sendMessage = useChatStore((state) => state.sendMessage);
 
   React.useEffect(() => {
@@ -133,7 +149,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isLast }: 
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#C7D2FE]">
                   <Wrench className="h-4 w-4 text-[#4338CA]" />
                 </div>
-                <span className="text-sm font-medium text-[#4338CA]">Agent 时间线</span>
+                <span className="text-sm font-medium text-[#4338CA]">处理进度</span>
                 <span className="rounded-full bg-[#C7D2FE] px-2 py-0.5 text-xs text-[#4338CA]">
                   {message.agentTimeline.length}条
                 </span>
@@ -175,11 +191,12 @@ export const MessageItem = React.memo(function MessageItem({ message, isLast }: 
                       );
                     }
                     if (item.kind === "step") {
+                      const isQueueStep = item.payload.stepIndex === 0 && item.payload.type === "排队";
                       return (
                         <li key={`step-${index}`} className="rounded bg-white/70 px-2 py-1">
                           <p className="font-medium">
-                            步骤 {item.payload.stepIndex}（{item.payload.type}）
-                            <span className="ml-1">[{item.payload.status}]</span>
+                            {isQueueStep ? item.payload.type : `步骤 ${item.payload.stepIndex}（${item.payload.type}）`}
+                            <span className="ml-1">[{formatStepStatus(item.payload.status)}]</span>
                           </p>
                           {"summary" in item.payload && item.payload.summary ? (
                             <p className="mt-1">{item.payload.summary}</p>

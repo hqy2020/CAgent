@@ -23,7 +23,7 @@ function buildReferenceDetailHref(reference: ReferenceItem) {
   if (!reference.knowledgeBaseId || !reference.documentId) {
     return null;
   }
-  return `/admin/knowledge/${encodeURIComponent(reference.knowledgeBaseId)}/docs/${encodeURIComponent(reference.documentId)}`;
+  return `/workspace/knowledge/${encodeURIComponent(reference.knowledgeBaseId)}/docs/${encodeURIComponent(reference.documentId)}`;
 }
 
 export function ReferenceDetailDialog({

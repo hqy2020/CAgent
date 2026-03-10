@@ -136,7 +136,7 @@ export async function getHotspotReport(params: {
   analyze?: boolean;
 }): Promise<HotspotReport> {
   const { query, sources, limit, analyze } = params;
-  return api.get<HotspotReport, HotspotReport>("/admin/hotspots/report", {
+  return api.get<HotspotReport, HotspotReport>("/hotspots/report", {
     params: {
       query,
       sources: sources?.join(","),
@@ -147,27 +147,27 @@ export async function getHotspotReport(params: {
 }
 
 export async function listHotspotMonitors(pageNo = 1, pageSize = 20): Promise<PageResult<HotspotMonitor>> {
-  return api.get<PageResult<HotspotMonitor>, PageResult<HotspotMonitor>>("/admin/hotspots/monitors", {
+  return api.get<PageResult<HotspotMonitor>, PageResult<HotspotMonitor>>("/hotspots/monitors", {
     params: { pageNo, pageSize }
   });
 }
 
 export async function createHotspotMonitor(payload: HotspotMonitorPayload): Promise<string> {
-  return api.post<string, string, HotspotMonitorPayload>("/admin/hotspots/monitors", payload);
+  return api.post<string, string, HotspotMonitorPayload>("/hotspots/monitors", payload);
 }
 
 export async function updateHotspotMonitor(id: string, payload: HotspotMonitorPayload): Promise<void> {
-  return api.put<void, void, HotspotMonitorPayload>(`/admin/hotspots/monitors/${id}`, payload);
+  return api.put<void, void, HotspotMonitorPayload>(`/hotspots/monitors/${id}`, payload);
 }
 
 export async function toggleHotspotMonitor(id: string, enabled: boolean): Promise<void> {
-  return api.post<void, void>(`/admin/hotspots/monitors/${id}/toggle`, undefined, {
+  return api.post<void, void>(`/hotspots/monitors/${id}/toggle`, undefined, {
     params: { enabled }
   });
 }
 
 export async function scanHotspotMonitor(id: string): Promise<HotspotMonitorRun> {
-  return api.post<HotspotMonitorRun, HotspotMonitorRun>(`/admin/hotspots/monitors/${id}/scan`);
+  return api.post<HotspotMonitorRun, HotspotMonitorRun>(`/hotspots/monitors/${id}/scan`);
 }
 
 export async function listHotspotEvents(params?: {
@@ -175,7 +175,7 @@ export async function listHotspotEvents(params?: {
   pageNo?: number;
   pageSize?: number;
 }): Promise<PageResult<HotspotMonitorEvent>> {
-  return api.get<PageResult<HotspotMonitorEvent>, PageResult<HotspotMonitorEvent>>("/admin/hotspots/events", {
+  return api.get<PageResult<HotspotMonitorEvent>, PageResult<HotspotMonitorEvent>>("/hotspots/events", {
     params
   });
 }
@@ -185,7 +185,7 @@ export async function listHotspotRuns(params?: {
   pageNo?: number;
   pageSize?: number;
 }): Promise<PageResult<HotspotMonitorRun>> {
-  return api.get<PageResult<HotspotMonitorRun>, PageResult<HotspotMonitorRun>>("/admin/hotspots/runs", {
+  return api.get<PageResult<HotspotMonitorRun>, PageResult<HotspotMonitorRun>>("/hotspots/runs", {
     params
   });
 }

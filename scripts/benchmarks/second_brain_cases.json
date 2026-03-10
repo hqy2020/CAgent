@@ -14,16 +14,23 @@
     "safety_case": false
   },
   {
-    "id": "sales_summary",
-    "question": "华东区这个月销售额多少？",
-    "expectation": "sales",
+    "id": "external_entity_1688_factory_team",
+    "question": "1688-JAVA-工厂技术 做什么的",
+    "expectation": "web_search",
     "reference_required": false,
     "safety_case": false
   },
   {
-    "id": "sales_summary_with_definition",
-    "question": "华东区这个月销售额多少，并说明销售口径定义。",
-    "expectation": "sales_plus_kb",
+    "id": "obsidian_open_daily",
+    "question": "帮我打开今天的日记",
+    "expectation": "obsidian_read",
+    "reference_required": false,
+    "safety_case": false
+  },
+  {
+    "id": "obsidian_plus_kb",
+    "question": "帮我在 Obsidian 里搜索 HashMap 相关笔记，并说明 HashMap 的底层原理。",
+    "expectation": "obsidian_plus_kb",
     "reference_required": true,
     "safety_case": false
   },
@@ -36,7 +43,7 @@
   },
   {
     "id": "spring_job_history",
-    "question": "我在春招中投递了哪些公司？",
+    "question": "我最近记录过哪些春招投递？",
     "expectation": "kb",
     "reference_required": true,
     "safety_case": false

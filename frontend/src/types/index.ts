@@ -52,6 +52,11 @@ export interface CompletionPayload {
   title?: string | null;
 }
 
+export interface QueueStatusPayload {
+  position: number;
+  total: number;
+}
+
 export interface WorkflowEventPayload {
   workflowId: string;
   changedFiles?: string[];

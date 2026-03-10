@@ -3,22 +3,12 @@ import { Navigate, createBrowserRouter } from "react-router-dom";
 import { LoginPage } from "@/pages/LoginPage";
 import { ChatPage } from "@/pages/ChatPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
-import { AdminLayout } from "@/pages/admin/AdminLayout";
-import { DashboardPage } from "@/pages/admin/dashboard/DashboardPage";
-import { HotspotRadarPage } from "@/pages/admin/hotspots/HotspotRadarPage";
-import { KnowledgeListPage } from "@/pages/admin/knowledge/KnowledgeListPage";
-import { KnowledgeDocumentsPage } from "@/pages/admin/knowledge/KnowledgeDocumentsPage";
-import { KnowledgeChunksPage } from "@/pages/admin/knowledge/KnowledgeChunksPage";
-import { IntentTreePage } from "@/pages/admin/intent-tree/IntentTreePage";
-import { IntentListPage } from "@/pages/admin/intent-tree/IntentListPage";
-import { IntentEditPage } from "@/pages/admin/intent-tree/IntentEditPage";
-import { IngestionPage } from "@/pages/admin/ingestion/IngestionPage";
-import { RagTracePage } from "@/pages/admin/traces/RagTracePage";
-import { RagTraceDetailPage } from "@/pages/admin/traces/RagTraceDetailPage";
-import { SystemSettingsPage } from "@/pages/admin/settings/SystemSettingsPage";
-import { SampleQuestionPage } from "@/pages/admin/sample-questions/SampleQuestionPage";
-import { UserListPage } from "@/pages/admin/users/UserListPage";
-import { ModelManagementPage } from "@/pages/admin/models/ModelManagementPage";
+import { HotspotRadarPage } from "@/pages/workspace/hotspots/HotspotRadarPage";
+import { KnowledgeListPage } from "@/pages/workspace/knowledge/KnowledgeListPage";
+import { KnowledgeDocumentsPage } from "@/pages/workspace/knowledge/KnowledgeDocumentsPage";
+import { KnowledgeChunksPage } from "@/pages/workspace/knowledge/KnowledgeChunksPage";
+import { IngestionPage } from "@/pages/workspace/ingestion/IngestionPage";
+import { WorkspaceLayout } from "@/pages/workspace/WorkspaceLayout";
 import { useAuthStore } from "@/stores/authStore";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -26,21 +16,6 @@ function RequireAuth({ children }: { children: JSX.Element }) {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
-  return children;
-}
-
-function RequireAdmin({ children }: { children: JSX.Element }) {
-  const user = useAuthStore((state) => state.user);
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (user?.role !== "admin") {
-    return <Navigate to="/chat" replace />;
-  }
-
   return children;
 }
 
@@ -87,20 +62,16 @@ export const router = createBrowserRouter([
     )
   },
   {
-    path: "/admin",
+    path: "/workspace",
     element: (
-      <RequireAdmin>
-        <AdminLayout />
-      </RequireAdmin>
+      <RequireAuth>
+        <WorkspaceLayout />
+      </RequireAuth>
     ),
     children: [
       {
         index: true,
-        element: <Navigate to="/admin/dashboard" replace />
-      },
-      {
-        path: "dashboard",
-        element: <DashboardPage />
+        element: <Navigate to="/workspace/knowledge" replace />
       },
       {
         path: "hotspots",
@@ -119,44 +90,8 @@ export const router = createBrowserRouter([
         element: <KnowledgeChunksPage />
       },
       {
-        path: "intent-tree",
-        element: <IntentTreePage />
-      },
-      {
-        path: "intent-list",
-        element: <IntentListPage />
-      },
-      {
-        path: "intent-list/:id/edit",
-        element: <IntentEditPage />
-      },
-      {
         path: "ingestion",
         element: <IngestionPage />
-      },
-      {
-        path: "traces",
-        element: <RagTracePage />
-      },
-      {
-        path: "traces/:traceId",
-        element: <RagTraceDetailPage />
-      },
-      {
-        path: "settings",
-        element: <SystemSettingsPage />
-      },
-      {
-        path: "models",
-        element: <ModelManagementPage />
-      },
-      {
-        path: "sample-questions",
-        element: <SampleQuestionPage />
-      },
-      {
-        path: "users",
-        element: <UserListPage />
       },
     ]
   },

@@ -129,6 +129,9 @@ rag:
       intent-directed:
         min-intent-score: 0.4
         top-k-multiplier: 2
+    confidence-gate:
+      enabled: true
+      kb-chunk-confidence-threshold: 0.45
     post-processor:
       rrf-fusion:
         enabled: true
@@ -137,6 +140,7 @@ rag:
         enabled: true
         score-threshold: 0.3
         min-content-length: 10
+        keep-best-when-all-filtered: false
 
   hotspot:
     enabled: true
@@ -164,6 +168,8 @@ rag:
       - reddit
 
   intent:
+    low-confidence-threshold: 0.50
+    low-confidence-fallback-enabled: true
     bootstrap:
       enabled: true
       strategy: from-existing-kb

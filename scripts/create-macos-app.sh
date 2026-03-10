@@ -204,7 +204,7 @@ cat > "$APP_PATH/Contents/Info.plist" << 'PLIST_EOF'
     <key>CFBundleDisplayName</key>
     <string>Ragent</string>
     <key>CFBundleIdentifier</key>
-    <string>com.nageoffer.ragent.launcher</string>
+    <string>com.openingcloud.ragent.launcher</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
