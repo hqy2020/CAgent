@@ -15,30 +15,26 @@
  * limitations under the License.
  */
 
-package com.openingcloud.ai.ragent.rag.service;
+package com.openingcloud.ai.ragent.admin.controller.vo;
 
-import com.openingcloud.ai.ragent.rag.controller.request.MessageFeedbackRequest;
-import com.openingcloud.ai.ragent.rag.service.bo.MessageFeedbackDetailBO;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.util.List;
-import java.util.Map;
 
-public interface MessageFeedbackService {
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class DashboardTrendsVO {
 
-    /**
-     * 提交会话消息反馈
-     *
-     * @param messageId 消息ID
-     * @param request   反馈内容
-     */
-    void submitFeedback(String messageId, MessageFeedbackRequest request);
+    private String metric;
 
-    /**
-     * 查询用户在一批消息上的反馈详情
-     *
-     * @param userId     用户ID
-     * @param messageIds 消息ID列表
-     * @return messageId -> feedback
-     */
-    Map<Long, MessageFeedbackDetailBO> getUserFeedbacks(String userId, List<Long> messageIds);
+    private String window;
+
+    private String granularity;
+
+    private List<DashboardTrendSeriesVO> series;
 }

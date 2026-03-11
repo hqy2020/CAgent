@@ -9,8 +9,8 @@ import type {
   AgentStepPayload,
   AgentTimelineItem,
   CompletionPayload,
-  FeedbackValue,
   Message,
+  MessageFeedbackSubmission,
   MessageDeltaPayload,
   QueueStatusPayload,
   ReferenceItem,
@@ -56,10 +56,10 @@ interface ChatState {
   cancelGeneration: () => void;
   appendStreamContent: (delta: string) => void;
   appendThinkingContent: (delta: string) => void;
-  submitFeedback: (messageId: string, feedback: FeedbackValue) => Promise<void>;
+  submitFeedback: (messageId: string, feedback: MessageFeedbackSubmission) => Promise<void>;
 }
 
-function mapVoteToFeedback(vote?: number | null): FeedbackValue {
+function mapVoteToFeedback(vote?: number | null): Message["feedback"] {
   if (vote === 1) return "like";
   if (vote === -1) return "dislike";
   return null;
@@ -80,6 +80,8 @@ function mapConversationMessages(
     content: item.content,
     createdAt: item.createTime,
     feedback: mapVoteToFeedback(item.vote),
+    feedbackReason: item.feedbackReason ?? null,
+    feedbackComment: item.feedbackComment ?? null,
     status: "done"
   }));
 }
@@ -864,24 +866,40 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
   },
   submitFeedback: async (messageId, feedback) => {
-    const vote = feedback === "like" ? 1 : feedback === "dislike" ? -1 : null;
-    const prev = get().messages.find((message) => message.id === messageId)?.feedback ?? null;
+    const vote = feedback.value === "like" ? 1 : -1;
+    const prevMessage = get().messages.find((message) => message.id === messageId) ?? null;
+    const nextReason = vote === -1 ? feedback.reason?.trim() || null : null;
+    const nextComment = vote === -1 ? feedback.comment?.trim() || null : null;
     set((state) => ({
       messages: state.messages.map((message) =>
-        message.id === messageId ? { ...message, feedback } : message
+        message.id === messageId
+          ? {
+              ...message,
+              feedback: feedback.value,
+              feedbackReason: nextReason,
+              feedbackComment: nextComment
+            }
+          : message
       )
     }));
-    if (vote === null) {
-      toast.success("取消成功");
-      return;
-    }
     try {
-      await submitFeedback(messageId, vote);
-      toast.success(feedback === "like" ? "点赞成功" : "点踩成功");
+      await submitFeedback(messageId, {
+        vote,
+        reason: nextReason ?? undefined,
+        comment: nextComment ?? undefined
+      });
+      toast.success(feedback.value === "like" ? "点赞成功" : "反馈已提交");
     } catch (error) {
       set((state) => ({
         messages: state.messages.map((message) =>
-          message.id === messageId ? { ...message, feedback: prev } : message
+          message.id === messageId
+            ? {
+                ...message,
+                feedback: prevMessage?.feedback ?? null,
+                feedbackReason: prevMessage?.feedbackReason ?? null,
+                feedbackComment: prevMessage?.feedbackComment ?? null
+              }
+            : message
         )
       }));
       toast.error((error as Error).message || "反馈保存失败");

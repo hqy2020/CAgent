@@ -7,6 +7,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Settings,
   Search,
   Trash2
 } from "lucide-react";
@@ -220,17 +221,31 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                   <span className="block text-xs text-[#94A3B8]">从空白开始</span>
                 </span>
               </button>
-              <button
-                type="button"
-                className="mt-2 inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/70 px-3 py-1.5 text-xs font-semibold text-[#1D4ED8] transition-colors hover:bg-white"
-                onClick={() => {
-                  navigate("/workspace/knowledge");
-                  onClose();
-                }}
-              >
-                <Bot className="h-3.5 w-3.5" />
-                知识空间
-              </button>
+              {user?.role === "admin" ? (
+                <button
+                  type="button"
+                  className="mt-2 inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/70 px-3 py-1.5 text-xs font-semibold text-[#1D4ED8] transition-colors hover:bg-white"
+                  onClick={() => {
+                    navigate("/admin/dashboard");
+                    onClose();
+                  }}
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                  管理后台
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="mt-2 inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/70 px-3 py-1.5 text-xs font-semibold text-[#1D4ED8] transition-colors hover:bg-white"
+                  onClick={() => {
+                    navigate("/workspace/knowledge");
+                    onClose();
+                  }}
+                >
+                  <Bot className="h-3.5 w-3.5" />
+                  知识空间
+                </button>
+              )}
             </div>
           </div>
           <div className="rounded-2xl border border-[#E6EEF6] bg-white p-3 shadow-[0_12px_26px_rgba(15,23,42,0.06)]">

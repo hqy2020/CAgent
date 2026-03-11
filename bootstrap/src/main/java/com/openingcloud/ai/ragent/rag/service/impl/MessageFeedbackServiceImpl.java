@@ -24,11 +24,13 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.openingcloud.ai.ragent.rag.controller.request.MessageFeedbackRequest;
 import com.openingcloud.ai.ragent.rag.dao.entity.ConversationMessageDO;
 import com.openingcloud.ai.ragent.rag.dao.entity.MessageFeedbackDO;
-import com.openingcloud.ai.ragent.rag.dao.mapper.MessageFeedbackMapper;
 import com.openingcloud.ai.ragent.rag.dao.mapper.ConversationMessageMapper;
+import com.openingcloud.ai.ragent.rag.dao.mapper.MessageFeedbackMapper;
 import com.openingcloud.ai.ragent.framework.context.UserContext;
 import com.openingcloud.ai.ragent.framework.exception.ClientException;
+import com.openingcloud.ai.ragent.rag.enums.MessageFeedbackReason;
 import com.openingcloud.ai.ragent.rag.service.MessageFeedbackService;
+import com.openingcloud.ai.ragent.rag.service.bo.MessageFeedbackDetailBO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -54,6 +56,8 @@ public class MessageFeedbackServiceImpl implements MessageFeedbackService {
         Integer vote = request.getVote();
         Assert.notNull(vote, () -> new ClientException("反馈值不能为空"));
         Assert.isTrue(vote == 1 || vote == -1, () -> new ClientException("反馈值必须为 1 或 -1"));
+        String reason = normalizeReason(vote, request.getReason());
+        String comment = normalizeComment(vote, request.getComment());
 
         ConversationMessageDO message = loadAssistantMessage(messageId, userId);
 
@@ -70,21 +74,21 @@ public class MessageFeedbackServiceImpl implements MessageFeedbackService {
                     .conversationId(message.getConversationId())
                     .userId(userId)
                     .vote(vote)
-                    .reason(request.getReason())
-                    .comment(request.getComment())
+                    .reason(reason)
+                    .comment(comment)
                     .build();
             feedbackMapper.insert(feedback);
             return;
         }
 
         existing.setVote(vote);
-        existing.setReason(request.getReason());
-        existing.setComment(request.getComment());
+        existing.setReason(reason);
+        existing.setComment(comment);
         feedbackMapper.updateById(existing);
     }
 
     @Override
-    public Map<Long, Integer> getUserVotes(String userId, List<Long> messageIds) {
+    public Map<Long, MessageFeedbackDetailBO> getUserFeedbacks(String userId, List<Long> messageIds) {
         if (StrUtil.isBlank(userId) || CollUtil.isEmpty(messageIds)) {
             return Collections.emptyMap();
         }
@@ -100,9 +104,31 @@ public class MessageFeedbackServiceImpl implements MessageFeedbackService {
         return records.stream()
                 .collect(Collectors.toMap(
                         MessageFeedbackDO::getMessageId,
-                        MessageFeedbackDO::getVote,
+                        record -> MessageFeedbackDetailBO.builder()
+                                .vote(record.getVote())
+                                .reason(record.getReason())
+                                .comment(record.getComment())
+                                .build(),
                         (first, second) -> first
                 ));
+    }
+
+    private String normalizeReason(Integer vote, String reason) {
+        if (vote != null && vote == 1) {
+            return null;
+        }
+        String normalizedReason = StrUtil.emptyToNull(StrUtil.trim(reason));
+        Assert.notBlank(normalizedReason, () -> new ClientException("请选择不满意原因"));
+        String canonicalReason = MessageFeedbackReason.normalize(normalizedReason);
+        Assert.notBlank(canonicalReason, () -> new ClientException("不支持的反馈原因"));
+        return canonicalReason;
+    }
+
+    private String normalizeComment(Integer vote, String comment) {
+        if (vote != null && vote == 1) {
+            return null;
+        }
+        return StrUtil.emptyToNull(StrUtil.trim(comment));
     }
 
     private ConversationMessageDO loadAssistantMessage(String messageId, String userId) {

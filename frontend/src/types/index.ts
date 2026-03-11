@@ -2,6 +2,23 @@ export type Role = "user" | "assistant";
 
 export type FeedbackValue = "like" | "dislike" | null;
 
+export const MESSAGE_FEEDBACK_REASONS = [
+  "路由判别错误",
+  "检索材料不对",
+  "应该联网搜索但没搜",
+  "结论过于武断",
+  "回答与问题无关",
+  "其他"
+] as const;
+
+export type MessageFeedbackReason = (typeof MESSAGE_FEEDBACK_REASONS)[number];
+
+export interface MessageFeedbackSubmission {
+  value: Exclude<FeedbackValue, null>;
+  reason?: string | null;
+  comment?: string | null;
+}
+
 export type MessageStatus = "streaming" | "done" | "cancelled" | "error";
 
 export interface User {
@@ -33,6 +50,8 @@ export interface Message {
   isThinking?: boolean;
   createdAt?: string;
   feedback?: FeedbackValue;
+  feedbackReason?: string | null;
+  feedbackComment?: string | null;
   status?: MessageStatus;
   references?: ReferenceItem[];
 }

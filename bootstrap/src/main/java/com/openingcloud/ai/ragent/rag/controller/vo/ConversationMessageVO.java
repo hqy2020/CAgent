@@ -59,6 +59,16 @@ public class ConversationMessageVO {
     private Integer vote;
 
     /**
+     * 差评原因
+     */
+    private String feedbackReason;
+
+    /**
+     * 补充说明
+     */
+    private String feedbackComment;
+
+    /**
      * 创建时间
      */
     private Date createTime;

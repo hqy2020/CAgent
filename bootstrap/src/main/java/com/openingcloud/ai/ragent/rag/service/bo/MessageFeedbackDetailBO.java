@@ -15,30 +15,34 @@
  * limitations under the License.
  */
 
-package com.openingcloud.ai.ragent.rag.service;
+package com.openingcloud.ai.ragent.rag.service.bo;
 
-import com.openingcloud.ai.ragent.rag.controller.request.MessageFeedbackRequest;
-import com.openingcloud.ai.ragent.rag.service.bo.MessageFeedbackDetailBO;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-import java.util.List;
-import java.util.Map;
-
-public interface MessageFeedbackService {
-
-    /**
-     * 提交会话消息反馈
-     *
-     * @param messageId 消息ID
-     * @param request   反馈内容
-     */
-    void submitFeedback(String messageId, MessageFeedbackRequest request);
+/**
+ * 单条消息反馈详情
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class MessageFeedbackDetailBO {
 
     /**
-     * 查询用户在一批消息上的反馈详情
-     *
-     * @param userId     用户ID
-     * @param messageIds 消息ID列表
-     * @return messageId -> feedback
+     * 反馈值：1=点赞，-1=点踩
      */
-    Map<Long, MessageFeedbackDetailBO> getUserFeedbacks(String userId, List<Long> messageIds);
+    private Integer vote;
+
+    /**
+     * 差评原因
+     */
+    private String reason;
+
+    /**
+     * 补充说明
+     */
+    private String comment;
 }

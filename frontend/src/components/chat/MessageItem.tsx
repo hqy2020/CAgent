@@ -7,6 +7,7 @@ import { ReferenceDetailDialog } from "@/components/chat/ReferenceDetailDialog";
 import { ThinkingIndicator } from "@/components/chat/ThinkingIndicator";
 import { useAnimatedText } from "@/hooks/useAnimatedText";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores/authStore";
 import { useChatStore } from "@/stores/chatStore";
 import type { Message, ReferenceItem } from "@/types";
 
@@ -30,14 +31,15 @@ function formatStepStatus(status?: string) {
   }
 }
 
-function buildReferenceDetailHref(reference: ReferenceItem) {
+function buildReferenceDetailHref(reference: ReferenceItem, isAdmin: boolean) {
   if (reference.documentUrl) {
     return reference.documentUrl;
   }
   if (!reference.knowledgeBaseId || !reference.documentId) {
     return null;
   }
-  return `/workspace/knowledge/${encodeURIComponent(reference.knowledgeBaseId)}/docs/${encodeURIComponent(reference.documentId)}`;
+  const basePath = isAdmin ? "/admin/knowledge" : "/workspace/knowledge";
+  return `${basePath}/${encodeURIComponent(reference.knowledgeBaseId)}/docs/${encodeURIComponent(reference.documentId)}`;
 }
 
 export const MessageItem = React.memo(function MessageItem({ message, isLast }: MessageItemProps) {
@@ -60,6 +62,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isLast }: 
   const hasTimeline = Boolean(message.agentTimeline && message.agentTimeline.length > 0);
   const isWaiting = isStreamingMsg && !isThinking && !hasContent && !hasTimeline;
   const sendMessage = useChatStore((state) => state.sendMessage);
+  const isAdmin = useAuthStore((state) => state.user?.role === "admin");
 
   React.useEffect(() => {
     setExpandedPreviewKeys(new Set());
@@ -330,7 +333,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isLast }: 
                       const previewText = ref.textPreview?.trim() || "";
                       const canTogglePreview = previewText.length > PREVIEW_TOGGLE_THRESHOLD;
                       const previewExpanded = expandedPreviewKeys.has(previewKey);
-                      const detailHref = buildReferenceDetailHref(ref);
+                      const detailHref = buildReferenceDetailHref(ref, isAdmin);
 
                       return (
                         <li
@@ -405,6 +408,8 @@ export const MessageItem = React.memo(function MessageItem({ message, isLast }: 
             <FeedbackButtons
               messageId={message.id}
               feedback={message.feedback ?? null}
+              feedbackReason={message.feedbackReason ?? null}
+              feedbackComment={message.feedbackComment ?? null}
               content={message.content}
               alwaysVisible={Boolean(isLast)}
             />

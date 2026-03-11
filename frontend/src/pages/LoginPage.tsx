@@ -27,7 +27,7 @@ export function LoginPage() {
       if (!remember) {
         // 如需仅在内存中保存登录态，可在此扩展。
       }
-      navigate("/chat");
+      navigate(useAuthStore.getState().user?.role === "admin" ? "/admin/dashboard" : "/chat");
     } catch (err) {
       setError((err as Error).message || "登录失败，请稍后重试。");
     }

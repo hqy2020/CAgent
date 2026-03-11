@@ -12,6 +12,8 @@ export interface ConversationMessageVO {
   role: string;
   content: string;
   vote: number | null;
+  feedbackReason?: string | null;
+  feedbackComment?: string | null;
   createTime?: string;
 }
 

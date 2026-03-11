@@ -2,6 +2,7 @@ import { BookOpen, Menu } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
+import { useAuthStore } from "@/stores/authStore";
 import { useChatStore } from "@/stores/chatStore";
 
 interface HeaderProps {
@@ -11,6 +12,7 @@ interface HeaderProps {
 export function Header({ onToggleSidebar }: HeaderProps) {
   const navigate = useNavigate();
   const { currentSessionId, sessions } = useChatStore();
+  const isAdmin = useAuthStore((state) => state.user?.role === "admin");
   const currentSession = sessions.find((session) => session.id === currentSessionId);
 
   return (
@@ -31,9 +33,9 @@ export function Header({ onToggleSidebar }: HeaderProps) {
             <p className="text-xs text-gray-500">与你的第二大脑持续对话</p>
           </div>
         </div>
-        <Button variant="outline" onClick={() => navigate("/workspace/knowledge")}>
+        <Button variant="outline" onClick={() => navigate(isAdmin ? "/admin/knowledge" : "/workspace/knowledge")}>
           <BookOpen className="mr-2 h-4 w-4" />
-          打开知识库
+          {isAdmin ? "管理后台" : "打开知识库"}
         </Button>
       </div>
     </header>

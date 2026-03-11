@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useAuthStore } from "@/stores/authStore";
 import type { ReferenceItem } from "@/types";
 
 interface ReferenceDetailDialogProps {
@@ -16,14 +17,15 @@ interface ReferenceDetailDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-function buildReferenceDetailHref(reference: ReferenceItem) {
+function buildReferenceDetailHref(reference: ReferenceItem, isAdmin: boolean) {
   if (reference.documentUrl) {
     return reference.documentUrl;
   }
   if (!reference.knowledgeBaseId || !reference.documentId) {
     return null;
   }
-  return `/workspace/knowledge/${encodeURIComponent(reference.knowledgeBaseId)}/docs/${encodeURIComponent(reference.documentId)}`;
+  const basePath = isAdmin ? "/admin/knowledge" : "/workspace/knowledge";
+  return `${basePath}/${encodeURIComponent(reference.knowledgeBaseId)}/docs/${encodeURIComponent(reference.documentId)}`;
 }
 
 export function ReferenceDetailDialog({
@@ -31,10 +33,12 @@ export function ReferenceDetailDialog({
   open,
   onOpenChange,
 }: ReferenceDetailDialogProps) {
+  const isAdmin = useAuthStore((state) => state.user?.role === "admin");
+
   if (!reference) return null;
 
   const chunks = reference.chunks ?? [];
-  const detailHref = buildReferenceDetailHref(reference);
+  const detailHref = buildReferenceDetailHref(reference, isAdmin);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

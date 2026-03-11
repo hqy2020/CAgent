@@ -33,6 +33,7 @@ import com.openingcloud.ai.ragent.rag.service.MessageFeedbackService;
 import com.openingcloud.ai.ragent.rag.service.ConversationMessageService;
 import com.openingcloud.ai.ragent.rag.service.bo.ConversationMessageBO;
 import com.openingcloud.ai.ragent.rag.service.bo.ConversationSummaryBO;
+import com.openingcloud.ai.ragent.rag.service.bo.MessageFeedbackDetailBO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -99,16 +100,20 @@ public class ConversationMessageServiceImpl implements ConversationMessageServic
                 .filter(record -> "assistant".equalsIgnoreCase(record.getRole()))
                 .map(ConversationMessageDO::getId)
                 .toList();
-        Map<Long, Integer> votesByMessageId = feedbackService.getUserVotes(userId, assistantMessageIds);
+        Map<Long, MessageFeedbackDetailBO> feedbackByMessageId =
+                feedbackService.getUserFeedbacks(userId, assistantMessageIds);
 
         List<ConversationMessageVO> result = new ArrayList<>();
         for (ConversationMessageDO record : records) {
+            MessageFeedbackDetailBO feedback = feedbackByMessageId.get(record.getId());
             ConversationMessageVO vo = ConversationMessageVO.builder()
                     .id(String.valueOf(record.getId()))
                     .conversationId(record.getConversationId())
                     .role(record.getRole())
                     .content(record.getContent())
-                    .vote(votesByMessageId.get(record.getId()))
+                    .vote(feedback == null ? null : feedback.getVote())
+                    .feedbackReason(feedback == null ? null : feedback.getReason())
+                    .feedbackComment(feedback == null ? null : feedback.getComment())
                     .createTime(record.getCreateTime())
                     .build();
             result.add(vo);
