@@ -39,7 +39,7 @@ FRONTEND_PORT := 5173
 CHAT_URL      := http://localhost:$(FRONTEND_PORT)/chat
 
 # ── Maven ────────────────────────────────────────────
-MAVEN_CMD := ./mvnw -pl bootstrap spring-boot:run -Dspring-boot.run.profiles=local
+MAVEN_CMD := ./mvnw compile -pl bootstrap -am -q && ./mvnw -pl bootstrap spring-boot:run -Dspring-boot.run.profiles=local
 
 # ── 需要等待健康检查的关键容器 ────────────────────────
 HEALTH_CONTAINERS := ragent-mysql ragent-redis ragent-milvus ragent-rocketmq-broker
@@ -216,7 +216,7 @@ frontend:
 			printf "$(CYAN)[FRONTEND]$(NC) Installing npm dependencies...\n"; \
 			cd $(FRONTEND_DIR) && npm install > /tmp/ragent-frontend-install.log 2>&1; \
 		fi; \
-		cd $(FRONTEND_DIR) && nohup env VITE_API_TARGET="http://$(shell ipconfig getifaddr en0):$(BACKEND_PORT)" npm run dev -- --host 0.0.0.0 --port $(FRONTEND_PORT) > $(FRONTEND_LOG) 2>&1 & \
+		cd $(FRONTEND_DIR) && nohup env VITE_API_TARGET="$${VITE_API_TARGET:-http://127.0.0.1:$(BACKEND_PORT)}" npm run dev -- --host 0.0.0.0 --port $(FRONTEND_PORT) > $(FRONTEND_LOG) 2>&1 & \
 		printf "$(CYAN)[FRONTEND]$(NC) Waiting for port $(FRONTEND_PORT)...\n"; \
 		source $(LIB_DIR)/ragent-common.sh && wait_port $(FRONTEND_PORT) 60; \
 		printf "$(GREEN)[FRONTEND]$(NC) Started on port $(FRONTEND_PORT)\n"; \

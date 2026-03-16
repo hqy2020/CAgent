@@ -22,7 +22,10 @@ import cn.hutool.core.util.StrUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openingcloud.ai.ragent.framework.trace.RagTraceNode;
+import com.openingcloud.ai.ragent.infra.chat.ChatResultWithMetadata;
 import com.openingcloud.ai.ragent.infra.chat.LLMService;
+import com.openingcloud.ai.ragent.infra.chat.ModelAwareLLMService;
+import com.openingcloud.ai.ragent.infra.chat.ModelInvocationMetadata;
 import com.openingcloud.ai.ragent.infra.chat.StreamCallback;
 import com.openingcloud.ai.ragent.infra.convention.ChatMessage;
 import com.openingcloud.ai.ragent.infra.convention.ChatRequest;
@@ -49,8 +52,10 @@ import com.openingcloud.ai.ragent.rag.core.mcp.MCPToolRegistry;
 import com.openingcloud.ai.ragent.rag.core.retrieve.RetrievalEngine;
 import com.openingcloud.ai.ragent.rag.core.rewrite.QueryRewriteService;
 import com.openingcloud.ai.ragent.rag.core.rewrite.RewriteResult;
+import com.openingcloud.ai.ragent.rag.core.web.WebSearchIntentRules;
 import com.openingcloud.ai.ragent.rag.exception.TaskCancelledException;
 import com.openingcloud.ai.ragent.rag.dto.AgentConfirmPayload;
+import com.openingcloud.ai.ragent.rag.dto.AgentModelPayload;
 import com.openingcloud.ai.ragent.rag.dto.AgentObservePayload;
 import com.openingcloud.ai.ragent.rag.dto.AgentPlanPayload;
 import com.openingcloud.ai.ragent.rag.dto.AgentReplanPayload;
@@ -88,6 +93,22 @@ import static com.openingcloud.ai.ragent.rag.constant.RAGConstant.DEFAULT_TOP_K;
 public class AgentOrchestrator {
 
     private static final double MCP_EXECUTION_MIN_INTENT_SCORE = 0.60D;
+    private static final Pattern NOTE_DOMAIN_HINT = Pattern.compile(
+            "(笔记|obsidian|日记|note|markdown|(?<![a-zA-Z])md(?![a-zA-Z]))",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern NOTE_READ_HINT = Pattern.compile(
+            "(读取|打开|查看全文|查看内容|read|open)",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern NOTE_SEARCH_HINT = Pattern.compile(
+            "(搜索|查找|检索|搜一下|搜一搜|search|find)",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern NOTE_LIST_HINT = Pattern.compile(
+            "(列出|列表|目录|文件夹|有哪些|所有笔记|所有文件|list|files|folders)",
+            Pattern.CASE_INSENSITIVE
+    );
     private static final Pattern DATE_TIME_LOOKUP_HINT = Pattern.compile(
             "(今天几号|今天星期几|今天周几|现在几点|当前时间|当前日期|几号|星期几|周几|日期|时间|date|time|day)",
             Pattern.CASE_INSENSITIVE
@@ -96,7 +117,7 @@ public class AgentOrchestrator {
 
     private static final int MAX_OBSERVATION_ITEMS = 5;
     private static final int MAX_RECENT_ACTIONS = 6;
-    private static final int MAX_REASONING_DETAIL_CHARS = 420;
+    private static final int MAX_REASONING_DETAIL_CHARS = 2000;
 
     private static final String REASONER_SYSTEM_PROMPT = """
             你是一个按照 ReAct（Observe -> Reason -> Act）循环工作的任务型 Agent。
@@ -111,7 +132,7 @@ public class AgentOrchestrator {
                 "type":"KB_RETRIEVE|GRAPH_QUERY|MCP_CALL|SYNTHESIZE|FINAL_ANSWER",
                 "instruction":"下一步动作说明",
                 "query":"检索词或工具输入",
-                "toolId":"可选工具ID",
+                "toolId":"MCP_CALL 时必填，且必须来自可用工具列表",
                 "params":{}
               }
             }
@@ -122,7 +143,8 @@ public class AgentOrchestrator {
             4) 如果用户目标包含“创建/更新/写入/添加/加入/插入/补充/替换/删除笔记”，必须优先选择 MCP_CALL，而不是只给建议；
             5) 如果最近动作已经失败，优先换策略，避免重复同一个失败动作；
             6) 如果当前没有证据，优先检索或调用工具，不要空想；
-            7) JSON 之外不要输出额外文本。
+            7) 只有当 action.type=MCP_CALL 时才允许填写 toolId，且该 toolId 必须能在可用工具列表中找到；
+            8) JSON 之外不要输出额外文本。
             """;
 
     private final LLMService llmService;
@@ -209,6 +231,8 @@ public class AgentOrchestrator {
 
                 sendAgentPlan(request.emitter(), loop, stepIndex, new AgentPlan(
                         StrUtil.blankToDefault(decision.goal(), request.question()),
+                        StrUtil.blankToDefault(decision.thought(), "基于 observation 继续推进。"),
+                        decision.model(),
                         List.of(step)
                 ));
 
@@ -326,7 +350,12 @@ public class AgentOrchestrator {
                 .skip(Math.max(0, observations.size() - MAX_OBSERVATION_ITEMS))
                 .toList();
         List<AgentObservePayload.ObservationItem> items = recent.stream()
-                .map(each -> new AgentObservePayload.ObservationItem(each.source(), each.status(), each.summary()))
+                .map(each -> new AgentObservePayload.ObservationItem(
+                        each.source(),
+                        each.status(),
+                        each.summary(),
+                        clip(each.detail(), MAX_REASONING_DETAIL_CHARS)
+                ))
                 .toList();
         String summary;
         if (items.isEmpty()) {
@@ -352,15 +381,21 @@ public class AgentOrchestrator {
                 recentActions：
                 %s
 
+                可用 MCP 工具：
+                %s
+
                 剩余行动预算：%s
+                
+                如果你输出 MCP_CALL，必须同时给出 toolId。
                 """.formatted(
                 question,
                 renderObservations(observations),
                 renderActionHistory(actionHistory),
+                safeText(mcpService.buildToolsDescription()),
                 remainingSteps
         );
 
-        String raw = llmService.chat(ChatRequest.builder()
+        ChatResultWithMetadata result = chatWithMetadata(ChatRequest.builder()
                 .messages(List.of(
                         ChatMessage.system(REASONER_SYSTEM_PROMPT),
                         ChatMessage.user(userPrompt)
@@ -370,6 +405,7 @@ public class AgentOrchestrator {
                 .topP(0.8D)
                 .maxTokens(1024)
                 .build());
+        String raw = result.content();
         String cleaned = LLMResponseCleaner.stripMarkdownCodeFence(raw);
         try {
             JsonNode root = objectMapper.readTree(cleaned);
@@ -381,7 +417,14 @@ public class AgentOrchestrator {
             AgentPlanStep action = actionNode.isMissingNode() || actionNode.isNull()
                     ? null
                     : parseAction(actionNode, question);
-            return new ReasoningDecision(goal, thought, done, finalAnswer, action);
+            return new ReasoningDecision(
+                    goal,
+                    thought,
+                    done,
+                    finalAnswer,
+                    action,
+                    toAgentModelPayload(result.model())
+            );
         } catch (Exception e) {
             return fallbackReasoning(question, observations, actionHistory);
         }
@@ -403,13 +446,14 @@ public class AgentOrchestrator {
                     "问题包含明确写入意图，优先准备写工具调用。",
                     false,
                     null,
-                    new AgentPlanStep("MCP_CALL", "准备 Obsidian 写操作并等待用户确认", question, suggestWriteToolId(question), Map.of())
+                    new AgentPlanStep("MCP_CALL", "准备 Obsidian 写操作并等待用户确认", question, suggestWriteToolId(question), Map.of()),
+                    null
             );
         }
         if (hasEvidence && !actionHistory.isEmpty()
                 && "SYNTHESIZE".equals(normalizeStepType(actionHistory.get(actionHistory.size() - 1).step().type()))
                 && actionHistory.get(actionHistory.size() - 1).success()) {
-            return new ReasoningDecision(question, "汇总动作已完成，可直接输出最终回答。", true, null, null);
+            return new ReasoningDecision(question, "汇总动作已完成，可直接输出最终回答。", true, null, null, null);
         }
         if (hasEvidence) {
             return new ReasoningDecision(
@@ -417,18 +461,20 @@ public class AgentOrchestrator {
                     "已有 observation 可支撑回答，降级直接汇总。",
                     false,
                     null,
-                    new AgentPlanStep("SYNTHESIZE", "汇总当前 observation 并生成回答草稿", question, null, Map.of())
+                    new AgentPlanStep("SYNTHESIZE", "汇总当前 observation 并生成回答草稿", question, null, Map.of()),
+                    null
             );
         }
         if (!actionHistory.isEmpty() && !actionHistory.get(actionHistory.size() - 1).success()) {
-            return new ReasoningDecision(question, "最近动作失败，先停止循环并回退。", true, null, null);
+            return new ReasoningDecision(question, "最近动作失败，先停止循环并回退。", true, null, null, null);
         }
         return new ReasoningDecision(
                 question,
                 "暂无足够 observation，默认补一次知识库检索。",
                 false,
                 null,
-                new AgentPlanStep("KB_RETRIEVE", "补充知识库检索", question, null, Map.of())
+                new AgentPlanStep("KB_RETRIEVE", "补充知识库检索", question, null, Map.of()),
+                null
         );
     }
 
@@ -436,7 +482,7 @@ public class AgentOrchestrator {
         String type = normalizeStepType(node.path("type").asText("KB_RETRIEVE"));
         String instruction = node.path("instruction").asText("执行步骤");
         String query = node.path("query").asText(fallbackQuery);
-        String toolId = node.path("toolId").asText(null);
+        String toolId = firstNonBlankText(node, "toolId", "mcpToolId", "tool_id", "toolName", "tool");
         Map<String, Object> params = new LinkedHashMap<>();
         JsonNode paramsNode = node.path("params");
         if (paramsNode.isObject()) {
@@ -459,7 +505,7 @@ public class AgentOrchestrator {
                     "MCP_CALL",
                     "已有汇总结果，进入写操作确认",
                     question,
-                    resolveCompatibleToolId(question, null, actionHistory),
+                    resolveCompatibleToolId(question, "已有汇总结果，进入写操作确认", question, null, actionHistory),
                     Map.of()
             );
         }
@@ -480,7 +526,7 @@ public class AgentOrchestrator {
                     action.type(),
                     action.instruction(),
                     action.query(),
-                    resolveCompatibleToolId(question, action.toolId(), actionHistory),
+                    resolveCompatibleToolId(question, action.instruction(), action.query(), action.toolId(), actionHistory),
                     action.params()
             );
         }
@@ -517,21 +563,23 @@ public class AgentOrchestrator {
     }
 
     private String resolveCompatibleToolId(String question,
+                                           String instruction,
+                                           String query,
                                            String candidateToolId,
                                            List<ActionRecord> actionHistory) {
-        String normalizedToolId = StrUtil.trim(candidateToolId);
-        if (StrUtil.isNotBlank(normalizedToolId)
-                && mcpToolRegistry.getExecutor(normalizedToolId).isPresent()) {
+        String normalizedToolId = resolveRegisteredToolId(candidateToolId);
+        if (StrUtil.isNotBlank(normalizedToolId)) {
             return normalizedToolId;
         }
-        if (isLikelyNoteWriteQuestion(question)) {
-            return suggestWriteToolId(question);
+        String inferredToolId = inferToolIdFromText(instruction, query, question);
+        if (StrUtil.isNotBlank(inferredToolId)) {
+            return inferredToolId;
         }
         String latestToolId = resolveLatestToolId(actionHistory);
         if (StrUtil.isNotBlank(latestToolId) && mcpToolRegistry.getExecutor(latestToolId).isPresent()) {
             return latestToolId;
         }
-        return normalizedToolId;
+        return StrUtil.trim(candidateToolId);
     }
 
     private String resolveDoneAnswer(String question, String evidence, ReasoningDecision decision) {
@@ -593,7 +641,7 @@ public class AgentOrchestrator {
                         each.stepIndex(),
                         normalizeStepType(each.step().type()),
                         each.success() ? "SUCCESS" : "FAILED",
-                        clip(StrUtil.blankToDefault(each.summary(), each.error()), 160)
+                        clip(StrUtil.blankToDefault(each.summary(), each.error()), 500)
                 ))
                 .collect(Collectors.joining("\n"));
     }
@@ -890,7 +938,7 @@ public class AgentOrchestrator {
                 请根据以下证据进行中间汇总，保留关键事实并标注不确定项：
                 %s
                 """.formatted(evidence);
-        String summary = llmService.chat(ChatRequest.builder()
+        ChatResultWithMetadata result = chatWithMetadata(ChatRequest.builder()
                 .messages(List.of(
                         ChatMessage.system("你是严谨的信息整合助手。"),
                         ChatMessage.user(prompt)
@@ -900,33 +948,43 @@ public class AgentOrchestrator {
                 .topP(0.8D)
                 .maxTokens(1200)
                 .build());
+        String summary = result.content();
         appendEvidence(evidence, "synthesize-step", summary, null);
-        return StepExecutionResult.success("中间汇总完成", List.of(), summary);
+        return StepExecutionResult.success("中间汇总完成", List.of(), summary, toAgentModelPayload(result.model()));
     }
 
     private String resolveToolId(AgentPlanStep step, AgentExecuteRequest request) {
-        String candidateToolId = StrUtil.trim(step.toolId());
-        if (StrUtil.isNotBlank(candidateToolId)
-                && mcpToolRegistry.getExecutor(candidateToolId).isPresent()) {
+        String candidateToolId = resolveRegisteredToolId(step.toolId());
+        if (StrUtil.isNotBlank(candidateToolId)) {
             return candidateToolId;
         }
-        if (request.subIntents() != null) {
-            for (SubQuestionIntent subQuestionIntent : request.subIntents()) {
-                if (subQuestionIntent.nodeScores() == null) {
-                    continue;
-                }
-                for (NodeScore nodeScore : subQuestionIntent.nodeScores()) {
-                    if (nodeScore == null || nodeScore.getNode() == null) {
-                        continue;
-                    }
-                    IntentNode node = nodeScore.getNode();
-                    if (node.getKind() == IntentKind.MCP && StrUtil.isNotBlank(node.getMcpToolId())) {
-                        return node.getMcpToolId();
-                    }
-                }
-            }
+        String inferredToolId = inferToolIdFromText(step.instruction(), step.query(), request.question());
+        if (StrUtil.isNotBlank(inferredToolId)) {
+            return inferredToolId;
         }
-        return StrUtil.isBlank(candidateToolId) ? null : candidateToolId;
+        String intentToolId = resolveBestIntentToolId(request.subIntents());
+        if (StrUtil.isNotBlank(intentToolId)) {
+            return intentToolId;
+        }
+        return repairMissingToolId(step, request);
+    }
+
+    private String resolveBestIntentToolId(List<SubQuestionIntent> subIntents) {
+        if (CollUtil.isEmpty(subIntents)) {
+            return null;
+        }
+        return subIntents.stream()
+                .filter(subIntent -> CollUtil.isNotEmpty(subIntent.nodeScores()))
+                .flatMap(subIntent -> subIntent.nodeScores().stream())
+                .filter(nodeScore -> nodeScore != null && nodeScore.getNode() != null)
+                .filter(nodeScore -> nodeScore.getNode().getKind() == IntentKind.MCP)
+                .sorted((left, right) -> Double.compare(right.getScore(), left.getScore()))
+                .map(NodeScore::getNode)
+                .map(IntentNode::getMcpToolId)
+                .map(this::resolveRegisteredToolId)
+                .filter(StrUtil::isNotBlank)
+                .findFirst()
+                .orElse(null);
     }
 
     private String resolveLatestToolId(List<ActionRecord> actionHistory) {
@@ -941,6 +999,63 @@ public class AgentOrchestrator {
             return record.step().toolId();
         }
         return null;
+    }
+
+    private String repairMissingToolId(AgentPlanStep step, AgentExecuteRequest request) {
+        String toolsDescription = mcpService.buildToolsDescription();
+        if (StrUtil.isBlank(toolsDescription)) {
+            return null;
+        }
+        String prompt = """
+                请为下面这个 MCP_CALL 步骤补全 toolId。
+                只允许从给定工具列表中选择一个 toolId；如果确实无法判断，返回 {"toolId":"NONE"}。
+
+                用户问题：
+                %s
+
+                步骤 instruction：
+                %s
+
+                步骤 query：
+                %s
+
+                候选意图：
+                %s
+
+                可用工具列表：
+                %s
+                """.formatted(
+                safeText(request.question()),
+                safeText(step.instruction()),
+                safeText(step.query()),
+                renderIntentHints(request.subIntents()),
+                toolsDescription
+        );
+
+        try {
+            String raw = llmService.chat(ChatRequest.builder()
+                    .messages(List.of(
+                            ChatMessage.system("""
+                                    你是 MCP 工具选择器。
+                                    只输出严格 JSON：{"toolId":"工具ID或NONE"}。
+                                    toolId 必须来自提供的工具列表，或为 NONE。
+                                    JSON 之外不要输出任何文本。
+                                    """),
+                            ChatMessage.user(prompt)
+                    ))
+                    .thinking(false)
+                    .temperature(0D)
+                    .topP(0.5D)
+                    .maxTokens(128)
+                    .build());
+            String cleaned = LLMResponseCleaner.stripMarkdownCodeFence(raw);
+            JsonNode root = objectMapper.readTree(cleaned);
+            String repairedToolId = resolveRegisteredToolId(root.path("toolId").asText(null));
+            return StrUtil.isNotBlank(repairedToolId) ? repairedToolId : null;
+        } catch (Exception e) {
+            log.warn("MCP toolId 修复失败，继续使用本地兜底。question={}", request.question(), e);
+            return null;
+        }
     }
 
     private boolean isMcpExecutionAllowed(String toolId, AgentExecuteRequest request) {
@@ -1006,6 +1121,156 @@ public class AgentOrchestrator {
         return notePath == null ? null : notePath.toString();
     }
 
+    private String inferToolIdFromText(String... texts) {
+        String combinedText = joinNonBlankTexts(texts);
+        if (StrUtil.isBlank(combinedText)) {
+            return null;
+        }
+        if (isLikelyNoteWriteQuestion(combinedText)) {
+            return resolveRegisteredToolId(suggestWriteToolId(combinedText));
+        }
+        if (isLikelyObsidianListQuestion(combinedText)) {
+            return resolveRegisteredToolId("obsidian_list");
+        }
+        if (isLikelyObsidianSearchQuestion(combinedText)) {
+            return resolveRegisteredToolId("obsidian_search");
+        }
+        if (isLikelyObsidianReadQuestion(combinedText)) {
+            return resolveRegisteredToolId("obsidian_read");
+        }
+        if (WebSearchIntentRules.isRealtimeSearchQuestion(combinedText)) {
+            return resolveRegisteredToolId(WebSearchIntentRules.WEB_REALTIME_SEARCH_TOOL_ID);
+        }
+        if (WebSearchIntentRules.isNewsSearchQuestion(combinedText)) {
+            return resolveRegisteredToolId(WebSearchIntentRules.WEB_NEWS_SEARCH_TOOL_ID);
+        }
+        if (WebSearchIntentRules.isGeneralWebSearchQuestion(combinedText)
+                || WebSearchIntentRules.isExternalEntityIntroQuestion(combinedText)) {
+            return resolveRegisteredToolId(WebSearchIntentRules.WEB_SEARCH_TOOL_ID);
+        }
+        return null;
+    }
+
+    private boolean isLikelyObsidianReadQuestion(String text) {
+        return StrUtil.isNotBlank(text)
+                && NOTE_DOMAIN_HINT.matcher(text).find()
+                && NOTE_READ_HINT.matcher(text).find()
+                && !NOTE_LIST_HINT.matcher(text).find()
+                && !NOTE_SEARCH_HINT.matcher(text).find();
+    }
+
+    private boolean isLikelyObsidianSearchQuestion(String text) {
+        return StrUtil.isNotBlank(text)
+                && NOTE_DOMAIN_HINT.matcher(text).find()
+                && NOTE_SEARCH_HINT.matcher(text).find();
+    }
+
+    private boolean isLikelyObsidianListQuestion(String text) {
+        return StrUtil.isNotBlank(text)
+                && NOTE_DOMAIN_HINT.matcher(text).find()
+                && NOTE_LIST_HINT.matcher(text).find();
+    }
+
+    private String resolveRegisteredToolId(String candidateToolId) {
+        String normalizedCandidate = StrUtil.trim(candidateToolId);
+        if (StrUtil.isBlank(normalizedCandidate)) {
+            return null;
+        }
+        if (mcpToolRegistry.getExecutor(normalizedCandidate).isPresent()) {
+            return normalizedCandidate;
+        }
+        List<MCPTool> tools = mcpToolRegistry.listAllTools();
+        if (CollUtil.isEmpty(tools)) {
+            return null;
+        }
+        String normalizedToken = normalizeToolToken(normalizedCandidate);
+        for (MCPTool tool : tools) {
+            if (tool == null || StrUtil.isBlank(tool.getToolId())) {
+                continue;
+            }
+            if (normalizedToken.equals(normalizeToolToken(tool.getToolId()))
+                    || normalizedToken.equals(normalizeToolToken(tool.getName()))) {
+                return tool.getToolId();
+            }
+            if (StrUtil.containsIgnoreCase(normalizedCandidate, tool.getToolId())
+                    || StrUtil.containsIgnoreCase(tool.getToolId(), normalizedCandidate)) {
+                return tool.getToolId();
+            }
+            if (StrUtil.isNotBlank(tool.getName())
+                    && (StrUtil.containsIgnoreCase(normalizedCandidate, tool.getName())
+                    || StrUtil.containsIgnoreCase(tool.getName(), normalizedCandidate))) {
+                return tool.getToolId();
+            }
+        }
+        return null;
+    }
+
+    private String normalizeToolToken(String value) {
+        return StrUtil.blankToDefault(value, "")
+                .replaceAll("[\\s_\\-]+", "")
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private String joinNonBlankTexts(String... texts) {
+        if (texts == null || texts.length == 0) {
+            return "";
+        }
+        List<String> parts = new ArrayList<>();
+        for (String text : texts) {
+            if (StrUtil.isNotBlank(text)) {
+                parts.add(text.trim());
+            }
+        }
+        return String.join("\n", parts);
+    }
+
+    private String renderIntentHints(List<SubQuestionIntent> subIntents) {
+        if (CollUtil.isEmpty(subIntents)) {
+            return "无";
+        }
+        List<String> hints = new ArrayList<>();
+        for (SubQuestionIntent subIntent : subIntents) {
+            if (subIntent == null || CollUtil.isEmpty(subIntent.nodeScores())) {
+                continue;
+            }
+            for (NodeScore nodeScore : subIntent.nodeScores()) {
+                if (nodeScore == null || nodeScore.getNode() == null || nodeScore.getNode().getKind() != IntentKind.MCP) {
+                    continue;
+                }
+                String toolId = nodeScore.getNode().getMcpToolId();
+                if (StrUtil.isBlank(toolId)) {
+                    continue;
+                }
+                hints.add("%s(score=%.2f, question=%s)".formatted(
+                        toolId,
+                        nodeScore.getScore(),
+                        safeText(subIntent.subQuestion())
+                ));
+            }
+        }
+        return hints.isEmpty() ? "无" : String.join("\n", hints);
+    }
+
+    private String firstNonBlankText(JsonNode node, String... fieldNames) {
+        if (node == null || fieldNames == null) {
+            return null;
+        }
+        for (String fieldName : fieldNames) {
+            if (StrUtil.isBlank(fieldName)) {
+                continue;
+            }
+            JsonNode valueNode = node.path(fieldName);
+            if (valueNode.isMissingNode() || valueNode.isNull()) {
+                continue;
+            }
+            String value = valueNode.asText(null);
+            if (StrUtil.isNotBlank(value)) {
+                return value;
+            }
+        }
+        return null;
+    }
+
     private String synthesizeFinalAnswer(String question, String evidence, String statusHint) {
         String prompt = """
                 用户问题：
@@ -1054,9 +1319,21 @@ public class AgentOrchestrator {
         List<AgentPlanPayload.PlanStep> steps = new ArrayList<>();
         for (int i = 0; i < plan.steps().size(); i++) {
             AgentPlanStep step = plan.steps().get(i);
-            steps.add(new AgentPlanPayload.PlanStep(startStepIndex + i, step.type(), step.instruction()));
+            steps.add(new AgentPlanPayload.PlanStep(
+                    startStepIndex + i,
+                    step.type(),
+                    step.instruction(),
+                    step.query(),
+                    step.toolId()
+            ));
         }
-        sendEvent(emitter, SSEEventType.AGENT_PLAN.value(), new AgentPlanPayload(loop, plan.goal(), steps));
+        sendEvent(emitter, SSEEventType.AGENT_PLAN.value(), new AgentPlanPayload(
+                loop,
+                plan.goal(),
+                plan.thought(),
+                plan.model(),
+                steps
+        ));
     }
 
     private void sendAgentStep(SseEmitter emitter,
@@ -1071,7 +1348,12 @@ public class AgentOrchestrator {
                 result.confirmRequired() ? "CONFIRM_REQUIRED" : (result.success() ? "SUCCESS" : "FAILED"),
                 result.summary(),
                 result.references(),
-                result.error()
+                result.error(),
+                step.instruction(),
+                step.query(),
+                step.toolId(),
+                result.observationDetail(),
+                result.model()
         ));
     }
 
@@ -1178,6 +1460,20 @@ public class AgentOrchestrator {
         return node.toString();
     }
 
+    private ChatResultWithMetadata chatWithMetadata(ChatRequest request) {
+        if (llmService instanceof ModelAwareLLMService modelAware) {
+            return modelAware.chatWithMetadata(request);
+        }
+        return new ChatResultWithMetadata(llmService.chat(request), null, null);
+    }
+
+    private AgentModelPayload toAgentModelPayload(ModelInvocationMetadata model) {
+        if (model == null) {
+            return null;
+        }
+        return new AgentModelPayload(model.modelId(), model.provider());
+    }
+
     private String normalizeStepType(String type) {
         if (StrUtil.isBlank(type)) {
             return "KB_RETRIEVE";
@@ -1219,7 +1515,11 @@ public class AgentOrchestrator {
         return !NoteWriteIntentHelper.isLikelyNoteWriteQuestion(normalized);
     }
 
-    private record AgentPlan(String goal, List<AgentPlanStep> steps) {
+    private record AgentPlan(
+            String goal,
+            String thought,
+            AgentModelPayload model,
+            List<AgentPlanStep> steps) {
     }
 
     private record AgentPlanStep(
@@ -1241,7 +1541,8 @@ public class AgentOrchestrator {
             String thought,
             boolean done,
             String finalAnswer,
-            AgentPlanStep action) {
+            AgentPlanStep action,
+            AgentModelPayload model) {
     }
 
     private record AgentObservation(
@@ -1270,22 +1571,30 @@ public class AgentOrchestrator {
             boolean confirmRequired,
             PendingProposal proposal,
             String observationDetail,
-            String proposalSummary) {
+            String proposalSummary,
+            AgentModelPayload model) {
 
         static StepExecutionResult success(String summary,
                                            List<ReferenceItem> references,
                                            String observationDetail) {
-            return new StepExecutionResult(true, summary, null, references, false, null, observationDetail, null);
+            return success(summary, references, observationDetail, null);
+        }
+
+        static StepExecutionResult success(String summary,
+                                           List<ReferenceItem> references,
+                                           String observationDetail,
+                                           AgentModelPayload model) {
+            return new StepExecutionResult(true, summary, null, references, false, null, observationDetail, null, model);
         }
 
         static StepExecutionResult failed(String summary, String error) {
-            return new StepExecutionResult(false, summary, error, List.of(), false, null, error, null);
+            return new StepExecutionResult(false, summary, error, List.of(), false, null, error, null, null);
         }
 
         static StepExecutionResult confirmRequired(String summary,
                                                    PendingProposal proposal,
                                                    String proposalSummary) {
-            return new StepExecutionResult(true, summary, null, List.of(), true, proposal, null, proposalSummary);
+            return new StepExecutionResult(true, summary, null, List.of(), true, proposal, null, proposalSummary, null);
         }
     }
 

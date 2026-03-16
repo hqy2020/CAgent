@@ -19,6 +19,12 @@ import { SystemSettingsPage } from "@/pages/admin/settings/SystemSettingsPage";
 import { SampleQuestionPage } from "@/pages/admin/sample-questions/SampleQuestionPage";
 import { UserListPage } from "@/pages/admin/users/UserListPage";
 import { ModelManagementPage } from "@/pages/admin/models/ModelManagementPage";
+import { EvaluationPage } from "@/pages/admin/evaluation/EvaluationPage";
+import { DatasetDetailPage } from "@/pages/admin/evaluation/DatasetDetailPage";
+import { RunReportPage } from "@/pages/admin/evaluation/RunReportPage";
+import { PromptsPage } from "@/pages/admin/prompts/PromptsPage";
+import { UserMemoryPage } from "@/pages/admin/memory/UserMemoryPage";
+import { UserProfilePage } from "@/pages/admin/memory/UserProfilePage";
 import { HotspotRadarPage } from "@/pages/workspace/hotspots/HotspotRadarPage";
 import { KnowledgeListPage } from "@/pages/workspace/knowledge/KnowledgeListPage";
 import { KnowledgeDocumentsPage } from "@/pages/workspace/knowledge/KnowledgeDocumentsPage";
@@ -165,6 +171,30 @@ export const router = createBrowserRouter([
       {
         path: "users",
         element: <UserListPage />
+      },
+      {
+        path: "evaluation",
+        element: <EvaluationPage />
+      },
+      {
+        path: "evaluation/datasets/:id",
+        element: <DatasetDetailPage />
+      },
+      {
+        path: "evaluation/runs/:id",
+        element: <RunReportPage />
+      },
+      {
+        path: "prompts",
+        element: <PromptsPage />
+      },
+      {
+        path: "memories",
+        element: <UserMemoryPage />
+      },
+      {
+        path: "profiles",
+        element: <UserProfilePage />
       },
     ]
   },

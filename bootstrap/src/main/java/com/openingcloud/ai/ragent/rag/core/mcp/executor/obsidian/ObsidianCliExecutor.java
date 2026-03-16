@@ -29,9 +29,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +60,7 @@ public class ObsidianCliExecutor {
 
     private static final String DAILY_NOTE_PATH_PATTERN = "2-Resource（参考资源）/80_生活记录/DailyNote/日记";
     private static final int SEARCH_CONTEXT_LINES = 2;
+    private static final String DAILY_TODO_SECTION = "### ⏰ 今日待办";
     private static final Set<String> BLOCKED_SEGMENTS = Set.of(
             ".obsidian", ".trash", ".git", "Library", "System", "Applications", "private", "etc", "var"
     );
@@ -377,9 +380,9 @@ public class ObsidianCliExecutor {
         Files.createDirectories(dailyPath.getParent());
 
         if (!Files.exists(dailyPath)) {
-            String header = "# " + date.format(DateTimeFormatter.ISO_LOCAL_DATE) + "\n\n";
-            Files.writeString(dailyPath, header + content + "\n", StandardCharsets.UTF_8);
-            CliResult verifyResult = verifyWrite(dailyPath, header + content + "\n", WritePosition.START, "创建日记并写入");
+            String fullContent = buildDailyNoteFromTemplate(date, content);
+            Files.writeString(dailyPath, fullContent, StandardCharsets.UTF_8);
+            CliResult verifyResult = verifyWrite(dailyPath, content, WritePosition.CONTAINS, "创建日记并写入");
             if (verifyResult != null) {
                 return verifyResult;
             }
@@ -387,6 +390,19 @@ public class ObsidianCliExecutor {
         }
 
         String existing = Files.readString(dailyPath, StandardCharsets.UTF_8);
+        boolean isTodo = content.trim().startsWith("- [ ]") || content.trim().startsWith("- [x]");
+        if (isTodo) {
+            String updated = insertUnderSection(existing, content, DAILY_TODO_SECTION);
+            if (updated != null) {
+                Files.writeString(dailyPath, updated, StandardCharsets.UTF_8);
+                CliResult verifyResult = verifyWrite(dailyPath, content, WritePosition.CONTAINS, "日记待办插入");
+                if (verifyResult != null) {
+                    return verifyResult;
+                }
+                return new CliResult(0, "已插入待办到日记「" + DAILY_TODO_SECTION + "」: " + dateFileName, "");
+            }
+        }
+
         String separator = existing.endsWith("\n") ? "" : "\n";
         Files.writeString(dailyPath, existing + separator + content + "\n", StandardCharsets.UTF_8);
         CliResult verifyResult = verifyWrite(dailyPath, separator + content + "\n", WritePosition.END, "日记追加");
@@ -394,6 +410,97 @@ public class ObsidianCliExecutor {
             return verifyResult;
         }
         return new CliResult(0, "已追加内容到日记: " + dateFileName, "");
+    }
+
+    private String insertUnderSection(String existing, String content, String sectionHeader) {
+        List<String> lines = new ArrayList<>(Arrays.asList(existing.split("\n", -1)));
+        int sectionIdx = -1;
+        for (int i = 0; i < lines.size(); i++) {
+            if (lines.get(i).trim().equals(sectionHeader)) {
+                sectionIdx = i;
+                break;
+            }
+        }
+        if (sectionIdx == -1) {
+            return null;
+        }
+
+        int lastCheckboxIdx = -1;
+        for (int i = sectionIdx + 1; i < lines.size(); i++) {
+            String trimmed = lines.get(i).trim();
+            if (trimmed.startsWith("- [ ]") || trimmed.startsWith("- [x]") || trimmed.startsWith("- [X]")) {
+                lastCheckboxIdx = i;
+            } else if (trimmed.startsWith("###") || trimmed.startsWith("---")) {
+                break;
+            }
+        }
+
+        int insertIdx = lastCheckboxIdx != -1 ? lastCheckboxIdx + 1 : sectionIdx + 1;
+        lines.add(insertIdx, content);
+        return String.join("\n", lines);
+    }
+
+    private String buildDailyNoteFromTemplate(LocalDate date, String initialContent) {
+        String dateIso = date.format(DateTimeFormatter.ISO_LOCAL_DATE);
+        String dayOfWeek = toChineDayOfWeek(date.getDayOfWeek());
+        String header = "# \uD83D\uDCC5 " + dateIso + " " + dayOfWeek;
+
+        boolean isTodo = initialContent.trim().startsWith("- [ ]") || initialContent.trim().startsWith("- [x]");
+        String todoBlock = isTodo
+                ? "- [ ] \uD83D\uDCCA 完成数据追踪（步数/睡眠/手机时间）\n- [ ] \uD83D\uDCDD 睡前填写今日反思\n" + initialContent
+                : "- [ ] \uD83D\uDCCA 完成数据追踪（步数/睡眠/手机时间）\n- [ ] \uD83D\uDCDD 睡前填写今日反思";
+
+        String appendBlock = isTodo ? "" : "\n" + initialContent;
+
+        return "---\n"
+                + "创建时间: \"" + dateIso + "\"\n"
+                + "tags:\n"
+                + "  - 日记\n"
+                + "步数:\n"
+                + "睡眠时间:\n"
+                + "睡眠分数:\n"
+                + "运动:\n"
+                + "专注90min:\n"
+                + "使用手机时间:\n"
+                + "今日亮点:\n"
+                + "今日阻力:\n"
+                + "今日洞察:\n"
+                + "明日一动作:\n"
+                + "---\n\n"
+                + header + "\n\n"
+                + "### \u23F0 今日待办\n"
+                + todoBlock + "\n\n"
+                + "---\n\n"
+                + "### \uD83D\uDCA1 想法和灵感\n\n"
+                + "---\n\n"
+                + "### 待办事项\n\n"
+                + "### 长期任务\n\n"
+                + "---\n\n"
+                + "### \uD83D\uDCDD 今日创建的笔记\n"
+                + "```dataview\n"
+                + "TABLE file.ctime AS \"创建时间\"\n"
+                + "WHERE file.cday = date(\"" + dateIso + "\")\n"
+                + "SORT file.ctime ASC\n"
+                + "```\n\n"
+                + "### \uD83D\uDCC5 历史上的今天\n"
+                + "```dataview\n"
+                + "TABLE file.ctime AS \"创建时间\"\n"
+                + "WHERE file.cday.month = " + date.getMonthValue() + " AND file.cday.day = " + date.getDayOfMonth() + " AND file.cday.year != " + date.getYear() + "\n"
+                + "SORT file.ctime ASC\n"
+                + "```\n"
+                + appendBlock;
+    }
+
+    private static String toChineDayOfWeek(DayOfWeek dow) {
+        return switch (dow) {
+            case MONDAY -> "星期一";
+            case TUESDAY -> "星期二";
+            case WEDNESDAY -> "星期三";
+            case THURSDAY -> "星期四";
+            case FRIDAY -> "星期五";
+            case SATURDAY -> "星期六";
+            case SUNDAY -> "星期日";
+        };
     }
 
     private CliResult doDelete(Map<String, String> params) throws IOException {

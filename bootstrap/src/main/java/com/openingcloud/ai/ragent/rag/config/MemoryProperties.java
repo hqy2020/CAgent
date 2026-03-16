@@ -42,7 +42,7 @@ public class MemoryProperties {
      */
     @Min(1)
     @Max(100)
-    private Integer historyKeepTurns = 8;
+    private Integer historyKeepTurns = 5;
 
     /**
      * 单轮对话总输入预算（history + retrieval + system + question）
@@ -73,12 +73,12 @@ public class MemoryProperties {
     /**
      * 是否启用对话记忆压缩
      */
-    private Boolean summaryEnabled = false;
+    private Boolean summaryEnabled = true;
 
     /**
      * 开始摘要的轮数阈值
      */
-    private Integer summaryStartTurns = 9;
+    private Integer summaryStartTurns = 5;
 
     /**
      * 触发摘要的 token 阈值

@@ -17,133 +17,33 @@
 
 package com.openingcloud.ai.ragent.ingestion.service;
 
-import com.openingcloud.ai.ragent.rag.config.IntentBootstrapProperties;
-import com.openingcloud.ai.ragent.rag.core.intent.IntentTreeCacheManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.redisson.api.RLock;
-import org.redisson.api.RedissonClient;
-
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
-@ExtendWith(MockitoExtension.class)
 class IntentTreeBootstrapServiceTests {
-
-    @Mock
-    private IntentTreeCacheManager intentTreeCacheManager;
-    @Mock
-    private RedissonClient redissonClient;
-    @Mock
-    private IntentTreeService intentTreeService;
-    @Mock
-    private RLock lock;
 
     private IntentTreeBootstrapService service;
 
     @BeforeEach
     void setUp() {
-        IntentBootstrapProperties properties = new IntentBootstrapProperties();
-        properties.setEnabled(true);
-        properties.setStrategy("from-existing-kb");
-        properties.setIncludeSystem(true);
-
-        service = new IntentTreeBootstrapService(
-                intentTreeCacheManager,
-                redissonClient,
-                properties,
-                intentTreeService
-        );
+        service = new IntentTreeBootstrapService();
     }
 
     @Test
-    void shouldCreateNodesWhenIntentTreeIsEmpty() throws Exception {
-        stubLockAndInsertBehavior();
-        when(intentTreeService.initFromFactory()).thenReturn(5);
-
-        int created = service.initializeManually();
-
-        assertEquals(5, created);
-        verify(intentTreeCacheManager).clearIntentTreeCache();
+    void initializeManually_shouldReturnZero() {
+        int result = service.initializeManually();
+        assertEquals(0, result);
     }
 
     @Test
-    void shouldSyncMissingNodesWhenIntentTreeAlreadyExists() throws Exception {
-        stubLockAndInsertBehavior();
-        when(intentTreeService.initFromFactory()).thenReturn(2);
-
-        int created = service.initializeManually();
-
-        assertEquals(2, created);
-        verify(intentTreeService).initFromFactory();
-        verify(intentTreeCacheManager).clearIntentTreeCache();
-    }
-
-    @Test
-    void shouldNotClearCacheWhenNoNodesCreated() throws Exception {
-        stubLockAndInsertBehavior();
-        when(intentTreeService.initFromFactory()).thenReturn(0);
-
-        int created = service.initializeManually();
-
-        assertEquals(0, created);
-        verify(intentTreeService).initFromFactory();
-        verify(intentTreeCacheManager, never()).clearIntentTreeCache();
-    }
-
-    @Test
-    void shouldRemainIdempotentUnderConcurrentInitialization() throws Exception {
-        stubLockAndInsertBehavior();
-        when(intentTreeService.initFromFactory()).thenReturn(5, 0);
-
-        ExecutorService executor = Executors.newFixedThreadPool(2);
-        try {
-            Future<Integer> first = executor.submit(service::initializeManually);
-            Future<Integer> second = executor.submit(service::initializeManually);
-
-            int createdFirst = first.get(5, TimeUnit.SECONDS);
-            int createdSecond = second.get(5, TimeUnit.SECONDS);
-
-            assertTrue(createdFirst > 0 || createdSecond > 0);
-            assertTrue(createdFirst == 0 || createdSecond == 0);
-            verify(intentTreeService, times(2)).initFromFactory();
-        } finally {
-            executor.shutdownNow();
-        }
-    }
-
-    @Test
-    void shouldSyncFactoryDefinitionsManually() throws Exception {
-        stubLockAndInsertBehavior();
-        when(intentTreeService.syncFromFactory()).thenReturn(new IntentTreeSyncResult(0, 2, 1));
-
+    void syncManually_shouldReturnNoChanges() {
         IntentTreeSyncResult result = service.syncManually();
-
         assertEquals(0, result.created());
-        assertEquals(2, result.updated());
-        assertEquals(1, result.repaired());
-        verify(intentTreeService).syncFromFactory();
-        verify(intentTreeCacheManager).clearIntentTreeCache();
-    }
-
-    private void stubLockAndInsertBehavior() throws InterruptedException {
-        when(redissonClient.getLock(anyString())).thenReturn(lock);
-        when(lock.tryLock(anyLong(), anyLong(), any())).thenReturn(true);
-        when(lock.isHeldByCurrentThread()).thenReturn(true);
+        assertEquals(0, result.updated());
+        assertEquals(0, result.repaired());
+        assertFalse(result.hasChanges());
     }
 }

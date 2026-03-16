@@ -79,10 +79,17 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
         if (!ragConfigProperties.getQueryRewriteEnabled()) {
             String normalized = queryTermMappingService.normalize(userQuestion);
             List<String> subs = ruleBasedSplit(normalized);
-            return new RewriteResult(normalized, subs);
+            return new RewriteResult(userQuestion, normalized, subs);
         }
 
         String normalizedQuestion = queryTermMappingService.normalize(userQuestion);
+
+        // 首轮跳过优化：无有效历史 + 无指代词 + 问题足够长时省掉 LLM 调用
+        if (canSkipRewrite(normalizedQuestion, history)) {
+            log.info("首轮跳过 LLM 改写，直接使用归一化结果 - question={}", normalizedQuestion);
+            List<String> subs = ruleBasedSplit(normalizedQuestion);
+            return new RewriteResult(userQuestion, normalizedQuestion, subs);
+        }
 
         return callLLMRewriteAndSplit(normalizedQuestion, userQuestion, history);
     }
@@ -95,7 +102,7 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
         if (!ragConfigProperties.getQueryRewriteEnabled()) {
             String normalized = queryTermMappingService.normalize(userQuestion);
             List<String> subs = ruleBasedSplit(normalized);
-            return new RewriteResult(normalized, subs);
+            return new RewriteResult(userQuestion, normalized, subs);
         }
 
         String normalizedQuestion = queryTermMappingService.normalize(userQuestion);
@@ -113,7 +120,7 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
 
         try {
             String raw = llmService.chat(req);
-            RewriteResult parsed = parseRewriteAndSplit(raw);
+            RewriteResult parsed = parseRewriteAndSplit(raw, originalQuestion);
 
             if (parsed != null) {
                 log.info("""
@@ -132,7 +139,7 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
         }
 
         // 统一兜底逻辑
-        return new RewriteResult(normalizedQuestion, List.of(normalizedQuestion));
+        return new RewriteResult(originalQuestion, normalizedQuestion, List.of(normalizedQuestion));
     }
 
     private ChatRequest buildRewriteRequest(String systemPrompt,
@@ -267,7 +274,7 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
     }
 
 
-    private RewriteResult parseRewriteAndSplit(String raw) {
+    private RewriteResult parseRewriteAndSplit(String raw, String originalQuestion) {
         try {
             // 移除可能存在的 Markdown 代码块标记
             String cleaned = LLMResponseCleaner.stripMarkdownCodeFence(raw);
@@ -277,16 +284,36 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
                 return null;
             }
             JsonObject obj = root.getAsJsonObject();
+
+            // 新格式: {queries: [...]}
+            if (obj.has("queries") && obj.get("queries").isJsonArray()) {
+                List<String> queries = new ArrayList<>();
+                JsonArray arr = obj.getAsJsonArray("queries");
+                for (JsonElement el : arr) {
+                    if (el.isJsonPrimitive() && el.getAsJsonPrimitive().isString()) {
+                        String s = el.getAsString().trim();
+                        if (StrUtil.isNotBlank(s)) {
+                            queries.add(s);
+                        }
+                    }
+                }
+                if (queries.isEmpty()) {
+                    return null;
+                }
+                String rewritten = queries.get(0);
+                return new RewriteResult(originalQuestion, rewritten, queries);
+            }
+
+            // 兼容旧格式: {rewrite, should_split, sub_questions}
             String rewrite = obj.has("rewrite") ? obj.get("rewrite").getAsString().trim() : "";
             if (StrUtil.isBlank(rewrite)) {
                 return null;
             }
 
-            // 尊重 LLM 的 should_split 决策
             boolean shouldSplit = obj.has("should_split")
                     && obj.get("should_split").getAsBoolean();
             if (!shouldSplit) {
-                return new RewriteResult(rewrite, List.of(rewrite));
+                return new RewriteResult(originalQuestion, rewrite, List.of(rewrite));
             }
 
             List<String> subs = new ArrayList<>();
@@ -304,11 +331,36 @@ public class MultiQuestionRewriteService implements QueryRewriteService {
             if (CollUtil.isEmpty(subs)) {
                 subs = List.of(rewrite);
             }
-            return new RewriteResult(rewrite, subs);
+            return new RewriteResult(originalQuestion, rewrite, subs);
         } catch (Exception e) {
             log.warn("解析改写+拆分结果失败，raw={}", raw, e);
             return null;
         }
+    }
+
+    private static final int MIN_SKIP_QUESTION_LENGTH = 4;
+
+    private static final Pattern PRONOUN_PATTERN = Pattern.compile(
+            "它[的们]?|这[个些]|那[个些]|上面|前面|刚才|之前[的说]");
+
+    private boolean canSkipRewrite(String question, List<ChatMessage> history) {
+        if (hasRewriteHistory(history)) {
+            return false;
+        }
+        if (PRONOUN_PATTERN.matcher(question).find()) {
+            return false;
+        }
+        if (question.length() < MIN_SKIP_QUESTION_LENGTH) {
+            return false;
+        }
+        return true;
+    }
+
+    private boolean hasRewriteHistory(List<ChatMessage> history) {
+        if (CollUtil.isEmpty(history)) {
+            return false;
+        }
+        return history.stream().anyMatch(this::isRewriteHistoryMessage);
     }
 
     private static final Pattern QUESTION_PATTERN = Pattern.compile(

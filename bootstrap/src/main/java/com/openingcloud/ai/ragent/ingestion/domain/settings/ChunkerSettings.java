@@ -51,6 +51,26 @@ public class ChunkerSettings {
     private Integer overlapSize;
 
     /**
+     * 语义分块目标大小
+     */
+    private Integer targetChars;
+
+    /**
+     * 语义分块上限
+     */
+    private Integer maxChars;
+
+    /**
+     * 语义分块下限
+     */
+    private Integer minChars;
+
+    /**
+     * 语义分块重叠大小
+     */
+    private Integer overlapChars;
+
+    /**
      * 自定义分割符
      * 用于指定文本切分的边界字符
      */

@@ -37,6 +37,11 @@ public enum ChunkingMode {
     FIXED_SIZE("fixed_size"),
 
     /**
+     * 重叠滑窗切分 - 基于固定窗口，但默认强调 overlap
+     */
+    OVERLAP("overlap"),
+
+    /**
      * 对Markdown友好的切分 - 保留Markdown结构
      */
     STRUCTURE_AWARE("structure_aware"),
@@ -70,6 +75,9 @@ public enum ChunkingMode {
             return null;
         }
         String normalized = normalize(value);
+        if ("semantic".equalsIgnoreCase(normalized)) {
+            return STRUCTURE_AWARE;
+        }
         for (ChunkingMode strategy : values()) {
             if (strategy.value.equalsIgnoreCase(normalized) || strategy.name().equalsIgnoreCase(normalized)) {
                 return strategy;

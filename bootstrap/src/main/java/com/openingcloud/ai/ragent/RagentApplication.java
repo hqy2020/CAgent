@@ -31,7 +31,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
         "com.openingcloud.ai.ragent.rag.dao.mapper",
         "com.openingcloud.ai.ragent.ingestion.dao.mapper",
         "com.openingcloud.ai.ragent.knowledge.dao.mapper",
-        "com.openingcloud.ai.ragent.user.dao.mapper"
+        "com.openingcloud.ai.ragent.user.dao.mapper",
+        "com.openingcloud.ai.ragent.evaluation.dao.mapper"
 })
 public class RagentApplication {
 

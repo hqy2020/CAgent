@@ -77,8 +77,9 @@ public class IngestionPipelineController {
     @GetMapping("/ingestion/pipelines")
     public Result<IPage<IngestionPipelineVO>> page(@RequestParam(value = "pageNo", defaultValue = "1") int pageNo,
                                                    @RequestParam(value = "pageSize", defaultValue = "10") int pageSize,
-                                                   @RequestParam(value = "keyword", required = false) String keyword) {
-        return Results.success(pipelineService.page(new Page<>(pageNo, pageSize), keyword));
+                                                   @RequestParam(value = "keyword", required = false) String keyword,
+                                                   @RequestParam(value = "standardOnly", defaultValue = "false") boolean standardOnly) {
+        return Results.success(pipelineService.page(new Page<>(pageNo, pageSize), keyword, standardOnly));
     }
 
     /**

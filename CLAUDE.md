@@ -100,9 +100,8 @@ RAG v3 对话链路（`GET /rag/v3/chat`）：
 |---|---|---|
 | `ChunkingStrategyFactory` | `ChunkingStrategy` 实例 | `Map<ChunkingMethod, ChunkingStrategy>` 注册 |
 | `StreamCallbackFactory` | `StreamCallback` 实例 | 按场景创建不同回调组合 |
-| `IntentTreeFactory` | 意图树结构 | 从持久化数据构建内存树 |
 
-位置：`core/chunk/ChunkingStrategyFactory`、`rag/service/handler/StreamCallbackFactory`、`rag/core/intent/IntentTreeFactory`。
+位置：`core/chunk/ChunkingStrategyFactory`、`rag/service/handler/StreamCallbackFactory`。
 
 ### 观察者模式（Observer）
 

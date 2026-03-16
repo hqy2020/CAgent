@@ -21,6 +21,7 @@ import com.openingcloud.ai.ragent.framework.convention.Result;
 import com.openingcloud.ai.ragent.framework.idempotent.IdempotentSubmit;
 import com.openingcloud.ai.ragent.framework.web.Results;
 import com.openingcloud.ai.ragent.rag.service.RAGChatService;
+import com.openingcloud.ai.ragent.rag.service.SkillBasedRAGService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -37,6 +38,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class RAGChatController {
 
     private final RAGChatService ragChatService;
+    private final SkillBasedRAGService skillBasedRAGService;
 
     /**
      * 发起 SSE 流式对话
@@ -61,6 +63,32 @@ public class RAGChatController {
     @PostMapping(value = "/rag/v3/stop")
     public Result<Void> stop(@RequestParam String taskId) {
         ragChatService.stopTask(taskId);
+        return Results.success();
+    }
+
+    /**
+     * Skill-Based RAG 流式对话（v4）
+     * AI 自主驱动检索，按需调用工具
+     */
+    @IdempotentSubmit(
+            key = "T(com.openingcloud.ai.ragent.framework.context.UserContext).getUserId()",
+            message = "当前会话处理中，请稍后再发起新的对话"
+    )
+    @GetMapping(value = "/rag/v4/chat", produces = "text/event-stream;charset=UTF-8")
+    public SseEmitter chatV4(@RequestParam String question,
+                              @RequestParam(required = false) String conversationId) {
+        SseEmitter emitter = new SseEmitter(0L);
+        skillBasedRAGService.streamChat(question, conversationId, emitter);
+        return emitter;
+    }
+
+    /**
+     * 停止 v4 任务
+     */
+    @IdempotentSubmit
+    @PostMapping(value = "/rag/v4/stop")
+    public Result<Void> stopV4(@RequestParam String taskId) {
+        skillBasedRAGService.stopTask(taskId);
         return Results.success();
     }
 }

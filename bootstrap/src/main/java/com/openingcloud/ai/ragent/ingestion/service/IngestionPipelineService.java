@@ -61,7 +61,12 @@ public interface IngestionPipelineService {
      * @param keyword 关键字
      * @return 分页结果
      */
-    IPage<IngestionPipelineVO> page(Page<IngestionPipelineVO> page, String keyword);
+    IPage<IngestionPipelineVO> page(Page<IngestionPipelineVO> page, String keyword, boolean standardOnly);
+
+    /**
+     * 初始化标准流水线
+     */
+    void initializeStandardPipelines();
 
     /**
      * 删除流水线

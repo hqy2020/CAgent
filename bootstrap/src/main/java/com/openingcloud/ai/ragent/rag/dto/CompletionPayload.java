@@ -26,5 +26,9 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * @param title     会话标题（可选）
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record CompletionPayload(String messageId, String title) {
+public record CompletionPayload(String messageId, String title, ReasoningTracePayload.TokenUsageVO totalUsage) {
+
+    public CompletionPayload(String messageId, String title) {
+        this(messageId, title, null);
+    }
 }

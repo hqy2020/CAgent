@@ -20,6 +20,8 @@ package com.openingcloud.ai.ragent.ingestion.node;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openingcloud.ai.ragent.framework.exception.ClientException;
+import com.openingcloud.ai.ragent.core.parser.TextCleanupOptions;
+import com.openingcloud.ai.ragent.core.parser.TextCleanupUtil;
 import com.openingcloud.ai.ragent.ingestion.domain.context.IngestionContext;
 import com.openingcloud.ai.ragent.ingestion.domain.context.StructuredDocument;
 import com.openingcloud.ai.ragent.ingestion.domain.enums.IngestionNodeType;
@@ -35,6 +37,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -78,23 +81,32 @@ public class ParserNode implements IngestionNode {
         validateMimeType(settings, mimeType, fileName);
 
         ParserSettings.ParserRule rule = matchRule(settings, mimeType, fileName);
-        DocumentParser parser = parserSelector.select(ParserType.TIKA.getType());
+        DocumentParser parser = resolveParser(rule, mimeType);
         if (parser == null) {
-            return NodeResult.fail(new ClientException("未配置 Tika 解析器"));
+            return NodeResult.fail(new ClientException("未找到可用文档解析器"));
         }
 
         Map<String, Object> options = rule == null ? Collections.emptyMap() : rule.getOptions();
         ParseResult result = parser.parse(context.getRawBytes(), mimeType, options);
-        context.setRawText(result.text());
+        TextCleanupOptions cleanupOptions = resolveCleanupOptions(options, mimeType, fileName);
+        String cleanedText = TextCleanupUtil.cleanup(result.text(), cleanupOptions);
+        context.setRawText(cleanedText);
 
         // 将 ParseResult 转换为 StructuredDocument
+        Map<String, Object> metadata = new LinkedHashMap<>(result.metadata());
+        metadata.put("cleanupProfile", cleanupOptions.getProfile());
+        metadata.put("parserType", parser.getParserType());
         StructuredDocument document = StructuredDocument.builder()
-                .text(result.text())
-                .metadata(result.metadata())
+                .text(cleanedText)
+                .metadata(metadata)
                 .build();
         context.setDocument(document);
+        if (context.getMetadata() == null) {
+            context.setMetadata(new LinkedHashMap<>());
+        }
+        context.getMetadata().putAll(metadata);
 
-        return NodeResult.ok("解析文本长度=" + (result.text() == null ? 0 : result.text().length()));
+        return NodeResult.ok("解析文本长度=" + cleanedText.length());
     }
 
     /**
@@ -147,6 +159,63 @@ public class ParserNode implements IngestionNode {
             return ParserSettings.builder().rules(List.of()).build();
         }
         return objectMapper.convertValue(node, ParserSettings.class);
+    }
+
+    private DocumentParser resolveParser(ParserSettings.ParserRule rule, String mimeType) {
+        Map<String, Object> options = rule == null || rule.getOptions() == null
+                ? Collections.emptyMap()
+                : rule.getOptions();
+        Object parserType = options.get("parserType");
+        if (parserType instanceof String parserTypeValue && StringUtils.hasText(parserTypeValue)) {
+            DocumentParser parser = parserSelector.select(resolveParserType(parserTypeValue));
+            if (parser != null) {
+                return parser;
+            }
+        }
+        return parserSelector.selectByMimeType(mimeType);
+    }
+
+    private String resolveParserType(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return ParserType.TIKA.getType();
+        }
+        String normalized = raw.trim();
+        for (ParserType parserType : ParserType.values()) {
+            if (parserType.getType().equalsIgnoreCase(normalized)
+                    || parserType.name().equalsIgnoreCase(normalized)) {
+                return parserType.getType();
+            }
+        }
+        throw new ClientException("未知解析器类型: " + raw);
+    }
+
+    private TextCleanupOptions resolveCleanupOptions(Map<String, Object> options, String mimeType, String fileName) {
+        String resolvedType = resolveType(mimeType, fileName);
+        String cleanupProfile = options == null ? null : asText(options.get("cleanupProfile"));
+        TextCleanupOptions cleanupOptions = parseCleanupOptions(options == null ? null : options.get("cleanup"));
+        if (!StringUtils.hasText(cleanupProfile) && cleanupOptions.getProfile() == null) {
+            if ("MARKDOWN".equalsIgnoreCase(resolvedType)) {
+                cleanupOptions.setProfile(TextCleanupOptions.PROFILE_MARKDOWN_STANDARD);
+            } else if ("PDF".equalsIgnoreCase(resolvedType)) {
+                cleanupOptions.setProfile(TextCleanupOptions.PROFILE_PDF_STANDARD);
+            } else {
+                cleanupOptions.setProfile(TextCleanupOptions.PROFILE_DEFAULT);
+            }
+        } else if (StringUtils.hasText(cleanupProfile)) {
+            cleanupOptions.setProfile(cleanupProfile.trim());
+        }
+        return cleanupOptions;
+    }
+
+    private TextCleanupOptions parseCleanupOptions(Object raw) {
+        if (raw == null) {
+            return TextCleanupOptions.builder().build();
+        }
+        return objectMapper.convertValue(raw, TextCleanupOptions.class);
+    }
+
+    private String asText(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     private ParserSettings.ParserRule matchRule(ParserSettings settings, String mimeType, String fileName) {

@@ -63,7 +63,7 @@ class IntentResolverTests {
 
         when(intentClassifier.classifyTargets(anyString())).thenReturn(List.of(highScore));
 
-        RewriteResult rewrite = new RewriteResult("rewritten", List.of("sub1", "sub2"));
+        RewriteResult rewrite = new RewriteResult("rewritten", "rewritten", List.of("sub1", "sub2"));
         List<SubQuestionIntent> result = resolver.resolve(rewrite);
 
         assertEquals(2, result.size());
@@ -79,7 +79,7 @@ class IntentResolverTests {
 
         when(intentClassifier.classifyTargets(anyString())).thenReturn(List.of(lowScore));
 
-        RewriteResult rewrite = new RewriteResult("question", null);
+        RewriteResult rewrite = new RewriteResult("question", "question", null);
         List<SubQuestionIntent> result = resolver.resolve(rewrite);
 
         assertEquals(1, result.size());
@@ -155,7 +155,7 @@ class IntentResolverTests {
                 .build();
         when(intentNodeRegistry.getNodeById("web-search-general")).thenReturn(webNode);
 
-        RewriteResult rewrite = new RewriteResult("1688-JAVA-工厂技术 做什么的", null);
+        RewriteResult rewrite = new RewriteResult("1688-JAVA-工厂技术 做什么的", "1688-JAVA-工厂技术 做什么的", null);
         List<SubQuestionIntent> result = resolver.resolve(rewrite);
 
         assertEquals(1, result.size());
@@ -174,7 +174,7 @@ class IntentResolverTests {
                 .build();
         when(intentNodeRegistry.getNodeById("web-search-general")).thenReturn(webNode);
 
-        RewriteResult rewrite = new RewriteResult("抖音是什么", null);
+        RewriteResult rewrite = new RewriteResult("抖音是什么", "抖音是什么", null);
         List<SubQuestionIntent> result = resolver.resolve(rewrite);
 
         assertEquals(1, result.size());
@@ -193,7 +193,7 @@ class IntentResolverTests {
                 .build();
         when(intentNodeRegistry.getNodeById("web-search-realtime")).thenReturn(realtimeNode);
 
-        RewriteResult rewrite = new RewriteResult("今天上海天气怎么样", null);
+        RewriteResult rewrite = new RewriteResult("今天上海天气怎么样", "今天上海天气怎么样", null);
         List<SubQuestionIntent> result = resolver.resolve(rewrite);
 
         assertEquals(1, result.size());

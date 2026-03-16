@@ -69,11 +69,24 @@ public class IntentResolver {
         return resolve(rewriteResult, CancellationToken.NONE);
     }
 
+    /**
+     * 基于原始问题进行意图识别（不依赖 Query 重写结果）。
+     * 用于意图前置场景：先识别意图，再决定是否需要 Query 重写。
+     */
+    @RagTraceNode(name = "intent-resolve", type = "INTENT")
+    public List<SubQuestionIntent> resolveFromQuestion(String question, CancellationToken token) {
+        return resolveQuestions(List.of(question), token);
+    }
+
     @RagTraceNode(name = "intent-resolve", type = "INTENT")
     public List<SubQuestionIntent> resolve(RewriteResult rewriteResult, CancellationToken token) {
         List<String> subQuestions = CollUtil.isNotEmpty(rewriteResult.subQuestions())
                 ? rewriteResult.subQuestions()
                 : List.of(rewriteResult.rewrittenQuestion());
+        return resolveQuestions(subQuestions, token);
+    }
+
+    private List<SubQuestionIntent> resolveQuestions(List<String> subQuestions, CancellationToken token) {
 
         token.throwIfCancelled();
 

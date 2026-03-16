@@ -23,7 +23,11 @@ import {
   Users,
   FolderKanban,
   Workflow,
-  Flame
+  Flame,
+  FlaskConical,
+  FileText,
+  Brain,
+  UserCircle
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/components/ui/button";
@@ -130,6 +134,11 @@ const menuGroups: MenuGroup[] = [
         label: "链路追踪",
         icon: Workflow
       },
+      {
+        path: "/admin/evaluation",
+        label: "RAG评测",
+        icon: FlaskConical
+      },
     ]
   },
   {
@@ -151,6 +160,21 @@ const menuGroups: MenuGroup[] = [
         icon: Cpu
       },
       {
+        path: "/admin/prompts",
+        label: "提示词管理",
+        icon: FileText
+      },
+      {
+        path: "/admin/memories",
+        label: "用户记忆",
+        icon: Brain
+      },
+      {
+        path: "/admin/profiles",
+        label: "用户画像",
+        icon: UserCircle
+      },
+      {
         path: "/admin/settings",
         label: "系统设置",
         icon: Settings
@@ -167,6 +191,10 @@ const breadcrumbMap: Record<string, string> = {
   "intent-list": "意图列表",
   ingestion: "数据通道",
   traces: "链路追踪",
+  evaluation: "RAG评测",
+  prompts: "提示词管理",
+  memories: "用户记忆",
+  profiles: "用户画像",
   "sample-questions": "示例问题",
   models: "模型管理",
   settings: "系统设置",

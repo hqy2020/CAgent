@@ -71,6 +71,11 @@ public enum SSEEventType {
     AGENT_CONFIRM_REQUIRED("agent_confirm_required"),
 
     /**
+     * 推理过程追踪事件
+     */
+    REASONING_TRACE("reasoning_trace"),
+
+    /**
      * 模型回复完成事件
      */
     FINISH("finish"),
@@ -98,7 +103,12 @@ public enum SSEEventType {
     /**
      * 错误事件
      */
-    ERROR("error");
+    ERROR("error"),
+
+    /**
+     * 用户记忆保存确认事件
+     */
+    MEMORY_SAVED("memory_saved");
 
     private final String value;
 

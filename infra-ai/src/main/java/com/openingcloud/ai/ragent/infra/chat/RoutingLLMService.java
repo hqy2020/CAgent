@@ -28,6 +28,7 @@ import com.openingcloud.ai.ragent.infra.model.ModelHealthStore;
 import com.openingcloud.ai.ragent.infra.model.ModelRoutingExecutor;
 import com.openingcloud.ai.ragent.infra.model.ModelSelector;
 import com.openingcloud.ai.ragent.infra.model.ModelTarget;
+import com.openingcloud.ai.ragent.infra.token.TokenUsage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
@@ -51,7 +52,7 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @Primary
-public class RoutingLLMService implements LLMService {
+public class RoutingLLMService implements ModelAwareLLMService {
 
     private static final String STREAM_INTERRUPTED_MESSAGE = "流式请求被中断";
     private static final String STREAM_NO_PROVIDER_MESSAGE = "无可用大模型提供者";
@@ -83,17 +84,32 @@ public class RoutingLLMService implements LLMService {
     @Override
     @RagTraceNode(name = "llm-chat-routing", type = "LLM_ROUTING")
     public String chat(ChatRequest request) {
-        return executor.executeWithFallback(
+        return chatWithMetadata(request).content();
+    }
+
+    @Override
+    @RagTraceNode(name = "llm-chat-routing", type = "LLM_ROUTING")
+    public ChatResultWithMetadata chatWithMetadata(ChatRequest request) {
+        ChatResultWithMetadata result = executor.executeWithFallback(
                 ModelCapability.CHAT,
                 selector.selectChatCandidates(request.getThinking()),
                 target -> clientsByProvider.get(target.candidate().getProvider()),
-                (client, target) -> client.chat(request, target)
+                (client, target) -> new ChatResultWithMetadata(
+                        client.chat(request, target),
+                        toModelMetadata(target),
+                        null
+                )
         );
+        fireTraceIfPresent(request, result);
+        return result;
     }
 
     @Override
     @RagTraceNode(name = "llm-stream-routing", type = "LLM_ROUTING")
     public StreamCancellationHandle streamChat(ChatRequest request, StreamCallback callback) {
+        // 如果有 trace listener，包装 callback 以在流式完成时触发 trace
+        StreamCallback effectiveCallback = wrapWithTracingIfNeeded(request, callback);
+
         List<ModelTarget> targets = selector.selectChatCandidates(request.getThinking());
         if (CollUtil.isEmpty(targets)) {
             throw new RemoteException(STREAM_NO_PROVIDER_MESSAGE);
@@ -117,7 +133,7 @@ public class RoutingLLMService implements LLMService {
             }
 
             FirstPacketAwaiter awaiter = new FirstPacketAwaiter();
-            ProbeBufferingCallback wrapper = new ProbeBufferingCallback(callback, awaiter);
+            ProbeBufferingCallback wrapper = new ProbeBufferingCallback(effectiveCallback, awaiter);
 
             StreamCancellationHandle handle;
             try {
@@ -137,10 +153,11 @@ public class RoutingLLMService implements LLMService {
                 continue;
             }
 
-            FirstPacketAwaiter.Result result = awaitFirstPacket(awaiter, handle, callback);
+            FirstPacketAwaiter.Result result = awaitFirstPacket(awaiter, handle, effectiveCallback);
 
             // 判断结果
             if (result.isSuccess()) {
+                effectiveCallback.onModelSelected(toModelMetadata(target));
                 wrapper.commit();
                 healthStore.markSuccess(target.id());
                 return handle;
@@ -154,7 +171,7 @@ public class RoutingLLMService implements LLMService {
         }
 
         // 所有模型都失败了，通知客户端错误
-        throw notifyAllFailed(callback, lastError, skipReasons);
+        throw notifyAllFailed(effectiveCallback, lastError, skipReasons);
     }
 
     private ChatClient resolveClient(ModelTarget target, String label) {
@@ -228,6 +245,102 @@ public class RoutingLLMService implements LLMService {
         return finalException;
     }
 
+    private ModelInvocationMetadata toModelMetadata(ModelTarget target) {
+        if (target == null) {
+            return null;
+        }
+        return new ModelInvocationMetadata(
+                target.id(),
+                target.candidate() == null ? null : target.candidate().getProvider()
+        );
+    }
+
+    private void fireTraceIfPresent(ChatRequest request, ChatResultWithMetadata result) {
+        ReasoningTraceListener listener = ReasoningTraceContext.getListener();
+        if (listener == null) {
+            return;
+        }
+        try {
+            listener.onTrace(
+                    ReasoningTraceContext.getStepLabel(),
+                    request.getMessages(),
+                    result.content(),
+                    result.usage()
+            );
+        } catch (Exception e) {
+            log.warn("触发 reasoning trace 回调失败", e);
+        }
+    }
+
+    private StreamCallback wrapWithTracingIfNeeded(ChatRequest request, StreamCallback downstream) {
+        ReasoningTraceListener listener = ReasoningTraceContext.getListener();
+        if (listener == null) {
+            return downstream;
+        }
+        String stepLabel = ReasoningTraceContext.getStepLabel();
+        return new TracingStreamCallback(downstream, listener, stepLabel, request);
+    }
+
+    /**
+     * 流式 Trace 装饰器：累积完整响应内容和 usage，在 onComplete 时触发 trace 回调
+     */
+    private static final class TracingStreamCallback implements StreamCallback {
+
+        private final StreamCallback downstream;
+        private final ReasoningTraceListener listener;
+        private final String stepLabel;
+        private final ChatRequest request;
+        private final StringBuilder contentBuffer = new StringBuilder();
+        private volatile TokenUsage capturedUsage;
+
+        private TracingStreamCallback(StreamCallback downstream, ReasoningTraceListener listener,
+                                       String stepLabel, ChatRequest request) {
+            this.downstream = downstream;
+            this.listener = listener;
+            this.stepLabel = stepLabel;
+            this.request = request;
+        }
+
+        @Override
+        public void onContent(String content) {
+            if (content != null) {
+                contentBuffer.append(content);
+            }
+            downstream.onContent(content);
+        }
+
+        @Override
+        public void onThinking(String content) {
+            downstream.onThinking(content);
+        }
+
+        @Override
+        public void onModelSelected(ModelInvocationMetadata model) {
+            downstream.onModelSelected(model);
+        }
+
+        @Override
+        public void onTokenUsage(TokenUsage usage) {
+            this.capturedUsage = usage;
+            downstream.onTokenUsage(usage);
+        }
+
+        @Override
+        public void onComplete() {
+            try {
+                listener.onTrace(stepLabel, request.getMessages(), contentBuffer.toString(), capturedUsage);
+            } catch (Exception ignored) {
+                // trace 回调不应影响主流程
+            }
+            downstream.onComplete();
+        }
+
+        @Override
+        public void onError(Throwable error) {
+            downstream.onError(error);
+        }
+    }
+
     /**
      * 流式首包探测回调：
      * - 探测阶段先缓存事件，避免失败模型的内容污染下游输出
@@ -271,6 +384,11 @@ public class RoutingLLMService implements LLMService {
             bufferOrDispatch(BufferedEvent.error(t));
         }
 
+        @Override
+        public void onTokenUsage(TokenUsage usage) {
+            bufferOrDispatch(BufferedEvent.tokenUsage(usage));
+        }
+
         /**
          * 首包探测成功后提交：
          * 1. 原子切换为 committed
@@ -312,28 +430,33 @@ public class RoutingLLMService implements LLMService {
                 case CONTENT -> downstream.onContent(event.content());
                 case THINKING -> downstream.onThinking(event.content());
                 case COMPLETE -> downstream.onComplete();
+                case TOKEN_USAGE -> downstream.onTokenUsage(event.usage());
                 case ERROR -> downstream.onError(event.error() != null
                         ? event.error()
                         : new RemoteException("流式请求失败", BaseErrorCode.REMOTE_ERROR));
             }
         }
 
-        private record BufferedEvent(EventType type, String content, Throwable error) {
+        private record BufferedEvent(EventType type, String content, Throwable error, TokenUsage usage) {
 
             private static BufferedEvent content(String content) {
-                return new BufferedEvent(EventType.CONTENT, content, null);
+                return new BufferedEvent(EventType.CONTENT, content, null, null);
             }
 
             private static BufferedEvent thinking(String content) {
-                return new BufferedEvent(EventType.THINKING, content, null);
+                return new BufferedEvent(EventType.THINKING, content, null, null);
             }
 
             private static BufferedEvent complete() {
-                return new BufferedEvent(EventType.COMPLETE, null, null);
+                return new BufferedEvent(EventType.COMPLETE, null, null, null);
             }
 
             private static BufferedEvent error(Throwable error) {
-                return new BufferedEvent(EventType.ERROR, null, error);
+                return new BufferedEvent(EventType.ERROR, null, error, null);
+            }
+
+            private static BufferedEvent tokenUsage(TokenUsage usage) {
+                return new BufferedEvent(EventType.TOKEN_USAGE, null, null, usage);
             }
         }
 
@@ -341,7 +464,8 @@ public class RoutingLLMService implements LLMService {
             CONTENT,
             THINKING,
             COMPLETE,
-            ERROR
+            ERROR,
+            TOKEN_USAGE
         }
     }
 }

@@ -51,8 +51,9 @@ public class HeuristicTokenCounterService implements TokenCounterService {
         }
 
         int asciiTokens = (asciiCount + 3) / 4; // 英文等按 4 字符约 1 token
+        int cjkTokens = (cjkCount * 3 + 1) / 2; // CJK 按 1 字符 ≈ 1.5 token（向上取整）
         int otherTokens = (otherCount + 1) / 2; // 其他字符按 2 字符约 1 token
-        int total = asciiTokens + cjkCount + otherTokens;
+        int total = asciiTokens + cjkTokens + otherTokens;
         return Math.max(total, 1);
     }
 

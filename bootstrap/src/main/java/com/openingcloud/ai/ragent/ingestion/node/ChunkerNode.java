@@ -34,7 +34,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -74,10 +76,24 @@ public class ChunkerNode implements IngestionNode {
     }
 
     private ChunkingOptions convertToChunkConfig(ChunkerSettings settings) {
+        Map<String, Object> metadata = new HashMap<>();
+        if (settings.getTargetChars() != null) {
+            metadata.put("targetChars", settings.getTargetChars());
+        }
+        if (settings.getMaxChars() != null) {
+            metadata.put("maxChars", settings.getMaxChars());
+        }
+        if (settings.getMinChars() != null) {
+            metadata.put("minChars", settings.getMinChars());
+        }
+        if (settings.getOverlapChars() != null) {
+            metadata.put("overlapChars", settings.getOverlapChars());
+        }
         return ChunkingOptions.builder()
-                .chunkSize(settings.getChunkSize())
-                .overlapSize(settings.getOverlapSize())
+                .chunkSize(settings.getTargetChars() != null ? settings.getTargetChars() : settings.getChunkSize())
+                .overlapSize(settings.getOverlapChars() != null ? settings.getOverlapChars() : settings.getOverlapSize())
                 .separator(settings.getSeparator())
+                .metadata(metadata)
                 .build();
     }
 
@@ -107,10 +123,25 @@ public class ChunkerNode implements IngestionNode {
             settings.setStrategy(ChunkingMode.FIXED_SIZE);
         }
         if (settings.getChunkSize() == null || settings.getChunkSize() <= 0) {
-            settings.setChunkSize(512);
+            settings.setChunkSize(500);
+        }
+        if (settings.getStrategy() == ChunkingMode.STRUCTURE_AWARE) {
+            if (settings.getTargetChars() == null || settings.getTargetChars() <= 0) {
+                settings.setTargetChars(800);
+            }
+            if (settings.getMaxChars() == null || settings.getMaxChars() <= 0) {
+                settings.setMaxChars(1000);
+            }
+            if (settings.getMinChars() == null || settings.getMinChars() <= 0) {
+                settings.setMinChars(300);
+            }
+            if (settings.getOverlapChars() == null || settings.getOverlapChars() < 0) {
+                settings.setOverlapChars(120);
+            }
+            return settings;
         }
         if (settings.getOverlapSize() == null || settings.getOverlapSize() < 0) {
-            settings.setOverlapSize(128);
+            settings.setOverlapSize(settings.getStrategy() == ChunkingMode.FIXED_SIZE ? 0 : 50);
         }
         return settings;
     }

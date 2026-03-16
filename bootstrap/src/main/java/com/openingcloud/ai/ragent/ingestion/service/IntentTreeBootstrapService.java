@@ -17,132 +17,35 @@
 
 package com.openingcloud.ai.ragent.ingestion.service;
 
-import cn.hutool.core.util.StrUtil;
-import com.openingcloud.ai.ragent.rag.config.IntentBootstrapProperties;
-import com.openingcloud.ai.ragent.rag.core.intent.IntentTreeCacheManager;
-import com.openingcloud.ai.ragent.ingestion.service.IntentTreeSyncResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.redisson.api.RLock;
-import org.redisson.api.RedissonClient;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
-import java.util.concurrent.TimeUnit;
-
 /**
- * 意图树冷启动初始化服务
+ * 意图树冷启动初始化服务。
  *
- * <p>委托 {@link IntentTreeService#initFromFactory()} 执行基于工厂的初始化。
+ * <p>意图树数据已完全由数据库管理（t_intent_node 表），
+ * 不再依赖 IntentTreeFactory 代码初始化。
+ * 此类保留为向后兼容入口，方法均为 no-op。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class IntentTreeBootstrapService {
 
-    private static final String BOOTSTRAP_LOCK_KEY = "ragent:intent:bootstrap:lock";
-    private static final long LOCK_WAIT_SECONDS = 0L;
-    private static final long LOCK_LEASE_SECONDS = 30L;
-
-    private final IntentTreeCacheManager intentTreeCacheManager;
-    private final RedissonClient redissonClient;
-    private final IntentBootstrapProperties bootstrapProperties;
-    private final IntentTreeService intentTreeService;
-
-    @EventListener(ApplicationReadyEvent.class)
-    public void bootstrapOnStartup() {
-        int created = initialize(false);
-        if (created > 0) {
-            log.info("意图树冷启动完成，创建节点数: {}", created);
-        }
-    }
-
     /**
-     * 手动触发初始化（幂等）
-     *
-     * @return 本次创建节点数
+     * 手动触发初始化（no-op，数据已在 DB 中管理）
      */
     public int initializeManually() {
-        return initialize(true);
+        log.info("意图树数据已由数据库管理，initFromFactory 已废弃，跳过");
+        return 0;
     }
 
     /**
-     * 手动触发工厂定义覆盖同步
+     * 手动触发工厂定义覆盖同步（no-op，数据已在 DB 中管理）
      */
     public IntentTreeSyncResult syncManually() {
-        String strategy = StrUtil.blankToDefault(bootstrapProperties.getStrategy(), "from-existing-kb");
-        if (!"from-existing-kb".equalsIgnoreCase(strategy)) {
-            log.warn("意图树同步策略不支持: {}，跳过", strategy);
-            return new IntentTreeSyncResult(0, 0, 0);
-        }
-
-        RLock lock = redissonClient.getLock(BOOTSTRAP_LOCK_KEY);
-        boolean locked = false;
-        try {
-            locked = lock.tryLock(LOCK_WAIT_SECONDS, LOCK_LEASE_SECONDS, TimeUnit.SECONDS);
-            if (!locked) {
-                log.info("意图树同步未获取到分布式锁，跳过本次执行");
-                return new IntentTreeSyncResult(0, 0, 0);
-            }
-            IntentTreeSyncResult result = intentTreeService.syncFromFactory();
-            if (result.hasChanges()) {
-                intentTreeCacheManager.clearIntentTreeCache();
-                log.info("意图树覆盖同步完成, created={}, updated={}, repaired={}",
-                        result.created(), result.updated(), result.repaired());
-            } else {
-                log.info("意图树与工厂定义保持一致，无需覆盖同步");
-            }
-            return result;
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            log.warn("意图树同步被中断", ex);
-            return new IntentTreeSyncResult(0, 0, 0);
-        } finally {
-            if (locked && lock.isHeldByCurrentThread()) {
-                lock.unlock();
-            }
-        }
-    }
-
-    /**
-     * 启动或手动触发：补齐工厂中缺失节点（幂等）
-     */
-    private int initialize(boolean force) {
-        if (!force && !bootstrapProperties.isEnabled()) {
-            log.info("意图树自动初始化已禁用，跳过");
-            return 0;
-        }
-        String strategy = StrUtil.blankToDefault(bootstrapProperties.getStrategy(), "from-existing-kb");
-        if (!"from-existing-kb".equalsIgnoreCase(strategy)) {
-            log.warn("意图树初始化策略不支持: {}，跳过", strategy);
-            return 0;
-        }
-
-        RLock lock = redissonClient.getLock(BOOTSTRAP_LOCK_KEY);
-        boolean locked = false;
-        try {
-            locked = lock.tryLock(LOCK_WAIT_SECONDS, LOCK_LEASE_SECONDS, TimeUnit.SECONDS);
-            if (!locked) {
-                log.info("意图树初始化未获取到分布式锁，跳过本次执行");
-                return 0;
-            }
-            int created = intentTreeService.initFromFactory();
-            if (created > 0) {
-                intentTreeCacheManager.clearIntentTreeCache();
-                log.info("意图树补齐完成，新增节点数: {}", created);
-            } else {
-                log.info("意图树已与工厂定义保持一致，无需补齐");
-            }
-            return created;
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            log.warn("意图树初始化被中断", ex);
-            return 0;
-        } finally {
-            if (locked && lock.isHeldByCurrentThread()) {
-                lock.unlock();
-            }
-        }
+        log.info("意图树数据已由数据库管理，syncFromFactory 已废弃，跳过");
+        return new IntentTreeSyncResult(0, 0, 0);
     }
 }

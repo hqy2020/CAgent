@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { listSessions } from "@/services/sessionService";
 import { useChatStore } from "@/stores/chatStore";
+import { toast } from "sonner";
 
 // Mock 外部依赖
 vi.mock("@/services/sessionService", () => ({
@@ -50,6 +53,7 @@ describe("chatStore - 深度思考模式", () => {
       messages: [],
       isLoading: false,
       sessionsLoaded: false,
+      sessionLoadError: null,
       isStreaming: false,
       isCreatingNew: false,
       deepThinkingEnabled: false,
@@ -64,6 +68,18 @@ describe("chatStore - 深度思考模式", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("fetchSessions 失败后应结束首屏加载并保留错误状态", async () => {
+    vi.mocked(listSessions).mockRejectedValueOnce(new Error("connect ECONNREFUSED"));
+
+    await useChatStore.getState().fetchSessions();
+
+    const state = useChatStore.getState();
+    expect(state.isLoading).toBe(false);
+    expect(state.sessionsLoaded).toBe(true);
+    expect(state.sessionLoadError).toBe("connect ECONNREFUSED");
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith("connect ECONNREFUSED");
   });
 
   // ─── setDeepThinkingEnabled ───

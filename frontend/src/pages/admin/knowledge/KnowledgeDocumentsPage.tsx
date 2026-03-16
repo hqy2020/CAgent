@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Check, FileUp, FolderOpen, Eye, ClipboardCopy, RefreshCw, Trash2, Pencil, FolderUp, Play } from "lucide-react";
 import { toast } from "sonner";
@@ -17,13 +17,21 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-import type { KnowledgeBase, KnowledgeDocument, KnowledgeDocumentUploadPayload, KnowledgeDocumentChunkLog, PageResult } from "@/services/knowledgeService";
+import type {
+  KnowledgeBase,
+  KnowledgeDocument,
+  KnowledgeDocumentUploadPayload,
+  KnowledgeDocumentChunkLog,
+  KnowledgeDocumentSuggestion,
+  PageResult
+} from "@/services/knowledgeService";
 import {
   deleteDocument,
   enableDocument,
   getKnowledgeBase,
   getDocumentsPage,
   getDocument,
+  suggestDocumentIngestion,
   updateDocument,
   startDocumentChunk,
   uploadDocument,
@@ -49,8 +57,10 @@ const SOURCE_OPTIONS = [
 ];
 
 const CHUNK_STRATEGY_OPTIONS = [
-  { value: "fixed_size", label: "fixed_size" },
-  { value: "structure_aware", label: "structure_aware" }
+  { value: "fixed_size", label: "固定大小分块" },
+  { value: "overlap", label: "重叠分块" },
+  { value: "recursive", label: "递归分块" },
+  { value: "semantic", label: "语义分块" }
 ];
 
 const PROCESS_MODE_OPTIONS = [
@@ -59,12 +69,12 @@ const PROCESS_MODE_OPTIONS = [
 ];
 
 const INT_MAX = 2147483647;
-const DEFAULT_CHUNK_SIZE = 512;
-const DEFAULT_OVERLAP_SIZE = 128;
-const DEFAULT_TARGET_CHARS = 1400;
-const DEFAULT_MAX_CHARS = 1800;
-const DEFAULT_MIN_CHARS = 600;
-const DEFAULT_OVERLAP_CHARS = 0;
+const DEFAULT_CHUNK_SIZE = 500;
+const DEFAULT_OVERLAP_SIZE = 50;
+const DEFAULT_TARGET_CHARS = 800;
+const DEFAULT_MAX_CHARS = 1000;
+const DEFAULT_MIN_CHARS = 300;
+const DEFAULT_OVERLAP_CHARS = 120;
 
 const parseChunkConfig = (raw?: string | null): Record<string, unknown> => {
   if (!raw) return {};
@@ -128,6 +138,18 @@ const formatProcessMode = (processMode?: string | null) => {
   if (normalized === "pipeline") return "数据通道";
   if (normalized === "chunk") return "分块策略";
   return "分块策略"; // 默认值
+};
+
+const normalizeChunkStrategy = (value?: string | null) => {
+  const normalized = value?.toLowerCase();
+  if (!normalized) return "semantic";
+  if (normalized === "structure_aware") return "semantic";
+  return normalized;
+};
+
+const formatChunkStrategyLabel = (value?: string | null) => {
+  const normalized = normalizeChunkStrategy(value);
+  return CHUNK_STRATEGY_OPTIONS.find((option) => option.value === normalized)?.label || normalized;
 };
 
 export function KnowledgeDocumentsPage() {
@@ -323,7 +345,7 @@ export function KnowledgeDocumentsPage() {
   const detailNameLabel = detailIsUrlSource ? "文档名称" : "本地文件";
   const detailNameHint = detailIsUrlSource ? "仅支持修改文档名称" : "仅支持修改文件名";
   const detailConfig = detailTarget ? parseChunkConfig(detailTarget.chunkConfig) : {};
-  const detailChunkStrategy = (detailTarget?.chunkStrategy || "structure_aware").toLowerCase();
+  const detailChunkStrategy = normalizeChunkStrategy(detailTarget?.chunkStrategy);
   const detailChunkSize =
     detailTarget?.chunkSize ?? getConfigNumber(detailConfig, "chunkSize", DEFAULT_CHUNK_SIZE);
   const detailOverlapSize =
@@ -338,6 +360,7 @@ export function KnowledgeDocumentsPage() {
     detailTarget?.overlapChars ?? getConfigNumber(detailConfig, "overlapChars", DEFAULT_OVERLAP_CHARS);
   const detailNameChanged = detailTarget ? detailName.trim() !== (detailTarget.docName || "") : false;
   const detailChunkSizeDisplay = detailChunkSize === INT_MAX ? "不分块" : detailChunkSize;
+  const detailUsesSemantic = detailChunkStrategy === "semantic";
 
   return (
     <div className="admin-page">
@@ -719,13 +742,10 @@ export function KnowledgeDocumentsPage() {
                 <div className="space-y-3 rounded-lg border p-3">
                   <div>
                     <div className="text-sm font-medium mb-2">分块策略</div>
-                    <Input
-                      value={detailChunkStrategy === "fixed_size" ? "fixed_size" : "structure_aware"}
-                      disabled
-                    />
+                    <Input value={formatChunkStrategyLabel(detailChunkStrategy)} disabled />
                   </div>
 
-                  {detailChunkStrategy === "fixed_size" ? (
+                  {!detailUsesSemantic ? (
                     <div className="grid gap-4 md:grid-cols-2">
                       <div>
                         <div className="text-sm font-medium mb-2">块大小</div>
@@ -896,7 +916,7 @@ const uploadSchema = z
     scheduleEnabled: z.boolean(),
     scheduleCron: z.string().optional(),
     processMode: z.enum(["chunk", "pipeline"]),
-    chunkStrategy: z.enum(["fixed_size", "structure_aware"]).optional(),
+    chunkStrategy: z.enum(["fixed_size", "overlap", "recursive", "semantic"]).optional(),
     pipelineId: z.string().optional(),
     chunkSize: z.string().optional(),
     overlapSize: z.string().optional(),
@@ -949,14 +969,14 @@ const uploadSchema = z
         });
         return;
       }
-      if (values.chunkStrategy === "fixed_size") {
-        requireNumber(values.chunkSize, "chunkSize", "块大小");
-        requireNumber(values.overlapSize, "overlapSize", "重叠大小");
-      } else {
+      if (values.chunkStrategy === "semantic") {
         requireNumber(values.targetChars, "targetChars", "理想块大小");
         requireNumber(values.maxChars, "maxChars", "块上限");
         requireNumber(values.minChars, "minChars", "块下限");
         requireNumber(values.overlapChars, "overlapChars", "重叠大小");
+      } else {
+        requireNumber(values.chunkSize, "chunkSize", "块大小");
+        requireNumber(values.overlapSize, "overlapSize", "重叠大小");
       }
     } else if (values.processMode === "pipeline") {
       if (isBlank(values.pipelineId)) {
@@ -975,9 +995,21 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [noChunk, setNoChunk] = useState(false);
-  const [originalChunkSize, setOriginalChunkSize] = useState("512");
+  const [originalChunkSize, setOriginalChunkSize] = useState(String(DEFAULT_CHUNK_SIZE));
   const [pipelines, setPipelines] = useState<IngestionPipeline[]>([]);
   const [loadingPipelines, setLoadingPipelines] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestion, setSuggestion] = useState<KnowledgeDocumentSuggestion | null>(null);
+  const suggestionInFlightRef = useRef(false);
+  const latestSelectionRef = useRef<{
+    sourceType: UploadFormValues["sourceType"];
+    file: File | null;
+    sourceLocation: string;
+  }>({
+    sourceType: "file",
+    file: null,
+    sourceLocation: ""
+  });
 
   const form = useForm<UploadFormValues>({
     resolver: zodResolver(uploadSchema),
@@ -986,32 +1018,55 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
       sourceLocation: "",
       scheduleEnabled: false,
       scheduleCron: "",
-      processMode: "chunk",
-      chunkStrategy: "fixed_size",
+      processMode: "pipeline",
+      chunkStrategy: "recursive",
       pipelineId: "",
-      chunkSize: "512",
-      overlapSize: "128",
-      targetChars: "1400",
-      maxChars: "1800",
-      minChars: "600",
-      overlapChars: "0"
+      chunkSize: String(DEFAULT_CHUNK_SIZE),
+      overlapSize: String(DEFAULT_OVERLAP_SIZE),
+      targetChars: String(DEFAULT_TARGET_CHARS),
+      maxChars: String(DEFAULT_MAX_CHARS),
+      minChars: String(DEFAULT_MIN_CHARS),
+      overlapChars: String(DEFAULT_OVERLAP_CHARS)
     }
   });
 
   const sourceType = form.watch("sourceType");
   const processMode = form.watch("processMode");
-  const chunkStrategy = form.watch("chunkStrategy");
+  const chunkStrategy = normalizeChunkStrategy(form.watch("chunkStrategy"));
   const scheduleEnabled = form.watch("scheduleEnabled");
   const chunkSize = form.watch("chunkSize");
+  const sourceLocation = form.watch("sourceLocation");
   const isUrlSource = sourceType === "url";
   const isChunkMode = processMode === "chunk";
   const isPipelineMode = processMode === "pipeline";
-  const isFixedSize = chunkStrategy === "fixed_size";
+  const isSemantic = chunkStrategy === "semantic";
+  const canUseNoChunk = chunkStrategy === "fixed_size";
+
+  const buildSuggestionKey = (
+    currentSourceType: UploadFormValues["sourceType"],
+    currentFile: File | null,
+    currentSourceLocation?: string
+  ) => {
+    if (currentSourceType === "file") {
+      if (!currentFile) return "";
+      return `file:${currentFile.name}:${currentFile.size}:${currentFile.lastModified}`;
+    }
+    const normalizedLocation = (currentSourceLocation ?? "").trim();
+    return normalizedLocation ? `url:${normalizedLocation}` : "";
+  };
+
+  useEffect(() => {
+    latestSelectionRef.current = {
+      sourceType,
+      file,
+      sourceLocation: sourceLocation ?? ""
+    };
+  }, [file, sourceLocation, sourceType]);
 
   const loadPipelines = async () => {
     setLoadingPipelines(true);
     try {
-      const result = await getIngestionPipelines(1, 100);
+      const result = await getIngestionPipelines(1, 100, undefined, true);
       setPipelines(result.records || []);
     } catch (error) {
       console.error("加载Pipeline失败", error);
@@ -1029,18 +1084,25 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
         sourceLocation: "",
         scheduleEnabled: false,
         scheduleCron: "",
-        processMode: "chunk",
-        chunkStrategy: "fixed_size",
+        processMode: "pipeline",
+        chunkStrategy: "recursive",
         pipelineId: "",
-        chunkSize: "512",
-        overlapSize: "128",
-        targetChars: "1400",
-        maxChars: "1800",
-        minChars: "600",
-        overlapChars: "0"
+        chunkSize: String(DEFAULT_CHUNK_SIZE),
+        overlapSize: String(DEFAULT_OVERLAP_SIZE),
+        targetChars: String(DEFAULT_TARGET_CHARS),
+        maxChars: String(DEFAULT_MAX_CHARS),
+        minChars: String(DEFAULT_MIN_CHARS),
+        overlapChars: String(DEFAULT_OVERLAP_CHARS)
       });
       setNoChunk(false);
-      setOriginalChunkSize("512");
+      setOriginalChunkSize(String(DEFAULT_CHUNK_SIZE));
+      setSuggestion(null);
+      suggestionInFlightRef.current = false;
+      latestSelectionRef.current = {
+        sourceType: "file",
+        file: null,
+        sourceLocation: ""
+      };
       loadPipelines();
     }
   }, [open, form]);
@@ -1049,6 +1111,8 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
     if (isUrlSource) {
       setFile(null);
     }
+    setSuggestion(null);
+    form.setValue("pipelineId", "");
   }, [isUrlSource]);
 
   // 监听块大小变化，如果用户手动修改了值，取消"不分块"状态
@@ -1058,17 +1122,89 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
     }
   }, [chunkSize, noChunk]);
 
-  // 处理"不分块"按钮点击
+  useEffect(() => {
+    if (chunkStrategy !== "fixed_size") {
+      setNoChunk(false);
+    }
+  }, [chunkStrategy]);
+
   const handleNoChunkToggle = () => {
     if (noChunk) {
-      // 取消选中，恢复原始值
       form.setValue("chunkSize", originalChunkSize);
       setNoChunk(false);
     } else {
-      // 选中，保存当前值并设置为最大值
-      setOriginalChunkSize(chunkSize || "512");
+      setOriginalChunkSize(chunkSize || String(DEFAULT_CHUNK_SIZE));
       form.setValue("chunkSize", String(INT_MAX));
       setNoChunk(true);
+    }
+  };
+
+  const applySuggestion = (result: KnowledgeDocumentSuggestion) => {
+    setSuggestion(result);
+    if (result.pipelineId) {
+      form.setValue("pipelineId", result.pipelineId);
+      form.setValue("processMode", "pipeline");
+    }
+    if (result.chunkStrategy) {
+      form.setValue(
+        "chunkStrategy",
+        normalizeChunkStrategy(result.chunkStrategy) as UploadFormValues["chunkStrategy"]
+      );
+    }
+    if (result.chunkSize !== undefined && result.chunkSize !== null) {
+      form.setValue("chunkSize", String(result.chunkSize));
+    }
+    if (result.overlapSize !== undefined && result.overlapSize !== null) {
+      form.setValue("overlapSize", String(result.overlapSize));
+    }
+    if (result.targetChars !== undefined && result.targetChars !== null) {
+      form.setValue("targetChars", String(result.targetChars));
+    }
+    if (result.maxChars !== undefined && result.maxChars !== null) {
+      form.setValue("maxChars", String(result.maxChars));
+    }
+    if (result.minChars !== undefined && result.minChars !== null) {
+      form.setValue("minChars", String(result.minChars));
+    }
+    if (result.overlapChars !== undefined && result.overlapChars !== null) {
+      form.setValue("overlapChars", String(result.overlapChars));
+    }
+  };
+
+  const runSuggestion = async (nextFile?: File | null) => {
+    if (suggestionInFlightRef.current) {
+      return;
+    }
+    const targetFile = nextFile ?? file;
+    const targetLocation = sourceType === "url" ? sourceLocation?.trim() || "" : "";
+    const requestKey = buildSuggestionKey(sourceType, targetFile, targetLocation);
+    if (!requestKey) {
+      return;
+    }
+    suggestionInFlightRef.current = true;
+    setSuggesting(true);
+    try {
+      const result = await suggestDocumentIngestion({
+        sourceType,
+        file: sourceType === "file" ? targetFile : null,
+        sourceLocation: sourceType === "url" ? targetLocation || null : null
+      });
+      const latestSelection = latestSelectionRef.current;
+      const latestSourceType = latestSelection.sourceType;
+      const latestRequestKey = buildSuggestionKey(
+        latestSourceType,
+        latestSourceType === "file" ? latestSelection.file : null,
+        latestSelection.sourceLocation
+      );
+      if (latestRequestKey === requestKey) {
+        applySuggestion(result);
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error, "识别文档类型失败"));
+      console.error(error);
+    } finally {
+      suggestionInFlightRef.current = false;
+      setSuggesting(false);
     }
   };
 
@@ -1103,12 +1239,12 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
             : null,
         processMode: values.processMode,
         chunkStrategy: values.processMode === "chunk" ? values.chunkStrategy : undefined,
-        chunkSize: values.processMode === "chunk" && values.chunkStrategy === "fixed_size" ? chunkSize : null,
-        overlapSize: values.processMode === "chunk" && values.chunkStrategy === "fixed_size" ? overlapSize : null,
-        targetChars: values.processMode === "chunk" && values.chunkStrategy === "structure_aware" ? targetChars : null,
-        maxChars: values.processMode === "chunk" && values.chunkStrategy === "structure_aware" ? maxChars : null,
-        minChars: values.processMode === "chunk" && values.chunkStrategy === "structure_aware" ? minChars : null,
-        overlapChars: values.processMode === "chunk" && values.chunkStrategy === "structure_aware" ? overlapChars : null,
+        chunkSize: values.processMode === "chunk" && values.chunkStrategy !== "semantic" ? chunkSize : null,
+        overlapSize: values.processMode === "chunk" && values.chunkStrategy !== "semantic" ? overlapSize : null,
+        targetChars: values.processMode === "chunk" && values.chunkStrategy === "semantic" ? targetChars : null,
+        maxChars: values.processMode === "chunk" && values.chunkStrategy === "semantic" ? maxChars : null,
+        minChars: values.processMode === "chunk" && values.chunkStrategy === "semantic" ? minChars : null,
+        overlapChars: values.processMode === "chunk" && values.chunkStrategy === "semantic" ? overlapChars : null,
         pipelineId: values.processMode === "pipeline" ? values.pipelineId : null
       };
       await onSubmit(payload);
@@ -1128,7 +1264,7 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
       >
         <DialogHeader>
           <DialogTitle>上传文档</DialogTitle>
-          <DialogDescription>支持本地文件或远程URL，并配置分块策略</DialogDescription>
+          <DialogDescription>先识别文档类型，再自动推荐对应数据通道与默认分块策略，用户仍可手动覆盖</DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form className="space-y-4" onSubmit={form.handleSubmit(handleSubmit)}>
@@ -1179,10 +1315,52 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
               <FormItem>
                 <FormLabel>本地文件</FormLabel>
                 <FormControl>
-                  <Input type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+                  <Input
+                    type="file"
+                    onChange={(event) => {
+                      const nextFile = event.target.files?.[0] || null;
+                      setFile(nextFile);
+                      latestSelectionRef.current = {
+                        sourceType: "file",
+                        file: nextFile,
+                        sourceLocation: ""
+                      };
+                      setSuggestion(null);
+                      form.setValue("pipelineId", "");
+                      if (nextFile) {
+                        void runSuggestion(nextFile);
+                      }
+                    }}
+                  />
                 </FormControl>
               </FormItem>
             )}
+
+            <div className="flex items-center justify-between rounded-lg border border-dashed px-3 py-2 text-sm">
+              <div className="text-muted-foreground">
+                {suggestion?.docTypeLabel
+                  ? `已识别为 ${suggestion.docTypeLabel}，默认通道：${suggestion.pipelineName || "-"}`
+                  : "选择文件或输入 URL 后，可先让模型识别文档类型"}
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void runSuggestion()}
+                disabled={loadingPipelines || suggesting || (sourceType === "file" ? !file : !sourceLocation?.trim())}
+              >
+                {suggesting ? "识别中..." : "识别文档类型"}
+              </Button>
+            </div>
+
+            {suggestion ? (
+              <div className="space-y-1 rounded-lg border bg-muted/30 p-3 text-sm">
+                <div><span className="font-medium">文档类型：</span>{suggestion.docTypeLabel || "-"}</div>
+                <div><span className="font-medium">推荐数据通道：</span>{suggestion.pipelineName || "-"}</div>
+                <div><span className="font-medium">默认分块策略：</span>{formatChunkStrategyLabel(suggestion.chunkStrategy)}</div>
+                <div className="text-muted-foreground">{suggestion.reason || "已按文档结构自动推荐"}</div>
+              </div>
+            ) : null}
 
             {isUrlSource ? (
               <div className="space-y-3 rounded-lg border p-3">
@@ -1241,7 +1419,7 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
                     </SelectContent>
                   </Select>
                   <FormDescription>
-                    分块策略：直接分块；数据通道：使用Pipeline清洗
+                    数据通道：完整执行 ingest / chunk / embed / index；分块模式：按推荐值起步后可自定义调整
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -1269,7 +1447,7 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
                         ))}
                       </SelectContent>
                     </Select>
-                    <FormDescription>选择用于数据清洗的Pipeline</FormDescription>
+                    <FormDescription>识别完成后会自动回填对应标准数据通道</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1303,7 +1481,7 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
                 )}
               />
 
-              {isFixedSize ? (
+              {!isSemantic ? (
                 <div className="grid gap-4 md:grid-cols-2">
                   <FormField
                     control={form.control}
@@ -1314,21 +1492,20 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
                         <FormControl>
                           <div className="flex items-center gap-2">
                             <Input type="number" {...field} />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={handleNoChunkToggle}
-                              className={noChunk
-                                ? "bg-slate-100 border-slate-400 font-medium"
-                                : ""
-                              }
-                            >
-                              {noChunk && <Check className="w-4 h-4 mr-1" />}
-                              不分块
-                            </Button>
+                            {canUseNoChunk ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={handleNoChunkToggle}
+                                className={noChunk ? "bg-slate-100 border-slate-400 font-medium" : ""}
+                              >
+                                {noChunk && <Check className="w-4 h-4 mr-1" />}
+                                不分块
+                              </Button>
+                            ) : null}
                           </div>
                         </FormControl>
-                        <FormDescription>字符数，选择不分块会写入最大值</FormDescription>
+                        <FormDescription>经验起点：500 字符</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -1342,6 +1519,7 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
                         <FormControl>
                           <Input type="number" {...field} />
                         </FormControl>
+                        <FormDescription>经验起点：chunkSize 的 10% ~ 25%</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -1358,6 +1536,7 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
                         <FormControl>
                           <Input type="number" {...field} />
                         </FormControl>
+                        <FormDescription>合同/法律文档建议 800 左右起步</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -1397,6 +1576,7 @@ function UploadDialog({ open, onOpenChange, onSubmit }: UploadDialogProps) {
                         <FormControl>
                           <Input type="number" {...field} />
                         </FormControl>
+                        <FormDescription>语义分块重叠建议从 120 起步</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}

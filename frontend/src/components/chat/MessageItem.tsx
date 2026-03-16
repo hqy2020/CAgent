@@ -1,8 +1,10 @@
 import * as React from "react";
-import { Brain, ChevronDown, ExternalLink, FileText, Wrench } from "lucide-react";
+import { ChevronDown, ExternalLink, FileText, Wrench } from "lucide-react";
 
+import { AgentReasoningIndicator } from "@/components/chat/AgentReasoningIndicator";
 import { FeedbackButtons } from "@/components/chat/FeedbackButtons";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
+import { ReasoningTracePanel } from "@/components/chat/ReasoningTracePanel";
 import { ReferenceDetailDialog } from "@/components/chat/ReferenceDetailDialog";
 import { ThinkingIndicator } from "@/components/chat/ThinkingIndicator";
 import { useAnimatedText } from "@/hooks/useAnimatedText";
@@ -14,21 +16,6 @@ import type { Message, ReferenceItem } from "@/types";
 interface MessageItemProps {
   message: Message;
   isLast?: boolean;
-}
-
-function formatStepStatus(status?: string) {
-  switch ((status || "").toUpperCase()) {
-    case "RUNNING":
-      return "进行中";
-    case "SUCCESS":
-      return "已完成";
-    case "FAILED":
-      return "失败";
-    case "CONFIRM_REQUIRED":
-      return "待确认";
-    default:
-      return status || "-";
-  }
 }
 
 function buildReferenceDetailHref(reference: ReferenceItem, isAdmin: boolean) {
@@ -53,20 +40,40 @@ export const MessageItem = React.memo(function MessageItem({ message, isLast }: 
     !message.id.startsWith("assistant-");
   const isThinking = Boolean(message.isThinking);
   const [thinkingExpanded, setThinkingExpanded] = React.useState(false);
+  const [agentReasoningExpanded, setAgentReasoningExpanded] = React.useState(false);
   const [refsExpanded, setRefsExpanded] = React.useState(false);
   const [expandedPreviewKeys, setExpandedPreviewKeys] = React.useState<Set<string>>(new Set());
   const [selectedRef, setSelectedRef] = React.useState<ReferenceItem | null>(null);
   const hasThinking = Boolean(message.thinking && message.thinking.trim().length > 0);
+  const showThinkingPanel = isThinking || hasThinking;
+  const hasAgentReasoning = Boolean(message.agentReasoning && message.agentReasoning.trim().length > 0);
+  const isAgentReasoning = Boolean(message.isAgentReasoning);
+  const showAgentReasoningPanel = isAgentReasoning || hasAgentReasoning;
+  const hasReasoningTraces = Boolean(message.reasoningTraces && message.reasoningTraces.length > 0);
+  const hasTokenUsage = Boolean(message.tokenUsage && message.tokenUsage.totalTokens > 0);
   const animatedContent = useAnimatedText(message.content, isStreamingMsg && !isThinking);
   const hasContent = animatedContent.trim().length > 0;
   const hasTimeline = Boolean(message.agentTimeline && message.agentTimeline.length > 0);
-  const isWaiting = isStreamingMsg && !isThinking && !hasContent && !hasTimeline;
+  const isWaiting = isStreamingMsg && !isThinking && !hasContent && !hasTimeline && !isAgentReasoning;
   const sendMessage = useChatStore((state) => state.sendMessage);
   const isAdmin = useAuthStore((state) => state.user?.role === "admin");
 
   React.useEffect(() => {
     setExpandedPreviewKeys(new Set());
   }, [message.id]);
+
+  React.useEffect(() => {
+    setThinkingExpanded(hasThinking);
+  }, [message.id, hasThinking]);
+
+  React.useEffect(() => {
+    // Agent 推理中自动展开，开始生成最终回答时自动折叠
+    if (isAgentReasoning) {
+      setAgentReasoningExpanded(true);
+    } else if (hasAgentReasoning) {
+      setAgentReasoningExpanded(false);
+    }
+  }, [message.id, isAgentReasoning, hasAgentReasoning]);
 
   const togglePreview = React.useCallback((key: string) => {
     setExpandedPreviewKeys((prev) => {
@@ -90,46 +97,23 @@ export const MessageItem = React.memo(function MessageItem({ message, isLast }: 
     );
   }
 
-  const thinkingDuration = message.thinkingDuration ? `${message.thinkingDuration}秒` : "";
   return (
     <div className="group flex">
       <div className="min-w-0 flex-1 space-y-4">
-        {isThinking ? (
-          <ThinkingIndicator content={message.thinking} duration={message.thinkingDuration} />
+        {showThinkingPanel ? (
+          <ThinkingIndicator
+            content={message.thinking}
+            duration={message.thinkingDuration}
+            isStreaming={isThinking}
+            expanded={thinkingExpanded}
+            onToggle={hasThinking ? () => setThinkingExpanded((prev) => !prev) : undefined}
+          />
         ) : null}
-        {!isThinking && hasThinking ? (
-          <div className="overflow-hidden rounded-lg border border-[#BFDBFE] bg-[#DBEAFE]">
-            <button
-              type="button"
-              onClick={() => setThinkingExpanded((prev) => !prev)}
-              className="flex w-full items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-[#BFDBFE]/30"
-            >
-              <div className="flex flex-1 items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#BFDBFE]">
-                  <Brain className="h-4 w-4 text-[#2563EB]" />
-                </div>
-                <span className="text-sm font-medium text-[#2563EB]">深度思考</span>
-                {thinkingDuration ? (
-                  <span className="rounded-full bg-[#BFDBFE] px-2 py-0.5 text-xs text-[#2563EB]">
-                    {thinkingDuration}
-                  </span>
-                ) : null}
-              </div>
-              <ChevronDown
-                className={cn(
-                  "h-4 w-4 text-[#3B82F6] transition-transform",
-                  thinkingExpanded && "rotate-180"
-                )}
-              />
-            </button>
-            {thinkingExpanded ? (
-              <div className="border-t border-[#BFDBFE] px-4 pb-4">
-                <div className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-[#1E40AF]">
-                  {message.thinking}
-                </div>
-              </div>
-            ) : null}
-          </div>
+        {hasReasoningTraces ? (
+          <ReasoningTracePanel
+            traces={message.reasoningTraces!}
+            isStreaming={isStreamingMsg}
+          />
         ) : null}
         <div className="space-y-2">
           {isWaiting ? (
@@ -141,84 +125,14 @@ export const MessageItem = React.memo(function MessageItem({ message, isLast }: 
               </span>
             </div>
           ) : null}
-          {hasContent ? (
-            <div className={cn(isStreamingMsg && !isThinking && "streaming-cursor")}>
-              <MarkdownRenderer content={animatedContent} />
-            </div>
-          ) : null}
-          {message.agentTimeline && message.agentTimeline.length > 0 ? (
-            <div className="overflow-hidden rounded-lg border border-[#C7D2FE] bg-[#E0E7FF]">
-              <div className="flex items-center gap-2 px-4 py-3">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#C7D2FE]">
-                  <Wrench className="h-4 w-4 text-[#4338CA]" />
-                </div>
-                <span className="text-sm font-medium text-[#4338CA]">处理进度</span>
-                <span className="rounded-full bg-[#C7D2FE] px-2 py-0.5 text-xs text-[#4338CA]">
-                  {message.agentTimeline.length}条
-                </span>
-              </div>
-              <div className="border-t border-[#C7D2FE] px-4 py-3">
-                <ul className="space-y-2 text-xs text-[#3730A3]">
-                  {message.agentTimeline.map((item, index) => {
-                    if (item.kind === "observe") {
-                      return (
-                        <li key={`observe-${index}`} className="rounded bg-white/70 px-2 py-1">
-                          <p className="font-medium">
-                            观察（loop {item.payload.loop} / step {item.payload.stepIndex}）
-                          </p>
-                          {"summary" in item.payload && item.payload.summary ? (
-                            <p className="mt-1">{item.payload.summary}</p>
-                          ) : null}
-                          {"items" in item.payload && item.payload.items && item.payload.items.length > 0 ? (
-                            <p className="mt-1">
-                              {item.payload.items
-                                .map((observe) => `${observe.source}[${observe.status}]`)
-                                .join(" | ")}
-                            </p>
-                          ) : null}
-                        </li>
-                      );
-                    }
-                    if (item.kind === "plan") {
-                      return (
-                        <li key={`plan-${index}`} className="rounded bg-white/70 px-2 py-1">
-                          <p className="font-medium">规划（loop {item.payload.loop}）：{item.payload.goal}</p>
-                          {"steps" in item.payload && item.payload.steps && item.payload.steps.length > 0 ? (
-                            <p className="mt-1">
-                              {item.payload.steps
-                                .map((step) => `${step.stepIndex}.${step.type}`)
-                                .join(" | ")}
-                            </p>
-                          ) : null}
-                        </li>
-                      );
-                    }
-                    if (item.kind === "step") {
-                      const isQueueStep = item.payload.stepIndex === 0 && item.payload.type === "排队";
-                      return (
-                        <li key={`step-${index}`} className="rounded bg-white/70 px-2 py-1">
-                          <p className="font-medium">
-                            {isQueueStep ? item.payload.type : `步骤 ${item.payload.stepIndex}（${item.payload.type}）`}
-                            <span className="ml-1">[{formatStepStatus(item.payload.status)}]</span>
-                          </p>
-                          {"summary" in item.payload && item.payload.summary ? (
-                            <p className="mt-1">{item.payload.summary}</p>
-                          ) : null}
-                        </li>
-                      );
-                    }
-                    return (
-                      <li key={`replan-${index}`} className="rounded bg-white/70 px-2 py-1">
-                        <p className="font-medium">重规划（loop {item.payload.loop}）</p>
-                        {"reason" in item.payload && item.payload.reason ? (
-                          <p className="mt-1">{item.payload.reason}</p>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            </div>
+          {showAgentReasoningPanel ? (
+            <AgentReasoningIndicator
+              content={message.agentReasoning}
+              duration={message.agentReasoningDuration}
+              isStreaming={isAgentReasoning}
+              expanded={agentReasoningExpanded}
+              onToggle={hasAgentReasoning ? () => setAgentReasoningExpanded((prev) => !prev) : undefined}
+            />
           ) : null}
           {message.pendingProposal ? (
             <div className="overflow-hidden rounded-lg border border-[#FECACA] bg-[#FEE2E2]">
@@ -297,6 +211,11 @@ export const MessageItem = React.memo(function MessageItem({ message, isLast }: 
                   </div>
                 ) : null}
               </div>
+            </div>
+          ) : null}
+          {hasContent ? (
+            <div className={cn(isStreamingMsg && !isThinking && "streaming-cursor")}>
+              <MarkdownRenderer content={animatedContent} />
             </div>
           ) : null}
           {message.status === "error" ? (
@@ -403,6 +322,11 @@ export const MessageItem = React.memo(function MessageItem({ message, isLast }: 
                 </div>
               ) : null}
             </div>
+          ) : null}
+          {hasTokenUsage ? (
+            <p className="text-xs text-gray-400">
+              Tokens: 输入 {message.tokenUsage!.promptTokens.toLocaleString()} + 输出 {message.tokenUsage!.completionTokens.toLocaleString()} = 总计 {message.tokenUsage!.totalTokens.toLocaleString()}
+            </p>
           ) : null}
           {showFeedback ? (
             <FeedbackButtons

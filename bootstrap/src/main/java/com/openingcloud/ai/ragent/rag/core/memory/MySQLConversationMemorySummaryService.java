@@ -19,6 +19,7 @@ package com.openingcloud.ai.ragent.rag.core.memory;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONUtil;
 import com.openingcloud.ai.ragent.rag.config.MemoryProperties;
 import com.openingcloud.ai.ragent.rag.dao.entity.ConversationMessageDO;
 import com.openingcloud.ai.ragent.rag.dao.entity.ConversationSummaryDO;
@@ -32,6 +33,7 @@ import com.openingcloud.ai.ragent.rag.service.bo.ConversationSummaryBO;
 import com.openingcloud.ai.ragent.infra.token.TokenCounterService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RBucket;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -57,6 +59,7 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
 
     private static final String SUMMARY_PREFIX = "对话摘要：";
     private static final String SUMMARY_LOCK_PREFIX = "ragent:memory:summary:lock:";
+    private static final String SUMMARY_CACHE_PREFIX = "ragent:memory:summary:";
     private static final Duration SUMMARY_LOCK_TTL = Duration.ofMinutes(5);
 
     private final ConversationGroupService conversationGroupService;
@@ -88,8 +91,26 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
 
     @Override
     public ChatMessage loadLatestSummary(String conversationId, String userId) {
+        String cacheKey = buildSummaryCacheKey(conversationId);
+        try {
+            RBucket<String> bucket = redissonClient.getBucket(cacheKey);
+            if (bucket.isExists()) {
+                String cached = bucket.get();
+                if (StrUtil.isNotBlank(cached)) {
+                    log.debug("摘要 Redis 缓存命中 - conversationId: {}", conversationId);
+                    return JSONUtil.toBean(cached, ChatMessage.class);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("摘要 Redis 缓存读取失败，降级到 MySQL - conversationId: {}", conversationId, e);
+        }
+
         ConversationSummaryDO summary = conversationGroupService.findLatestSummary(conversationId, userId);
-        return toChatMessage(summary);
+        ChatMessage result = toChatMessage(summary);
+        if (result != null) {
+            cacheSummaryToRedis(conversationId, result);
+        }
+        return result;
     }
 
     @Override
@@ -317,6 +338,7 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
                 .lastMessageId(lastMessageId)
                 .build();
         conversationMessageService.addMessageSummary(summaryRecord);
+        cacheSummaryToRedis(conversationId, new ChatMessage(ChatMessage.Role.SYSTEM, content));
     }
 
     private String buildLockKey(String conversationId, String userId) {
@@ -337,5 +359,20 @@ public class MySQLConversationMemorySummaryService implements ConversationMemory
                 .map(ChatMessage::getContent)
                 .mapToInt(this::countTokens)
                 .sum();
+    }
+
+    private void cacheSummaryToRedis(String conversationId, ChatMessage summary) {
+        try {
+            String cacheKey = buildSummaryCacheKey(conversationId);
+            RBucket<String> bucket = redissonClient.getBucket(cacheKey);
+            bucket.set(JSONUtil.toJsonStr(summary), Duration.ofMinutes(memoryProperties.getTtlMinutes()));
+            log.debug("摘要 Redis 缓存写入 - conversationId: {}", conversationId);
+        } catch (Exception e) {
+            log.warn("摘要 Redis 缓存写入失败 - conversationId: {}", conversationId, e);
+        }
+    }
+
+    private String buildSummaryCacheKey(String conversationId) {
+        return SUMMARY_CACHE_PREFIX + conversationId;
     }
 }

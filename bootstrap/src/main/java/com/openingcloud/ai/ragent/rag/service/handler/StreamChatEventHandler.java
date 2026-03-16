@@ -22,18 +22,21 @@ import com.openingcloud.ai.ragent.rag.dao.entity.ConversationDO;
 import com.openingcloud.ai.ragent.rag.dto.CompletionPayload;
 import com.openingcloud.ai.ragent.rag.dto.MessageDelta;
 import com.openingcloud.ai.ragent.rag.dto.MetaPayload;
+import com.openingcloud.ai.ragent.rag.dto.ReasoningTracePayload;
 import com.openingcloud.ai.ragent.rag.enums.SSEEventType;
 import com.openingcloud.ai.ragent.framework.context.UserContext;
 import com.openingcloud.ai.ragent.infra.convention.ChatMessage;
 import com.openingcloud.ai.ragent.framework.web.SseEmitterSender;
 import com.openingcloud.ai.ragent.infra.chat.StreamCallback;
 import com.openingcloud.ai.ragent.infra.config.AIModelProperties;
+import com.openingcloud.ai.ragent.infra.token.TokenUsage;
 import com.openingcloud.ai.ragent.rag.core.memory.ConversationMemoryService;
 import com.openingcloud.ai.ragent.rag.service.ConversationGroupService;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class StreamChatEventHandler implements StreamCallback {
 
@@ -50,6 +53,7 @@ public class StreamChatEventHandler implements StreamCallback {
     private final StreamTaskManager taskManager;
     private final boolean sendTitleOnComplete;
     private final StringBuilder answer = new StringBuilder();
+    private final AtomicReference<TokenUsage> accumulatedUsage = new AtomicReference<>(TokenUsage.ZERO);
 
     /**
      * 使用参数对象构造（推荐）
@@ -111,7 +115,7 @@ public class StreamChatEventHandler implements StreamCallback {
             messageId = memoryService.append(conversationId, userId, ChatMessage.assistant(content));
         }
         String title = resolveTitleForEvent();
-        return new CompletionPayload(String.valueOf(messageId), title);
+        return new CompletionPayload(String.valueOf(messageId), title, buildTotalUsageVO());
     }
 
     @Override
@@ -138,6 +142,31 @@ public class StreamChatEventHandler implements StreamCallback {
     }
 
     @Override
+    public void onTokenUsage(TokenUsage usage) {
+        if (usage != null) {
+            accumulateUsage(usage);
+        }
+    }
+
+    public void emitReasoningTrace(ReasoningTracePayload payload) {
+        if (taskManager.isCancelled(taskId)) {
+            return;
+        }
+        if (payload == null) {
+            return;
+        }
+        // 累加 trace 中的 usage
+        if (payload.usage() != null) {
+            accumulateUsage(new TokenUsage(
+                    payload.usage().promptTokens(),
+                    payload.usage().completionTokens(),
+                    payload.usage().totalTokens()
+            ));
+        }
+        sender.sendEvent(SSEEventType.REASONING_TRACE.value(), payload);
+    }
+
+    @Override
     public void onComplete() {
         if (taskManager.isCancelled(taskId)) {
             return;
@@ -146,7 +175,7 @@ public class StreamChatEventHandler implements StreamCallback {
                 ChatMessage.assistant(answer.toString()));
         String title = resolveTitleForEvent();
         String messageIdText = messageId == null ? null : String.valueOf(messageId);
-        sender.sendEvent(SSEEventType.FINISH.value(), new CompletionPayload(messageIdText, title));
+        sender.sendEvent(SSEEventType.FINISH.value(), new CompletionPayload(messageIdText, title, buildTotalUsageVO()));
         sender.sendEvent(SSEEventType.DONE.value(), "[DONE]");
         taskManager.unregister(taskId);
         sender.complete();
@@ -189,6 +218,22 @@ public class StreamChatEventHandler implements StreamCallback {
         if (!buffer.isEmpty()) {
             sender.sendEvent(SSEEventType.MESSAGE.value(), new MessageDelta(type, buffer.toString()));
         }
+    }
+
+    private void accumulateUsage(TokenUsage usage) {
+        accumulatedUsage.updateAndGet(current -> current.add(usage));
+    }
+
+    private ReasoningTracePayload.TokenUsageVO buildTotalUsageVO() {
+        TokenUsage total = accumulatedUsage.get();
+        if (total == null || total.equals(TokenUsage.ZERO)) {
+            return null;
+        }
+        return new ReasoningTracePayload.TokenUsageVO(
+                total.promptTokens(),
+                total.completionTokens(),
+                total.totalTokens()
+        );
     }
 
     private String resolveTitleForEvent() {

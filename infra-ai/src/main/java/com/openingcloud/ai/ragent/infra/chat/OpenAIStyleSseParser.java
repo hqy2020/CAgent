@@ -21,6 +21,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.openingcloud.ai.ragent.infra.token.TokenUsage;
 
 /**
  * OpenAI 协议风格 SSE 解析器
@@ -57,8 +58,9 @@ final class OpenAIStyleSseParser {
         String content = extractText(choice0, "content");
         String reasoning = reasoningEnabled ? extractText(choice0, "reasoning_content") : null;
         boolean completed = hasFinishReason(choice0);
+        TokenUsage usage = extractUsage(obj);
 
-        return new ParsedEvent(content, reasoning, completed);
+        return new ParsedEvent(content, reasoning, completed, usage);
     }
 
     private static boolean hasFinishReason(JsonObject choice) {
@@ -94,14 +96,35 @@ final class OpenAIStyleSseParser {
         return null;
     }
 
-    record ParsedEvent(String content, String reasoning, boolean completed) {
+    private static TokenUsage extractUsage(JsonObject obj) {
+        if (obj == null || !obj.has("usage") || obj.get("usage").isJsonNull()) {
+            return null;
+        }
+        JsonObject usage = obj.getAsJsonObject("usage");
+        if (usage == null) {
+            return null;
+        }
+        int promptTokens = usage.has("prompt_tokens") && !usage.get("prompt_tokens").isJsonNull()
+                ? usage.get("prompt_tokens").getAsInt() : 0;
+        int completionTokens = usage.has("completion_tokens") && !usage.get("completion_tokens").isJsonNull()
+                ? usage.get("completion_tokens").getAsInt() : 0;
+        int totalTokens = usage.has("total_tokens") && !usage.get("total_tokens").isJsonNull()
+                ? usage.get("total_tokens").getAsInt() : promptTokens + completionTokens;
+        return new TokenUsage(promptTokens, completionTokens, totalTokens);
+    }
+
+    record ParsedEvent(String content, String reasoning, boolean completed, TokenUsage usage) {
 
         static ParsedEvent empty() {
-            return new ParsedEvent(null, null, false);
+            return new ParsedEvent(null, null, false, null);
         }
 
         static ParsedEvent done() {
-            return new ParsedEvent(null, null, true);
+            return new ParsedEvent(null, null, true, null);
+        }
+
+        boolean hasUsage() {
+            return usage != null;
         }
 
         boolean hasContent() {

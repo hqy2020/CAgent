@@ -113,6 +113,12 @@ public class RAGConstant {
     public static final String CHAT_SYSTEM_PROMPT_PATH = "prompt/answer-chat-system.st";
 
     /**
+     * 代码直答提示词模板路径
+     * 用于未指定知识库上下文时的实现类、示例类、代码生成类问题。
+     */
+    public static final String CHAT_CODE_PROMPT_PATH = "prompt/answer-chat-code.st";
+
+    /**
      * 查询改写 + 多问句拆分提示词模板路径
      * 要求同时返回改写后的单条查询和子问题列表
      */
@@ -182,4 +188,24 @@ public class RAGConstant {
      */
     public static final String PROGRESSIVE_PROMPT_DETAILED_MODE_PATH =
             "prompt/progressive/optional-detailed-mode.st";
+
+    /**
+     * 记忆提取：从对话中提取 insights
+     */
+    public static final String MEMORY_EXTRACT_INSIGHTS_PROMPT_PATH = "prompt/memory/extract-insights.st";
+
+    /**
+     * 记忆提取：生成会话 digest
+     */
+    public static final String MEMORY_GENERATE_DIGEST_PROMPT_PATH = "prompt/memory/generate-digest.st";
+
+    /**
+     * 记忆调和：判断新旧记忆关系
+     */
+    public static final String MEMORY_RECONCILE_PROMPT_PATH = "prompt/memory/reconcile.st";
+
+    /**
+     * 画像更新：根据 insights 更新用户画像
+     */
+    public static final String MEMORY_UPDATE_PROFILE_PROMPT_PATH = "prompt/memory/update-profile.st";
 }

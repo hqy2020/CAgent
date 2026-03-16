@@ -17,6 +17,8 @@
 
 package com.openingcloud.ai.ragent.infra.chat;
 
+import com.openingcloud.ai.ragent.infra.token.TokenUsage;
+
 /**
  * 流式响应回调接口（StreamCallback）
  * <p>
@@ -60,6 +62,26 @@ public interface StreamCallback {
      * @param content 当前推送的思考内容
      */
     default void onThinking(String content) {
+    }
+
+    /**
+     * 回调本次流式调用实际命中的模型信息
+     * <p>
+     * 默认空实现，未消费模型元数据的场景可以忽略
+     *
+     * @param model 本次调用命中的模型信息
+     */
+    default void onModelSelected(ModelInvocationMetadata model) {
+    }
+
+    /**
+     * 回调本次流式调用的 Token 使用量
+     * <p>
+     * 默认空实现，通常在流式最后一条 chunk 中携带 usage 信息
+     *
+     * @param usage Token 使用量
+     */
+    default void onTokenUsage(TokenUsage usage) {
     }
 
     /**

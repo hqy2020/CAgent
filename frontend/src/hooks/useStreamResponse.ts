@@ -7,6 +7,7 @@ import type {
   CompletionPayload,
   MessageDeltaPayload,
   QueueStatusPayload,
+  ReasoningTracePayload,
   ReferenceItem,
   StreamMetaPayload,
   WorkflowEventPayload
@@ -23,12 +24,14 @@ export interface StreamHandlers {
   onAgentStep?: (payload: AgentStepPayload) => void;
   onAgentReplan?: (payload: AgentReplanPayload) => void;
   onAgentConfirmRequired?: (payload: AgentConfirmPayload) => void;
+  onReasoningTrace?: (payload: ReasoningTracePayload) => void;
   onFinish?: (payload: CompletionPayload) => void;
   onDone?: () => void;
   onCancel?: (payload: CompletionPayload) => void;
   onQueue?: (payload: QueueStatusPayload) => void;
   onReject?: (payload: MessageDeltaPayload) => void;
   onTitle?: (payload: { title: string }) => void;
+  onMemorySaved?: (payload: { content: string }) => void;
   onError?: (error: Error) => void;
   onEvent?: (event: string, payload: unknown) => void;
 }
@@ -121,6 +124,9 @@ async function readSseStream(response: Response, handlers: StreamHandlers, signa
       case "agent_confirm_required":
         handlers.onAgentConfirmRequired?.(payload as AgentConfirmPayload);
         break;
+      case "reasoning_trace":
+        handlers.onReasoningTrace?.(payload as ReasoningTracePayload);
+        break;
       case "finish":
         hasTerminalEvent = true;
         handlers.onFinish?.(payload as CompletionPayload);
@@ -142,6 +148,9 @@ async function readSseStream(response: Response, handlers: StreamHandlers, signa
         break;
       case "title":
         handlers.onTitle?.(payload as { title: string });
+        break;
+      case "memory_saved":
+        handlers.onMemorySaved?.(payload as { content: string });
         break;
       case "error":
         hasTerminalEvent = true;

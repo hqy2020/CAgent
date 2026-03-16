@@ -359,6 +359,9 @@ class QueryRewriteSplitTests {
     @DisplayName("Fix 3 - should_split 尊重")
     class ShouldSplitTests {
 
+        private final List<ChatMessage> dummyHistory = List.of(
+                ChatMessage.user("前一个问题"), ChatMessage.assistant("前一个回答"));
+
         @Test
         @DisplayName("should_split=false 时即使有 sub_questions 也不拆分")
         void shouldNotSplitWhenShouldSplitIsFalse() {
@@ -371,7 +374,7 @@ class QueryRewriteSplitTests {
                     """;
             when(llmService.chat(any(ChatRequest.class))).thenReturn(llmResponse);
 
-            RewriteResult result = rewriteService.rewriteWithSplit("微服务和单体有什么区别？", List.of());
+            RewriteResult result = rewriteService.rewriteWithSplit("微服务和单体有什么区别？", dummyHistory);
 
             assertEquals(1, result.subQuestions().size(),
                     "should_split=false 时子问题应只有改写后的问题本身");
@@ -390,7 +393,7 @@ class QueryRewriteSplitTests {
                     """;
             when(llmService.chat(any(ChatRequest.class))).thenReturn(llmResponse);
 
-            RewriteResult result = rewriteService.rewriteWithSplit("Obsidian 双向链接怎么用？知识库有哪些检索能力？", List.of());
+            RewriteResult result = rewriteService.rewriteWithSplit("Obsidian 双向链接怎么用？知识库有哪些检索能力？", dummyHistory);
 
             assertEquals(2, result.subQuestions().size(), "should_split=true 时应拆分为2个子问题");
         }
@@ -406,7 +409,7 @@ class QueryRewriteSplitTests {
                     """;
             when(llmService.chat(any(ChatRequest.class))).thenReturn(llmResponse);
 
-            RewriteResult result = rewriteService.rewriteWithSplit("12306架构怎么做的？", List.of());
+            RewriteResult result = rewriteService.rewriteWithSplit("12306架构怎么做的？", dummyHistory);
 
             assertEquals(1, result.subQuestions().size(),
                     "缺少 should_split 字段时应默认不拆分");
@@ -416,6 +419,120 @@ class QueryRewriteSplitTests {
     // ────────────────────────────────────────
     // Fix 6: ruleBasedSplit 智能标点
     // ────────────────────────────────────────
+
+    @Nested
+    @DisplayName("新格式 {queries} 解析")
+    class NewQueriesFormatTests {
+
+        private final List<ChatMessage> dummyHistory = List.of(
+                ChatMessage.user("前一个问题"), ChatMessage.assistant("前一个回答"));
+
+        @Test
+        @DisplayName("单查询新格式正常解析")
+        void shouldParseSingleQueryNewFormat() {
+            String llmResponse = """
+                    {
+                      "queries": ["RAG 检索流程总结"]
+                    }
+                    """;
+            when(llmService.chat(any(ChatRequest.class))).thenReturn(llmResponse);
+
+            RewriteResult result = rewriteService.rewriteWithSplit("请帮我总结 RAG 检索流程", dummyHistory);
+
+            assertEquals("请帮我总结 RAG 检索流程", result.originalQuestion());
+            assertEquals("RAG 检索流程总结", result.rewrittenQuestion());
+            assertEquals(1, result.subQuestions().size());
+            assertEquals("RAG 检索流程总结", result.subQuestions().get(0));
+        }
+
+        @Test
+        @DisplayName("多查询新格式正常拆分")
+        void shouldParseMultiQueryNewFormat() {
+            String llmResponse = """
+                    {
+                      "queries": ["HashMap 的底层原理是什么", "ConcurrentHashMap 有什么区别"]
+                    }
+                    """;
+            when(llmService.chat(any(ChatRequest.class))).thenReturn(llmResponse);
+
+            RewriteResult result = rewriteService.rewriteWithSplit("HashMap 原理？ConcurrentHashMap 区别？", dummyHistory);
+
+            assertEquals("HashMap 原理？ConcurrentHashMap 区别？", result.originalQuestion());
+            assertEquals("HashMap 的底层原理是什么", result.rewrittenQuestion());
+            assertEquals(2, result.subQuestions().size());
+        }
+
+        @Test
+        @DisplayName("originalQuestion 始终保留用户原始问题")
+        void shouldPreserveOriginalQuestion() {
+            String llmResponse = """
+                    {
+                      "queries": ["RAG 系统的检索链路"]
+                    }
+                    """;
+            when(llmService.chat(any(ChatRequest.class))).thenReturn(llmResponse);
+
+            RewriteResult result = rewriteService.rewriteWithSplit("它的检索链路怎么走？",
+                    List.of(ChatMessage.user("RAG 系统的架构是什么"), ChatMessage.assistant("...")));
+
+            assertEquals("它的检索链路怎么走？", result.originalQuestion());
+            assertEquals("RAG 系统的检索链路", result.rewrittenQuestion());
+        }
+    }
+
+    @Nested
+    @DisplayName("首轮跳过优化")
+    class FirstRoundSkipTests {
+
+        @Test
+        @DisplayName("首轮无历史且无指代词时跳过 LLM 调用")
+        void shouldSkipLLMWhenNoHistoryAndNoPronouns() {
+            RewriteResult result = rewriteService.rewriteWithSplit("RAG 系统的架构是什么", List.of());
+
+            assertEquals("RAG 系统的架构是什么", result.originalQuestion());
+            verify(llmService, never()).chat(any(ChatRequest.class));
+        }
+
+        @Test
+        @DisplayName("含指代词时不跳过 LLM")
+        void shouldNotSkipWhenPronounPresent() {
+            String llmResponse = """
+                    {"queries": ["RAG 系统的检索链路"]}
+                    """;
+            when(llmService.chat(any(ChatRequest.class))).thenReturn(llmResponse);
+
+            rewriteService.rewriteWithSplit("它的检索链路怎么走", List.of());
+
+            verify(llmService).chat(any(ChatRequest.class));
+        }
+
+        @Test
+        @DisplayName("有历史时不跳过 LLM")
+        void shouldNotSkipWhenHistoryPresent() {
+            String llmResponse = """
+                    {"queries": ["RAG 检索流程"]}
+                    """;
+            when(llmService.chat(any(ChatRequest.class))).thenReturn(llmResponse);
+
+            rewriteService.rewriteWithSplit("RAG 检索流程是什么",
+                    List.of(ChatMessage.user("上一个问题"), ChatMessage.assistant("上一个回答")));
+
+            verify(llmService).chat(any(ChatRequest.class));
+        }
+
+        @Test
+        @DisplayName("问题太短时不跳过 LLM")
+        void shouldNotSkipWhenQuestionTooShort() {
+            String llmResponse = """
+                    {"queries": ["RAG"]}
+                    """;
+            when(llmService.chat(any(ChatRequest.class))).thenReturn(llmResponse);
+
+            rewriteService.rewriteWithSplit("RAG", List.of());
+
+            verify(llmService).chat(any(ChatRequest.class));
+        }
+    }
 
     @Nested
     @DisplayName("Fix 6 - ruleBasedSplit 智能标点")
@@ -466,15 +583,19 @@ class QueryRewriteSplitTests {
     @DisplayName("LLM 异常降级")
     class FallbackTests {
 
+        private final List<ChatMessage> dummyHistory = List.of(
+                ChatMessage.user("前一个问题"), ChatMessage.assistant("前一个回答"));
+
         @Test
         @DisplayName("LLM 超时时降级为归一化问题")
         void shouldFallbackWhenLLMTimeout() {
             when(llmService.chat(any(ChatRequest.class)))
                     .thenThrow(new RuntimeException("timeout"));
 
-            RewriteResult result = rewriteService.rewriteWithSplit("测试问题", List.of());
+            RewriteResult result = rewriteService.rewriteWithSplit("测试问题", dummyHistory);
 
             assertNotNull(result);
+            assertEquals("测试问题", result.originalQuestion());
             assertEquals("测试问题", result.rewrittenQuestion());
             assertEquals(List.of("测试问题"), result.subQuestions());
         }
@@ -484,7 +605,7 @@ class QueryRewriteSplitTests {
         void shouldFallbackWhenInvalidJson() {
             when(llmService.chat(any(ChatRequest.class))).thenReturn("这不是JSON");
 
-            RewriteResult result = rewriteService.rewriteWithSplit("测试问题", List.of());
+            RewriteResult result = rewriteService.rewriteWithSplit("测试问题", dummyHistory);
 
             assertNotNull(result);
             assertEquals("测试问题", result.rewrittenQuestion());

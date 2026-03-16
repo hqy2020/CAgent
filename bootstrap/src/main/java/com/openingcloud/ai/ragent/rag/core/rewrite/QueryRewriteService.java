@@ -40,7 +40,7 @@ public interface QueryRewriteService {
      */
     default RewriteResult rewriteWithSplit(String userQuestion) {
         String rewritten = rewrite(userQuestion);
-        return new RewriteResult(rewritten, List.of(rewritten));
+        return new RewriteResult(userQuestion, rewritten, List.of(rewritten));
     }
 
     /**

@@ -61,14 +61,4 @@ public interface IntentTreeService extends IService<IntentNodeDO> {
      * 批量删除节点（逻辑删除）
      */
     void batchDeleteNodes(List<Long> ids);
-
-    /**
-     * 从 IntentTreeFactory 初始化全量 Tree 到数据库
-     */
-    int initFromFactory();
-
-    /**
-     * 将 IntentTreeFactory 中的代码托管字段同步到数据库已有节点
-     */
-    IntentTreeSyncResult syncFromFactory();
 }

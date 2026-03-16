@@ -109,7 +109,7 @@ export interface KnowledgeDocumentUploadPayload {
   scheduleEnabled?: boolean;
   scheduleCron?: string | null;
   processMode?: "chunk" | "pipeline";
-  chunkStrategy?: "fixed_size" | "structure_aware";
+  chunkStrategy?: "fixed_size" | "overlap" | "recursive" | "semantic" | "structure_aware";
   chunkSize?: number | null;
   overlapSize?: number | null;
   targetChars?: number | null;
@@ -117,6 +117,26 @@ export interface KnowledgeDocumentUploadPayload {
   minChars?: number | null;
   overlapChars?: number | null;
   pipelineId?: string | null;
+}
+
+export interface KnowledgeDocumentSuggestion {
+  sourceType?: string | null;
+  fileName?: string | null;
+  mimeType?: string | null;
+  docType?: string | null;
+  docTypeLabel?: string | null;
+  reason?: string | null;
+  confidence?: number | null;
+  processMode?: "chunk" | "pipeline";
+  pipelineId?: string | null;
+  pipelineName?: string | null;
+  chunkStrategy?: "fixed_size" | "overlap" | "recursive" | "semantic" | "structure_aware";
+  chunkSize?: number | null;
+  overlapSize?: number | null;
+  targetChars?: number | null;
+  maxChars?: number | null;
+  minChars?: number | null;
+  overlapChars?: number | null;
 }
 
 export interface KnowledgeChunkPageParams {
@@ -244,6 +264,24 @@ export const uploadDocument = async (
     formData.append("pipelineId", payload.pipelineId);
   }
   return api.post<KnowledgeDocument, KnowledgeDocument>(`/knowledge-base/${kbId}/docs/upload`, formData, {
+    headers: {
+      "Content-Type": "multipart/form-data"
+    }
+  });
+};
+
+export const suggestDocumentIngestion = async (
+  payload: Pick<KnowledgeDocumentUploadPayload, "sourceType" | "sourceLocation" | "file">
+): Promise<KnowledgeDocumentSuggestion> => {
+  const formData = new FormData();
+  formData.append("sourceType", payload.sourceType);
+  if (payload.file) {
+    formData.append("file", payload.file);
+  }
+  if (payload.sourceLocation) {
+    formData.append("sourceLocation", payload.sourceLocation);
+  }
+  return api.post<KnowledgeDocumentSuggestion, KnowledgeDocumentSuggestion>("/knowledge-base/docs/suggest", formData, {
     headers: {
       "Content-Type": "multipart/form-data"
     }

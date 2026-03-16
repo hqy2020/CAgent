@@ -22,7 +22,6 @@ import com.openingcloud.ai.ragent.ingestion.service.impl.IntentTreeServiceImpl;
 import com.openingcloud.ai.ragent.knowledge.dao.mapper.KnowledgeBaseMapper;
 import com.openingcloud.ai.ragent.rag.controller.request.IntentNodeCreateRequest;
 import com.openingcloud.ai.ragent.rag.core.intent.IntentTreeCacheManager;
-import com.openingcloud.ai.ragent.rag.core.intent.IntentNode;
 import com.openingcloud.ai.ragent.rag.dao.entity.IntentNodeDO;
 import com.openingcloud.ai.ragent.rag.dao.mapper.IntentNodeMapper;
 import com.openingcloud.ai.ragent.rag.enums.IntentKind;
@@ -75,52 +74,5 @@ class IntentTreeServiceImplTests {
         ClientException ex = assertThrows(ClientException.class, () -> service.createNode(request));
         assertEquals("知识库不存在", ex.getMessage());
         verify(intentNodeMapper, never()).insert(org.mockito.ArgumentMatchers.<com.openingcloud.ai.ragent.rag.dao.entity.IntentNodeDO>any());
-    }
-
-    @Test
-    void syncManagedFieldsShouldUpdateOnlyCodeManagedFields() {
-        IntentNodeDO existing = IntentNodeDO.builder()
-                .name("旧名称")
-                .description("旧描述")
-                .examples("[\"旧示例\"]")
-                .mcpToolId("old_tool")
-                .parentCode("old-parent")
-                .level(IntentLevel.CATEGORY.getCode())
-                .kind(IntentKind.KB.getCode())
-                .promptTemplate("old-template")
-                .promptSnippet("old-snippet")
-                .paramPromptTemplate("old-param")
-                .enabled(0)
-                .sortOrder(99)
-                .build();
-        IntentNode factoryNode = IntentNode.builder()
-                .id("obs-query-read")
-                .name("读取笔记")
-                .description("读取指定笔记全文")
-                .examples(java.util.List.of("打开 README"))
-                .mcpToolId("obsidian_read")
-                .parentId("obs-query")
-                .level(IntentLevel.TOPIC)
-                .kind(IntentKind.MCP)
-                .promptTemplate("new-template")
-                .promptSnippet("new-snippet")
-                .paramPromptTemplate("new-param")
-                .build();
-
-        boolean changed = ReflectionTestUtils.invokeMethod(service, "syncManagedFields", existing, factoryNode);
-
-        assertEquals(true, changed);
-        assertEquals("读取笔记", existing.getName());
-        assertEquals("读取指定笔记全文", existing.getDescription());
-        assertEquals("[\"打开 README\"]", existing.getExamples());
-        assertEquals("obsidian_read", existing.getMcpToolId());
-        assertEquals("obs-query", existing.getParentCode());
-        assertEquals(IntentLevel.TOPIC.getCode(), existing.getLevel());
-        assertEquals(IntentKind.MCP.getCode(), existing.getKind());
-        assertEquals("new-template", existing.getPromptTemplate());
-        assertEquals("new-snippet", existing.getPromptSnippet());
-        assertEquals("new-param", existing.getParamPromptTemplate());
-        assertEquals(0, existing.getEnabled());
-        assertEquals(99, existing.getSortOrder());
     }
 }

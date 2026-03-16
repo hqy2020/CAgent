@@ -19,14 +19,17 @@ package com.openingcloud.ai.ragent.knowledge.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.openingcloud.ai.ragent.knowledge.controller.request.KnowledgeDocumentSuggestRequest;
 import com.openingcloud.ai.ragent.knowledge.controller.request.KnowledgeDocumentUploadRequest;
 import com.openingcloud.ai.ragent.knowledge.controller.request.KnowledgeDocumentUpdateRequest;
+import com.openingcloud.ai.ragent.knowledge.controller.vo.KnowledgeDocumentSuggestionVO;
 import com.openingcloud.ai.ragent.knowledge.controller.vo.KnowledgeDocumentVO;
 import com.openingcloud.ai.ragent.knowledge.controller.vo.KnowledgeDocumentChunkLogVO;
 import com.openingcloud.ai.ragent.knowledge.controller.vo.KnowledgeDocumentSearchVO;
 import com.openingcloud.ai.ragent.framework.convention.Result;
 import com.openingcloud.ai.ragent.framework.web.Results;
 import com.openingcloud.ai.ragent.knowledge.service.KnowledgeDocumentService;
+import com.openingcloud.ai.ragent.knowledge.service.KnowledgeDocumentSuggestionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
@@ -55,6 +58,7 @@ import java.util.List;
 public class KnowledgeDocumentController {
 
     private final KnowledgeDocumentService documentService;
+    private final KnowledgeDocumentSuggestionService suggestionService;
 
     /**
      * 上传文档：入库记录 + 文件落盘，返回文档ID
@@ -64,6 +68,15 @@ public class KnowledgeDocumentController {
                                               @RequestPart(value = "file", required = false) MultipartFile file,
                                               @ModelAttribute KnowledgeDocumentUploadRequest requestParam) {
         return Results.success(documentService.upload(kbId, requestParam, file));
+    }
+
+    /**
+     * 识别文档类型并推荐默认数据通道/分块策略
+     */
+    @PostMapping(value = "/knowledge-base/docs/suggest", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Result<KnowledgeDocumentSuggestionVO> suggest(@RequestPart(value = "file", required = false) MultipartFile file,
+                                                         @ModelAttribute KnowledgeDocumentSuggestRequest requestParam) {
+        return Results.success(suggestionService.suggest(requestParam, file));
     }
 
     /**

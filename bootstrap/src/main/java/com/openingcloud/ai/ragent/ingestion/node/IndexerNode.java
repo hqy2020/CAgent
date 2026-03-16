@@ -218,6 +218,8 @@ public class IndexerNode implements IngestionNode {
                                        float[][] vectors,
                                        List<String> metadataFields) {
         Map<String, Object> mergedMetadata = mergeMetadata(context);
+        String kbId = resolveKbId(context, mergedMetadata);
+        String docId = resolveDocumentId(context, mergedMetadata);
         List<JsonObject> rows = new java.util.ArrayList<>(chunks.size());
         for (int i = 0; i < chunks.size(); i++) {
             VectorChunk chunk = chunks.get(i);
@@ -232,6 +234,8 @@ public class IndexerNode implements IngestionNode {
             }
 
             JsonObject metadata = new JsonObject();
+            metadata.addProperty("kb_id", kbId);
+            metadata.addProperty("doc_id", docId);
             metadata.addProperty("chunk_index", chunk.getIndex());
             metadata.addProperty("task_id", context.getTaskId());
             metadata.addProperty("pipeline_id", context.getPipelineId());
@@ -261,6 +265,7 @@ public class IndexerNode implements IngestionNode {
 
             JsonObject row = new JsonObject();
             row.addProperty("doc_id", chunkId);
+            row.addProperty("kb_id", kbId);
             row.addProperty("content", content);
             row.add("metadata", metadata);
             row.add("embedding", toJsonArray(vectors[i]));
@@ -275,6 +280,44 @@ public class IndexerNode implements IngestionNode {
             merged.putAll(context.getMetadata());
         }
         return merged;
+    }
+
+    private String resolveKbId(IngestionContext context, Map<String, Object> mergedMetadata) {
+        String kbId = firstNonBlank(metadataValue(mergedMetadata, "kb_id"),
+                metadataValue(mergedMetadata, "kbId"));
+        if (StringUtils.hasText(kbId)) {
+            return kbId;
+        }
+        return firstNonBlank(context.getTaskId(), context.getPipelineId(), "default");
+    }
+
+    private String resolveDocumentId(IngestionContext context, Map<String, Object> mergedMetadata) {
+        String docId = firstNonBlank(metadataValue(mergedMetadata, "doc_id"),
+                metadataValue(mergedMetadata, "docId"));
+        if (StringUtils.hasText(docId)) {
+            return docId;
+        }
+        return firstNonBlank(context.getTaskId(), context.getPipelineId(), IdUtil.getSnowflakeNextIdStr());
+    }
+
+    private String metadataValue(Map<String, Object> mergedMetadata, String key) {
+        if (mergedMetadata == null) {
+            return null;
+        }
+        Object value = mergedMetadata.get(key);
+        return value == null ? null : value.toString();
+    }
+
+    private String firstNonBlank(String... candidates) {
+        if (candidates == null) {
+            return null;
+        }
+        for (String candidate : candidates) {
+            if (StringUtils.hasText(candidate)) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     private void addMetadataValue(JsonObject metadata, String field, Object value) {

@@ -60,6 +60,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import static com.openingcloud.ai.ragent.rag.constant.RAGConstant.DEFAULT_TOP_K;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -178,7 +179,7 @@ class AgentOrchestratorTests {
                 "这是最终回答"
         );
         when(queryRewriteService.rewriteWithSplit(eq("AQS 原理"), anyList()))
-                .thenReturn(new RewriteResult("AQS 原理", List.of("AQS 原理")));
+                .thenReturn(new RewriteResult("AQS 原理", "AQS 原理", List.of("AQS 原理")));
         when(intentResolver.resolve(any(RewriteResult.class), same(CancellationToken.NONE)))
                 .thenReturn(List.of(new SubQuestionIntent(
                         "AQS 原理",
@@ -210,6 +211,25 @@ class AgentOrchestratorTests {
         assertTrue(emitter.rawPayloads.stream().anyMatch(AgentObservePayload.class::isInstance));
         assertTrue(emitter.rawPayloads.stream().anyMatch(AgentPlanPayload.class::isInstance));
         assertTrue(emitter.rawPayloads.stream().anyMatch(AgentStepPayload.class::isInstance));
+
+        AgentPlanPayload planPayload = emitter.rawPayloads.stream()
+                .filter(AgentPlanPayload.class::isInstance)
+                .map(AgentPlanPayload.class::cast)
+                .findFirst()
+                .orElseThrow();
+        assertEquals("当前 observation 为空，需要先补知识库证据。", planPayload.thought());
+        assertEquals("检索 AQS 资料", planPayload.steps().get(0).instruction());
+        assertEquals("AQS 原理", planPayload.steps().get(0).query());
+
+        AgentStepPayload stepPayload = emitter.rawPayloads.stream()
+                .filter(AgentStepPayload.class::isInstance)
+                .map(AgentStepPayload.class::cast)
+                .filter(payload -> payload.stepIndex() == 1)
+                .findFirst()
+                .orElseThrow();
+        assertEquals("检索 AQS 资料", stepPayload.instruction());
+        assertEquals("AQS 原理", stepPayload.query());
+        assertTrue(stepPayload.detail().contains("AQS 是一个基于 CLH 变体的同步队列"));
     }
 
     @Test
@@ -259,7 +279,7 @@ class AgentOrchestratorTests {
                 "这是复习计划最终答案"
         );
         when(queryRewriteService.rewriteWithSplit(eq("Spring 复习计划"), anyList()))
-                .thenReturn(new RewriteResult("Spring 复习计划", List.of("Spring 复习计划")));
+                .thenReturn(new RewriteResult("Spring 复习计划", "Spring 复习计划", List.of("Spring 复习计划")));
         when(intentResolver.resolve(any(RewriteResult.class), same(CancellationToken.NONE)))
                 .thenReturn(List.of(new SubQuestionIntent(
                         "Spring 复习计划",
@@ -360,6 +380,147 @@ class AgentOrchestratorTests {
 
         assertTrue(handled);
         verify(callback).onContent("检测到写操作，需要你确认后才会执行。\n请输入 `/confirm p-1` 执行，或 `/reject p-1` 取消。");
+        verify(callback).onComplete();
+        verify(mcpService, never()).execute(any(MCPRequest.class));
+        assertTrue(emitter.rawPayloads.stream().anyMatch(AgentConfirmPayload.class::isInstance));
+    }
+
+    @Test
+    void shouldInferMissingToolIdForWriteAction() {
+        when(llmService.chat(any(ChatRequest.class))).thenReturn(
+                """
+                {
+                  "goal":"创建今天的笔记",
+                  "thought":"这是明确的写入目标，需要先准备写工具调用。",
+                  "done":false,
+                  "action":{
+                    "type":"MCP_CALL",
+                    "instruction":"创建今日日报",
+                    "query":"帮我创建今天的笔记",
+                    "params":{
+                      "name":"今日日报"
+                    }
+                  }
+                }
+                """
+        );
+
+        MCPTool tool = MCPTool.builder()
+                .toolId("obsidian_create")
+                .name("创建笔记")
+                .parameters(Map.of(
+                        "name",
+                        MCPTool.ParameterDef.builder()
+                                .description("笔记名")
+                                .required(true)
+                                .build()
+                ))
+                .build();
+        PendingProposal proposal = PendingProposal.builder()
+                .proposalId("p-missing-tool")
+                .toolId("obsidian_create")
+                .conversationId("c-missing-tool")
+                .userId("u-missing-tool")
+                .parameters(new HashMap<>(Map.of("name", "今日日报")))
+                .targetPath("Daily/今日日报.md")
+                .riskHint("写操作默认需要人工确认，防止误写入")
+                .createdAt(System.currentTimeMillis())
+                .expiresAt(System.currentTimeMillis() + 60_000)
+                .build();
+
+        when(mcpToolRegistry.getExecutor("obsidian_create")).thenReturn(Optional.of(toolExecutor));
+        when(toolExecutor.getToolDefinition()).thenReturn(tool);
+        when(mcpParameterExtractor.validate(anyMap(), same(tool)))
+                .thenAnswer(invocation -> MCPParameterExtractor.ParameterValidationResult.valid(invocation.getArgument(0)));
+        when(pendingProposalStore.create(anyString(), anyString(), any(MCPRequest.class), nullable(String.class), anyString()))
+                .thenReturn(proposal);
+
+        CapturingSseEmitter emitter = new CapturingSseEmitter();
+        boolean handled = orchestrator.execute(AgentOrchestrator.AgentExecuteRequest.builder()
+                .question("帮我创建今天的笔记")
+                .conversationId("c-missing-tool")
+                .userId("u-missing-tool")
+                .history(List.of(ChatMessage.user("帮我创建今天的笔记")))
+                .subIntents(List.of())
+                .firstRoundContext(RetrievalContext.builder().kbContext("").mcpContext("").intentChunks(Map.of()).build())
+                .emitter(emitter)
+                .callback(callback)
+                .token(CancellationToken.NONE)
+                .build());
+
+        assertTrue(handled);
+        verify(callback).onContent("检测到写操作，需要你确认后才会执行。\n请输入 `/confirm p-missing-tool` 执行，或 `/reject p-missing-tool` 取消。");
+        verify(callback).onComplete();
+        verify(mcpService, never()).execute(any(MCPRequest.class));
+        assertTrue(emitter.rawPayloads.stream().anyMatch(AgentConfirmPayload.class::isInstance));
+    }
+
+    @Test
+    void shouldAcceptMcpToolIdAliasFromReasonerAction() {
+        when(llmService.chat(any(ChatRequest.class))).thenReturn(
+                """
+                {
+                  "goal":"创建今天的笔记",
+                  "thought":"这是明确的写入目标，需要先准备写工具调用。",
+                  "done":false,
+                  "action":{
+                    "type":"MCP_CALL",
+                    "instruction":"创建今日日报",
+                    "query":"帮我创建今天的笔记",
+                    "mcpToolId":"obsidian_create",
+                    "params":{
+                      "name":"今日日报"
+                    }
+                  }
+                }
+                """
+        );
+
+        MCPTool tool = MCPTool.builder()
+                .toolId("obsidian_create")
+                .name("创建笔记")
+                .parameters(Map.of(
+                        "name",
+                        MCPTool.ParameterDef.builder()
+                                .description("笔记名")
+                                .required(true)
+                                .build()
+                ))
+                .build();
+        PendingProposal proposal = PendingProposal.builder()
+                .proposalId("p-mcp-alias")
+                .toolId("obsidian_create")
+                .conversationId("c-mcp-alias")
+                .userId("u-mcp-alias")
+                .parameters(new HashMap<>(Map.of("name", "今日日报")))
+                .targetPath("Daily/今日日报.md")
+                .riskHint("写操作默认需要人工确认，防止误写入")
+                .createdAt(System.currentTimeMillis())
+                .expiresAt(System.currentTimeMillis() + 60_000)
+                .build();
+
+        when(mcpToolRegistry.getExecutor("obsidian_create")).thenReturn(Optional.of(toolExecutor));
+        when(toolExecutor.getToolDefinition()).thenReturn(tool);
+        when(mcpParameterExtractor.validate(anyMap(), same(tool)))
+                .thenAnswer(invocation -> MCPParameterExtractor.ParameterValidationResult.valid(invocation.getArgument(0)));
+        when(pendingProposalStore.create(anyString(), anyString(), any(MCPRequest.class), nullable(String.class), anyString()))
+                .thenReturn(proposal);
+
+        CapturingSseEmitter emitter = new CapturingSseEmitter();
+        boolean handled = orchestrator.execute(AgentOrchestrator.AgentExecuteRequest.builder()
+                .question("帮我创建今天的笔记")
+                .conversationId("c-mcp-alias")
+                .userId("u-mcp-alias")
+                .history(List.of(ChatMessage.user("帮我创建今天的笔记")))
+                .subIntents(List.of())
+                .firstRoundContext(RetrievalContext.builder().kbContext("").mcpContext("").intentChunks(Map.of()).build())
+                .emitter(emitter)
+                .callback(callback)
+                .token(CancellationToken.NONE)
+                .build());
+
+        assertTrue(handled);
+        verify(callback).onContent("检测到写操作，需要你确认后才会执行。\n请输入 `/confirm p-mcp-alias` 执行，或 `/reject p-mcp-alias` 取消。");
         verify(callback).onComplete();
         verify(mcpService, never()).execute(any(MCPRequest.class));
         assertTrue(emitter.rawPayloads.stream().anyMatch(AgentConfirmPayload.class::isInstance));
@@ -648,7 +809,7 @@ class AgentOrchestratorTests {
                 "敏感字段需要按规范脱敏后再输出。"
         );
         when(queryRewriteService.rewriteWithSplit(eq("公司敏感字段脱敏要求"), anyList()))
-                .thenReturn(new RewriteResult("公司敏感字段脱敏要求", List.of("公司敏感字段脱敏要求")));
+                .thenReturn(new RewriteResult("公司敏感字段脱敏要求", "公司敏感字段脱敏要求", List.of("公司敏感字段脱敏要求")));
         when(intentResolver.resolve(any(RewriteResult.class), same(CancellationToken.NONE)))
                 .thenReturn(List.of(new SubQuestionIntent(
                         "公司敏感字段脱敏要求",

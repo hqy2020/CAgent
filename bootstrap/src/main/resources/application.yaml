@@ -109,6 +109,16 @@ rag:
     summary-max-chars: 200
     title-max-length: 30
 
+  user-memory:
+    enabled: true
+    recall-top-k: 10
+    recall-budget-tokens: 1500
+    reconcile-similarity-threshold: 0.85
+    max-insights-per-session: 10
+    digest-max-chars: 300
+    profile-summary-max-chars: 500
+    milvus-collection-name: ragent_user_memory
+
   knowledge:
     chunk:
       running-stale-minutes: 10

@@ -18,7 +18,7 @@ export interface ConversationMessageVO {
 }
 
 export async function listSessions(): Promise<ConversationVO[]> {
-  return api.get<ConversationVO[]>("/conversations");
+  return api.get<ConversationVO[]>("/conversations", { timeout: 8000 });
 }
 
 export async function deleteSession(conversationId: string): Promise<void> {

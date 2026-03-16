@@ -31,6 +31,7 @@ import com.openingcloud.ai.ragent.infra.http.ModelClientErrorType;
 import com.openingcloud.ai.ragent.infra.http.ModelClientException;
 import com.openingcloud.ai.ragent.infra.http.ModelUrlResolver;
 import com.openingcloud.ai.ragent.infra.model.ModelTarget;
+import com.openingcloud.ai.ragent.infra.token.TokenUsage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Call;
@@ -97,6 +98,23 @@ public class BaiLianChatClient implements ChatClient {
         return extractChatContent(respJson);
     }
 
+    private TokenUsage extractUsageFromResponse(JsonObject respJson) {
+        if (respJson == null || !respJson.has("usage") || respJson.get("usage").isJsonNull()) {
+            return null;
+        }
+        JsonObject usage = respJson.getAsJsonObject("usage");
+        if (usage == null) {
+            return null;
+        }
+        int promptTokens = usage.has("prompt_tokens") && !usage.get("prompt_tokens").isJsonNull()
+                ? usage.get("prompt_tokens").getAsInt() : 0;
+        int completionTokens = usage.has("completion_tokens") && !usage.get("completion_tokens").isJsonNull()
+                ? usage.get("completion_tokens").getAsInt() : 0;
+        int totalTokens = usage.has("total_tokens") && !usage.get("total_tokens").isJsonNull()
+                ? usage.get("total_tokens").getAsInt() : promptTokens + completionTokens;
+        return new TokenUsage(promptTokens, completionTokens, totalTokens);
+    }
+
     @Override
     @RagTraceNode(name = "bailian-stream-chat", type = "LLM_PROVIDER")
     public StreamCancellationHandle streamChat(ChatRequest request, StreamCallback callback, ModelTarget target) {
@@ -145,6 +163,9 @@ public class BaiLianChatClient implements ChatClient {
                     }
                     if (event.hasContent()) {
                         callback.onContent(event.content());
+                    }
+                    if (event.hasUsage()) {
+                        callback.onTokenUsage(event.usage());
                     }
                     if (event.completed()) {
                         callback.onComplete();

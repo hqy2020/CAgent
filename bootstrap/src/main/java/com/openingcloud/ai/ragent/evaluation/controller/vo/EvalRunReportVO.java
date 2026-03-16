@@ -1,0 +1,71 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.openingcloud.ai.ragent.evaluation.controller.vo;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.math.BigDecimal;
+import java.util.Map;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class EvalRunReportVO {
+
+    private EvalRunVO run;
+
+    // Stage 1: Retrieval
+    private BigDecimal hitRate;
+
+    private BigDecimal mrr;
+
+    private BigDecimal recall;
+
+    private BigDecimal precision;
+
+    // Stage 2: Generation
+    private BigDecimal faithfulness;
+
+    private BigDecimal relevancy;
+
+    /**
+     * faithfulness<=2 ratio
+     */
+    private BigDecimal hallucinationRate;
+
+    // Stage 3: End-to-End
+    private BigDecimal correctness;
+
+    /**
+     * >=4 ratio
+     */
+    private BigDecimal correctnessPassRate;
+
+    private BigDecimal fallbackRate;
+
+    // Score distributions (1-5)
+    private Map<Integer, Integer> faithfulnessDistribution;
+
+    private Map<Integer, Integer> relevancyDistribution;
+
+    private Map<Integer, Integer> correctnessDistribution;
+}

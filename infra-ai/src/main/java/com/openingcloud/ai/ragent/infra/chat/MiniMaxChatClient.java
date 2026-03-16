@@ -144,6 +144,9 @@ public class MiniMaxChatClient implements ChatClient {
                     if (event.hasContent()) {
                         callback.onContent(event.content());
                     }
+                    if (event.hasUsage()) {
+                        callback.onTokenUsage(event.usage());
+                    }
                     if (event.completed()) {
                         callback.onComplete();
                         completed = true;

@@ -18,8 +18,10 @@
 package com.openingcloud.ai.ragent.ingestion.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.openingcloud.ai.ragent.framework.exception.ClientException;
 import com.openingcloud.ai.ragent.ingestion.dao.entity.IngestionPipelineDO;
+import com.openingcloud.ai.ragent.ingestion.dao.entity.IngestionPipelineNodeDO;
 import com.openingcloud.ai.ragent.ingestion.dao.mapper.IngestionPipelineMapper;
 import com.openingcloud.ai.ragent.ingestion.dao.mapper.IngestionPipelineNodeMapper;
 import com.openingcloud.ai.ragent.ingestion.service.impl.IngestionPipelineServiceImpl;
@@ -29,11 +31,15 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 class IngestionPipelineServiceImplTests {
@@ -81,5 +87,33 @@ class IngestionPipelineServiceImplTests {
         assertThrows(ClientException.class, () -> service.delete("123"));
 
         verify(nodeMapper, never()).delete(any());
+    }
+
+    @Test
+    void testPageStandardOnlyShouldNotWritePipelines() {
+        when(pipelineMapper.selectList(any())).thenReturn(List.of());
+
+        service.page(new Page<>(1, 10), null, true);
+
+        verify(pipelineMapper, never()).insert(any(IngestionPipelineDO.class));
+        verify(nodeMapper, never()).physicalDeleteByPipelineId(any());
+        verify(nodeMapper, never()).insert(any(IngestionPipelineNodeDO.class));
+    }
+
+    @Test
+    void testInitializeStandardPipelinesShouldBeIdempotent() {
+        AtomicLong idSequence = new AtomicLong(100L);
+        when(pipelineMapper.selectOne(any())).thenReturn(null);
+        when(pipelineMapper.insert(any(IngestionPipelineDO.class))).thenAnswer(invocation -> {
+            IngestionPipelineDO pipeline = invocation.getArgument(0);
+            pipeline.setId(idSequence.getAndIncrement());
+            return 1;
+        });
+
+        service.initializeStandardPipelines();
+        service.initializeStandardPipelines();
+
+        verify(pipelineMapper, times(8)).insert(any(IngestionPipelineDO.class));
+        verify(nodeMapper, times(32)).insert(any(IngestionPipelineNodeDO.class));
     }
 }

@@ -19,12 +19,17 @@ vi.mock("@/components/chat/FeedbackButtons", () => ({
   FeedbackButtons: () => null
 }));
 
-vi.mock("@/components/chat/ThinkingIndicator", () => ({
-  ThinkingIndicator: () => null
-}));
-
 vi.mock("@/components/chat/ReferenceDetailDialog", () => ({
   ReferenceDetailDialog: () => null
+}));
+
+vi.mock("@/components/chat/AgentReasoningIndicator", () => ({
+  AgentReasoningIndicator: ({ content, isStreaming }: { content?: string; isStreaming?: boolean }) => (
+    <div data-testid="agent-reasoning-indicator">
+      <span>{isStreaming ? "推理中" : "已完成"}</span>
+      <span data-testid="agent-reasoning-content">{content}</span>
+    </div>
+  )
 }));
 
 describe("MessageItem reference preview", () => {
@@ -116,5 +121,100 @@ describe("MessageItem reference preview", () => {
 
     const previewToggle = container.querySelector("[data-testid='reference-preview-toggle-doc-1']");
     expect(previewToggle).toBeNull();
+  });
+
+  it("should render agent reasoning before final answer content", async () => {
+    const message: Message = {
+      id: "m-2",
+      role: "assistant",
+      content: "最终回答",
+      status: "done",
+      agentReasoning: "[规划] 回答天气问题\n[执行] WEB_SEARCH - SUCCESS: 已获取天气结果。\n",
+      agentReasoningDuration: 5
+    };
+
+    await act(async () => {
+      root.render(<MessageItem message={message} />);
+    });
+
+    const indicator = container.querySelector("[data-testid='agent-reasoning-indicator']");
+    expect(indicator).toBeTruthy();
+    expect(indicator?.textContent).toContain("回答天气问题");
+    const html = container.innerHTML;
+    expect(html.indexOf("agent-reasoning-indicator")).toBeLessThan(html.indexOf("最终回答"));
+  });
+
+  it("should render thinking content expanded by default after completion", async () => {
+    const message: Message = {
+      id: "m-3",
+      role: "assistant",
+      content: "主答案",
+      thinking: "第一步分析\n第二步归纳",
+      thinkingDuration: 9,
+      status: "done"
+    };
+
+    await act(async () => {
+      root.render(<MessageItem message={message} />);
+    });
+
+    const toggle = container.querySelector("[data-testid='thinking-toggle']");
+    const content = container.querySelector("[data-testid='thinking-content']");
+
+    expect(toggle?.textContent).toContain("收起思考");
+    expect(content?.textContent).toContain("第一步分析");
+    expect(content?.textContent).toContain("第二步归纳");
+    expect(container.textContent).toContain("主答案");
+  });
+
+  it("should collapse thinking content without affecting final answer", async () => {
+    const message: Message = {
+      id: "m-4",
+      role: "assistant",
+      content: "这是主答案内容",
+      thinking: "这是完整思考过程",
+      status: "done"
+    };
+
+    await act(async () => {
+      root.render(<MessageItem message={message} />);
+    });
+
+    const toggle = container.querySelector("[data-testid='thinking-toggle']");
+    expect(toggle).toBeTruthy();
+
+    await act(async () => {
+      toggle?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const collapsedNote = container.querySelector("[data-testid='thinking-collapsed-note']");
+    const content = container.querySelector("[data-testid='thinking-content']");
+
+    expect(toggle?.textContent).toContain("展开思考");
+    expect(collapsedNote?.textContent).toContain("思考过程已折叠");
+    expect(content).toBeNull();
+    expect(container.textContent).toContain("这是主答案内容");
+  });
+
+  it("should render agent reasoning narrative text", async () => {
+    const message: Message = {
+      id: "m-5",
+      role: "assistant",
+      content: "最终答案",
+      status: "done",
+      agentReasoning:
+        "[规划] 回答天气问题\n  思考: 先看联网 observation，再决定是否直接输出。\n  1. WEB_SEARCH: 搜索天气信息\n[执行] WEB_SEARCH - SUCCESS: 已获取天气结果。\n",
+      agentReasoningDuration: 3
+    };
+
+    await act(async () => {
+      root.render(<MessageItem message={message} />);
+    });
+
+    const content = container.querySelector("[data-testid='agent-reasoning-content']");
+    expect(content?.textContent).toContain("回答天气问题");
+    expect(content?.textContent).toContain("先看联网 observation");
+    expect(content?.textContent).toContain("WEB_SEARCH");
+    expect(container.textContent).toContain("最终答案");
   });
 });

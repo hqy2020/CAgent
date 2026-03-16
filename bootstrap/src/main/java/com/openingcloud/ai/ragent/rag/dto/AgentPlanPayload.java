@@ -28,6 +28,8 @@ import java.util.List;
 public record AgentPlanPayload(
         Integer loop,
         String goal,
+        String thought,
+        AgentModelPayload model,
         List<PlanStep> steps) {
 
     /**
@@ -36,7 +38,8 @@ public record AgentPlanPayload(
     public record PlanStep(
             Integer stepIndex,
             String type,
-            String instruction) {
+            String instruction,
+            String query,
+            String toolId) {
     }
 }
-

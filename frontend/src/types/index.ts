@@ -54,6 +54,11 @@ export interface Message {
   feedbackComment?: string | null;
   status?: MessageStatus;
   references?: ReferenceItem[];
+  agentReasoning?: string;
+  isAgentReasoning?: boolean;
+  agentReasoningDuration?: number;
+  reasoningTraces?: ReasoningTracePayload[];
+  tokenUsage?: TokenUsagePayload | null;
 }
 
 export interface StreamMetaPayload {
@@ -69,6 +74,21 @@ export interface MessageDeltaPayload {
 export interface CompletionPayload {
   messageId?: string | null;
   title?: string | null;
+  totalUsage?: TokenUsagePayload | null;
+}
+
+export interface TokenUsagePayload {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+export interface ReasoningTracePayload {
+  step: string;
+  stepLabel: string;
+  messages: { role: string; content: string }[];
+  response: string | null;
+  usage: TokenUsagePayload | null;
 }
 
 export interface QueueStatusPayload {
@@ -83,16 +103,24 @@ export interface WorkflowEventPayload {
   warnings?: string[];
 }
 
+export interface AgentModelPayload {
+  modelId?: string;
+  provider?: string;
+}
+
 export interface AgentPlanStepPayload {
   stepIndex: number;
   type: string;
   instruction: string;
+  query?: string;
+  toolId?: string;
 }
 
 export interface AgentObserveItemPayload {
   source: string;
   status: string;
   summary: string;
+  detail?: string;
 }
 
 export interface AgentObservePayload {
@@ -105,6 +133,8 @@ export interface AgentObservePayload {
 export interface AgentPlanPayload {
   loop: number;
   goal: string;
+  thought?: string;
+  model?: AgentModelPayload;
   steps?: AgentPlanStepPayload[];
 }
 
@@ -116,6 +146,11 @@ export interface AgentStepPayload {
   summary?: string;
   references?: ReferenceItem[];
   error?: string;
+  instruction?: string;
+  query?: string;
+  toolId?: string;
+  detail?: string;
+  model?: AgentModelPayload;
 }
 
 export interface AgentReplanPayload {

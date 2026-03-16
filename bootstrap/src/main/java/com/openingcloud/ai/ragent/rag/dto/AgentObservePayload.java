@@ -34,6 +34,7 @@ public record AgentObservePayload(
     public record ObservationItem(
             String source,
             String status,
-            String summary) {
+            String summary,
+            String detail) {
     }
 }

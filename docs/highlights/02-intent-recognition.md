@@ -293,7 +293,7 @@ public RewriteResult rewriteWithSplit(String userQuestion, List<ChatMessage> his
 > 三个手段：第一，低温度（0.1）+ 低 topP（0.3）保证输出稳定性；第二，Prompt 中包含每个叶子节点的 description 和 examples，提供充足上下文；第三，fullPath 提供层级语义（如 "集团信息化/人事系统/入职流程"），帮助 LLM 区分同名节点。如果 LLM 返回了未知 ID 或解析失败，会优雅降级为空列表，走全局兜底检索。
 
 **Q：意图树从哪来？怎么更新？**
-> 意图树存在数据库 `t_intent_node` 表中，通过 `IntentTreeCacheManager` 缓存到 Redis（TTL 7 天）。数据来源有两种：一是管理后台手动配置；二是从 `IntentTreeFactory` 预定义的默认树初始化。更新时只需改数据库 + 清缓存，无需重启服务。
+> 意图树存在数据库 `t_intent_node` 表中，通过 `IntentTreeCacheManager` 缓存到 Redis（TTL 7 天）。数据通过管理后台手动配置和维护。更新时只需改数据库 + 清缓存，无需重启服务。
 
 **Q：并行分类会不会消耗太多 LLM token？**
 > 会有成本，但可控。每个子问题的分类调用通常只需要 500-1000 tokens（Prompt 中的意图列表是固定的）。通过 `capTotalIntents` 限制子问题数量（改写拆分时 LLM 也不会拆出太多子问题），实际上大多数请求只有 1-2 个子问题。如果成本敏感，可以关闭改写功能走规则拆分。

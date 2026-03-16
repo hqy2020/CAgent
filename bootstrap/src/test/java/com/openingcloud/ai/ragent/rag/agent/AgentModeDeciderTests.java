@@ -65,39 +65,18 @@ class AgentModeDeciderTests {
     }
 
     @Test
-    void shouldDisableWhenDateTimeLookupQuestion() {
+    void shouldEnableWhenDateTimeLookupQuestion() {
         AgentModeDecider decider = new AgentModeDecider(buildConfig(true, 0.55D));
-        IntentNode mcpNode = IntentNode.builder()
-                .id("obs-create-daily")
-                .kind(IntentKind.MCP)
-                .mcpToolId("obsidian_create")
-                .build();
         AgentModeDecision decision = decider.decide(
                 "今天几号",
-                List.of(new SubQuestionIntent("今天几号", List.of(NodeScore.builder().node(mcpNode).score(0.93D).build()))),
+                List.of(new SubQuestionIntent("今天几号", List.of())),
                 RetrievalContext.builder().intentChunks(Map.of()).build()
         );
-        assertFalse(decision.enabled());
+        assertTrue(decision.enabled());
     }
 
     @Test
-    void shouldDisableWhenWebSearchLookupQuestion() {
-        AgentModeDecider decider = new AgentModeDecider(buildConfig(true, 0.55D));
-        IntentNode mcpNode = IntentNode.builder()
-                .id("obs-create-daily")
-                .kind(IntentKind.MCP)
-                .mcpToolId("obsidian_create")
-                .build();
-        AgentModeDecision decision = decider.decide(
-                "帮我联网搜索一下今天的 AI 新闻",
-                List.of(new SubQuestionIntent("帮我联网搜索一下今天的 AI 新闻", List.of(NodeScore.builder().node(mcpNode).score(0.93D).build()))),
-                RetrievalContext.builder().intentChunks(Map.of()).build()
-        );
-        assertFalse(decision.enabled());
-    }
-
-    @Test
-    void shouldDisableReadOnlyMcpQuery() {
+    void shouldEnableWhenWebSearchLookupQuestion() {
         AgentModeDecider decider = new AgentModeDecider(buildConfig(true, 0.55D));
         IntentNode mcpNode = IntentNode.builder()
                 .id("web-news-query")
@@ -105,45 +84,18 @@ class AgentModeDeciderTests {
                 .mcpToolId("web_news_search")
                 .build();
         AgentModeDecision decision = decider.decide(
-                "帮我联网搜索今天的 AI 新闻",
-                List.of(new SubQuestionIntent("帮我联网搜索今天的 AI 新闻", List.of(NodeScore.builder().node(mcpNode).score(0.93D).build()))),
-                RetrievalContext.builder().intentChunks(Map.of()).build()
-        );
-        assertFalse(decision.enabled());
-    }
-
-    @Test
-    void shouldEnableWhenQuestionContainsMutationVerb() {
-        AgentModeDecider decider = new AgentModeDecider(buildConfig(true, 0.55D));
-        IntentNode mcpNode = IntentNode.builder()
-                .id("obs-create-daily")
-                .kind(IntentKind.MCP)
-                .mcpToolId("obsidian_create")
-                .build();
-        AgentModeDecision decision = decider.decide(
-                "帮我创建今天的日记",
-                List.of(new SubQuestionIntent("帮我创建今天的日记", List.of(NodeScore.builder().node(mcpNode).score(0.93D).build()))),
+                "帮我联网搜索一下今天的 AI 新闻",
+                List.of(new SubQuestionIntent("帮我联网搜索一下今天的 AI 新闻", List.of(NodeScore.builder().node(mcpNode).score(0.93D).build()))),
                 RetrievalContext.builder().intentChunks(Map.of()).build()
         );
         assertTrue(decision.enabled());
     }
 
     @Test
-    void shouldEnableWhenQuestionLooksLikeObsidianWriteEvenWithoutIntent() {
+    void shouldEnableWhenCodingQuestion() {
         AgentModeDecider decider = new AgentModeDecider(buildConfig(true, 0.55D));
         AgentModeDecision decision = decider.decide(
-                "帮我创建一篇今天的笔记，记录回归结果",
-                List.of(),
-                RetrievalContext.builder().intentChunks(Map.of()).build()
-        );
-        assertTrue(decision.enabled());
-    }
-
-    @Test
-    void shouldEnableWhenQuestionUsesNaturalLanguageDailyAppend() {
-        AgentModeDecider decider = new AgentModeDecider(buildConfig(true, 0.55D));
-        AgentModeDecision decision = decider.decide(
-                "帮我加一条灵感到我的今日日记里，多去用感官感受",
+                "一个线程打印 A，一个线程打印 B，最终输出 AABBAABB，用哪个方法实现最方便",
                 List.of(),
                 RetrievalContext.builder().intentChunks(Map.of()).build()
         );

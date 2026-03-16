@@ -19,6 +19,9 @@ package com.openingcloud.ai.ragent.rag.core.rewrite;
 
 import java.util.List;
 
-public record RewriteResult(String rewrittenQuestion, List<String> subQuestions) {
+public record RewriteResult(String originalQuestion, String rewrittenQuestion, List<String> subQuestions) {
 
+    public static RewriteResult unchanged(String question) {
+        return new RewriteResult(question, question, List.of());
+    }
 }

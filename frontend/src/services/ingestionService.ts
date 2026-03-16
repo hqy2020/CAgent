@@ -100,11 +100,16 @@ export interface IngestionTaskCreatePayload {
   vectorSpaceId?: Record<string, unknown>;
 }
 
-export async function getIngestionPipelines(pageNo = 1, pageSize = 10, keyword?: string) {
+export async function getIngestionPipelines(
+  pageNo = 1,
+  pageSize = 10,
+  keyword?: string,
+  standardOnly = false
+) {
   return api.get<PageResult<IngestionPipeline>, PageResult<IngestionPipeline>>(
     "/ingestion/pipelines",
     {
-      params: { pageNo, pageSize, keyword: keyword || undefined }
+      params: { pageNo, pageSize, keyword: keyword || undefined, standardOnly: standardOnly || undefined }
     }
   );
 }

@@ -45,6 +45,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     currentSessionId,
     isLoading,
     sessionsLoaded,
+    sessionLoadError,
     createSession,
     deleteSession,
     renameSession,
@@ -64,19 +65,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const renameInputRef = React.useRef<HTMLInputElement | null>(null);
 
   React.useEffect(() => {
-    if (sessions.length === 0) {
+    if (!sessionsLoaded && !isLoading) {
       fetchSessions().catch(() => null);
     }
-  }, [fetchSessions, sessions.length]);
-
-  React.useEffect(() => {
-    if (sessionsLoaded && sessions.length === 0 && !isLoading) {
-      const timer = setTimeout(() => {
-        fetchSessions().catch(() => null);
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [sessionsLoaded, sessions.length, isLoading, fetchSessions]);
+  }, [fetchSessions, isLoading, sessionsLoaded]);
 
   const filteredSessions = React.useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -274,6 +266,24 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 style={{ fontFamily: sessionTitleFont }}
               >
                 <Loading label="加载会话中" />
+              </div>
+            ) : sessions.length === 0 && sessionLoadError ? (
+              <div
+                className="flex h-full flex-col items-center justify-center px-6 text-center text-[#64748B]"
+                style={{ fontFamily: sessionTitleFont }}
+              >
+                <MessageSquare className="h-12 w-12 text-[#CBD5E1]" />
+                <p className="mt-3 text-sm font-medium text-[#334155]">会话列表加载失败</p>
+                <p className="mt-1 text-xs leading-5 text-[#94A3B8]">{sessionLoadError}</p>
+                <button
+                  type="button"
+                  className="mt-4 inline-flex items-center rounded-full border border-[#BFDBFE] bg-white px-4 py-2 text-xs font-semibold text-[#2563EB] transition-colors hover:bg-[#EFF6FF]"
+                  onClick={() => {
+                    fetchSessions().catch(() => null);
+                  }}
+                >
+                  重新加载
+                </button>
               </div>
             ) : filteredSessions.length === 0 ? (
               <div

@@ -138,6 +138,10 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
     private int minChars;
     @Value("${kb.chunk.semantic.overlapChars:0}")
     private int overlapChars;
+    @Value("${kb.chunk.default.size:500}")
+    private int defaultChunkSize;
+    @Value("${kb.chunk.default.overlap:50}")
+    private int defaultChunkOverlap;
     @Value("${rag.knowledge.schedule.min-interval-seconds:60}")
     private long scheduleMinIntervalSeconds;
     @Value("${rag.knowledge.chunk.running-stale-minutes:10}")
@@ -501,12 +505,27 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
                 fileBytes = is.readAllBytes();
             }
 
+            Map<String, Object> ingestionMetadata = new HashMap<>();
+            ingestionMetadata.put("kbId", String.valueOf(documentDO.getKbId()));
+            ingestionMetadata.put("kb_id", String.valueOf(documentDO.getKbId()));
+            ingestionMetadata.put("docId", docId);
+            ingestionMetadata.put("doc_id", docId);
+            ingestionMetadata.put("collectionName", kbDO.getCollectionName());
+
             // 构建IngestionContext，传递CollectionName
             IngestionContext context = IngestionContext.builder()
                     .taskId(docId)
                     .pipelineId(String.valueOf(pipelineId))
+                    .source(com.openingcloud.ai.ragent.ingestion.domain.context.DocumentSource.builder()
+                            .type(resolvePipelineSourceType(documentDO.getSourceType()))
+                            .location(StringUtils.hasText(documentDO.getSourceLocation())
+                                    ? documentDO.getSourceLocation()
+                                    : documentDO.getFileUrl())
+                            .fileName(documentDO.getDocName())
+                            .build())
                     .rawBytes(fileBytes)
                     .mimeType(documentDO.getFileType())
+                    .metadata(ingestionMetadata)
                     .vectorSpaceId(VectorSpaceId.builder()
                             .logicalName(kbDO.getCollectionName())
                             .build())
@@ -839,10 +858,16 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             mode = ChunkingMode.STRUCTURE_AWARE;
         }
         Map<String, Object> config = parseChunkConfig(documentDO.getChunkConfig());
-        if (mode == ChunkingMode.FIXED_SIZE) {
-            Integer chunkSize = getConfigInt(config, "chunkSize", 512);
-            Integer overlapSize = getConfigInt(config, "overlapSize", 128);
+        if (mode == ChunkingMode.FIXED_SIZE || mode == ChunkingMode.OVERLAP || mode == ChunkingMode.RECURSIVE) {
+            Integer chunkSize = getConfigInt(config, "chunkSize", defaultChunkSize);
+            Integer overlapSize = getConfigInt(config, "overlapSize",
+                    mode == ChunkingMode.FIXED_SIZE ? 0 : defaultChunkOverlap);
             Map<String, Object> metadata = new HashMap<>();
+            if (mode == ChunkingMode.RECURSIVE) {
+                metadata.put("separators", List.of(
+                        "\n\n", "\n", "。", "！", "？", ". ", "! ", "? ", "，", ", ", " ", ""
+                ));
+            }
             if (StringUtils.hasText(embeddingModel)) {
                 metadata.put("embeddingModel", embeddingModel);
             }
@@ -884,7 +909,7 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             mode = ChunkingMode.STRUCTURE_AWARE;
         }
         Map<String, Object> params = new HashMap<>();
-        if (mode == ChunkingMode.FIXED_SIZE) {
+        if (mode == ChunkingMode.FIXED_SIZE || mode == ChunkingMode.OVERLAP || mode == ChunkingMode.RECURSIVE) {
             if (request.getChunkSize() != null) {
                 params.put("chunkSize", request.getChunkSize());
             }
@@ -946,6 +971,17 @@ public class KnowledgeDocumentServiceImpl implements KnowledgeDocumentService {
             }
         }
         return defaultValue;
+    }
+
+    private com.openingcloud.ai.ragent.ingestion.domain.enums.SourceType resolvePipelineSourceType(String sourceType) {
+        if (!StringUtils.hasText(sourceType)) {
+            return com.openingcloud.ai.ragent.ingestion.domain.enums.SourceType.FILE;
+        }
+        try {
+            return com.openingcloud.ai.ragent.ingestion.domain.enums.SourceType.fromValue(sourceType);
+        } catch (IllegalArgumentException ex) {
+            return com.openingcloud.ai.ragent.ingestion.domain.enums.SourceType.FILE;
+        }
     }
 
     private static float[] toArray(List<Float> list) {

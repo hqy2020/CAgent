@@ -32,6 +32,10 @@ public record AgentStepPayload(
         String status,
         String summary,
         List<ReferenceItem> references,
-        String error) {
+        String error,
+        String instruction,
+        String query,
+        String toolId,
+        String detail,
+        AgentModelPayload model) {
 }
-

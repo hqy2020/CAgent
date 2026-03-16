@@ -13,6 +13,7 @@ import type {
   MessageFeedbackSubmission,
   MessageDeltaPayload,
   QueueStatusPayload,
+  ReasoningTracePayload,
   ReferenceItem,
   Session,
   WorkflowEventPayload
@@ -36,11 +37,13 @@ interface ChatState {
   messages: Message[];
   isLoading: boolean;
   sessionsLoaded: boolean;
+  sessionLoadError: string | null;
   inputFocusKey: number;
   isStreaming: boolean;
   isCreatingNew: boolean;
   deepThinkingEnabled: boolean;
   thinkingStartAt: number | null;
+  agentReasoningStartAt: number | null;
   streamTaskId: string | null;
   streamAbort: (() => void) | null;
   streamingMessageId: string | null;
@@ -111,11 +114,6 @@ function upsertStepTimeline(
   timeline: AgentTimelineItem[] | undefined,
   payload: AgentStepPayload
 ): AgentTimelineItem[] {
-  const nextItem = {
-    kind: "step",
-    at: Date.now(),
-    payload
-  } satisfies AgentTimelineItem;
   const nextTimeline = [...(timeline ?? [])];
   const existingIndex = nextTimeline.findIndex(
     (item) =>
@@ -124,9 +122,32 @@ function upsertStepTimeline(
       item.payload.stepIndex === payload.stepIndex
   );
   if (existingIndex >= 0) {
-    nextTimeline[existingIndex] = nextItem;
+    const currentItem = nextTimeline[existingIndex];
+    if (currentItem.kind === "step") {
+      nextTimeline[existingIndex] = {
+        kind: "step",
+        at: Date.now(),
+        payload: {
+          ...currentItem.payload,
+          ...payload,
+          summary: payload.summary ?? currentItem.payload.summary,
+          references: payload.references ?? currentItem.payload.references,
+          error: payload.error ?? currentItem.payload.error,
+          instruction: payload.instruction ?? currentItem.payload.instruction,
+          query: payload.query ?? currentItem.payload.query,
+          toolId: payload.toolId ?? currentItem.payload.toolId,
+          detail: payload.detail ?? currentItem.payload.detail,
+          model: payload.model ?? currentItem.payload.model
+        }
+      } satisfies AgentTimelineItem;
+    }
     return nextTimeline;
   }
+  const nextItem = {
+    kind: "step",
+    at: Date.now(),
+    payload
+  } satisfies AgentTimelineItem;
   nextTimeline.push(nextItem);
   return nextTimeline;
 }
@@ -136,6 +157,58 @@ function summarizeQueue(payload: QueueStatusPayload) {
   return ahead > 0
     ? `前方还有 ${ahead} 个请求，当前队列共 ${payload.total} 个。`
     : `已进入队列，当前队列共 ${payload.total} 个。`;
+}
+
+function narrateAgentEvent(
+  kind: "observe" | "plan" | "step" | "replan",
+  payload: AgentObservePayload | AgentPlanPayload | AgentStepPayload | AgentReplanPayload
+): string {
+  switch (kind) {
+    case "observe": {
+      const p = payload as AgentObservePayload;
+      let text = `[观察] ${p.summary || ""}`;
+      if (p.items && p.items.length > 0) {
+        for (const item of p.items) {
+          text += `\n  - ${item.source}: ${item.summary}`;
+        }
+      }
+      return text + "\n";
+    }
+    case "plan": {
+      const p = payload as AgentPlanPayload;
+      let text = `[规划] ${p.goal}`;
+      if (p.thought) {
+        text += `\n  思考: ${p.thought}`;
+      }
+      if (p.steps && p.steps.length > 0) {
+        for (const step of p.steps) {
+          text += `\n  ${step.stepIndex}. ${step.type}: ${step.instruction}`;
+        }
+      }
+      return text + "\n";
+    }
+    case "step": {
+      const p = payload as AgentStepPayload;
+      let text = `[执行] ${p.type} - ${p.status}`;
+      if (p.summary) {
+        text += `: ${p.summary}`;
+      }
+      return text + "\n";
+    }
+    case "replan": {
+      const p = payload as AgentReplanPayload;
+      let text = `[重规划]`;
+      if (p.reason) {
+        text += ` ${p.reason}`;
+      }
+      if (p.nextSteps && p.nextSteps.length > 0) {
+        for (const ns of p.nextSteps) {
+          text += `\n  - ${ns}`;
+        }
+      }
+      return text + "\n";
+    }
+  }
 }
 
 function upsertQueueTimeline(
@@ -204,6 +277,7 @@ function finalizeLatestRunningStep(
 }
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+let fetchSessionsTask: Promise<void> | null = null;
 
 export const useChatStore = create<ChatState>((set, get) => ({
   sessions: [],
@@ -211,40 +285,55 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isLoading: false,
   sessionsLoaded: false,
+  sessionLoadError: null,
   inputFocusKey: 0,
   isStreaming: false,
   isCreatingNew: false,
   deepThinkingEnabled: false,
   thinkingStartAt: null,
+  agentReasoningStartAt: null,
   streamTaskId: null,
   streamAbort: null,
   streamingMessageId: null,
   cancelRequested: false,
   fetchSessions: async () => {
-    set({ isLoading: true });
-    try {
-      const data = await listSessions();
-      const sessions = unwrapArray<ConversationVO>(data)
-        .map((item) => ({
-        id: item.conversationId,
-        title: item.title || "新对话",
-        lastTime: item.lastTime
-        }))
-        .sort((a, b) => {
-          const timeA = a.lastTime ? new Date(a.lastTime).getTime() : 0;
-          const timeB = b.lastTime ? new Date(b.lastTime).getTime() : 0;
-          return timeB - timeA;
-        });
-      set({ sessions, isLoading: false, sessionsLoaded: true });
-    } catch (error) {
-      set({ isLoading: false });
-      toast.error((error as Error).message || "加载会话失败");
-      if (!get().sessionsLoaded) {
-        setTimeout(() => {
-          get().fetchSessions().catch(() => null);
-        }, 2000);
-      }
+    if (fetchSessionsTask) {
+      return fetchSessionsTask;
     }
+    fetchSessionsTask = (async () => {
+      set({ isLoading: true, sessionLoadError: null });
+      try {
+        const data = await listSessions();
+        const sessions = unwrapArray<ConversationVO>(data)
+          .map((item) => ({
+            id: item.conversationId,
+            title: item.title || "新对话",
+            lastTime: item.lastTime
+          }))
+          .sort((a, b) => {
+            const timeA = a.lastTime ? new Date(a.lastTime).getTime() : 0;
+            const timeB = b.lastTime ? new Date(b.lastTime).getTime() : 0;
+            return timeB - timeA;
+          });
+        set({
+          sessions,
+          isLoading: false,
+          sessionsLoaded: true,
+          sessionLoadError: null
+        });
+      } catch (error) {
+        const message = (error as Error).message || "加载会话失败";
+        set({
+          isLoading: false,
+          sessionsLoaded: true,
+          sessionLoadError: message
+        });
+        toast.error(message);
+      } finally {
+        fetchSessionsTask = null;
+      }
+    })();
+    return fetchSessionsTask;
   },
   createSession: async () => {
     const state = get();
@@ -253,6 +342,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         isCreatingNew: true,
         isLoading: false,
         thinkingStartAt: null,
+        agentReasoningStartAt: null,
         deepThinkingEnabled: false
       });
       return "";
@@ -268,6 +358,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isCreatingNew: true,
       deepThinkingEnabled: false,
       thinkingStartAt: null,
+      agentReasoningStartAt: null,
       streamTaskId: null,
       streamAbort: null,
       streamingMessageId: null,
@@ -313,7 +404,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isLoading: true,
       currentSessionId: sessionId,
       isCreatingNew: false,
-      thinkingStartAt: null
+      thinkingStartAt: null,
+      agentReasoningStartAt: null
     });
     try {
       const data = await listMessages(sessionId);
@@ -391,7 +483,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       conversationId: conversationId || undefined,
       deepThinking: deepThinkingEnabled ? true : undefined
     });
-    const url = `${API_BASE_URL}/rag/v3/chat${query}`;
+    const url = `${API_BASE_URL}/rag/v4/chat${query}`;
     const token = storage.getToken();
 
     const handlers = {
@@ -467,11 +559,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
       onAgentObserve: (payload: AgentObservePayload) => {
         if (get().streamingMessageId !== assistantId) return;
         if (!payload || typeof payload !== "object") return;
+        const narrative = narrateAgentEvent("observe", payload);
         set((state) => ({
+          agentReasoningStartAt: state.agentReasoningStartAt ?? Date.now(),
           messages: state.messages.map((msg) =>
             msg.id === state.streamingMessageId
               ? {
                   ...msg,
+                  agentReasoning: (msg.agentReasoning ?? "") + narrative,
+                  isAgentReasoning: true,
                   agentTimeline: [
                     ...(msg.agentTimeline ?? []),
                     {
@@ -488,11 +584,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
       onAgentPlan: (payload: AgentPlanPayload) => {
         if (get().streamingMessageId !== assistantId) return;
         if (!payload || typeof payload !== "object") return;
+        const narrative = narrateAgentEvent("plan", payload);
         set((state) => ({
+          agentReasoningStartAt: state.agentReasoningStartAt ?? Date.now(),
           messages: state.messages.map((msg) =>
             msg.id === state.streamingMessageId
               ? {
                   ...msg,
+                  agentReasoning: (msg.agentReasoning ?? "") + narrative,
+                  isAgentReasoning: true,
                   agentTimeline: [
                     ...(msg.agentTimeline ?? []),
                     {
@@ -509,11 +609,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
       onAgentStep: (payload: AgentStepPayload) => {
         if (get().streamingMessageId !== assistantId) return;
         if (!payload || typeof payload !== "object") return;
+        const narrative = narrateAgentEvent("step", payload);
         set((state) => ({
+          agentReasoningStartAt: state.agentReasoningStartAt ?? Date.now(),
           messages: state.messages.map((msg) =>
             msg.id === state.streamingMessageId
               ? {
                   ...msg,
+                  agentReasoning: (msg.agentReasoning ?? "") + narrative,
+                  isAgentReasoning: true,
                   agentTimeline: upsertStepTimeline(msg.agentTimeline, payload)
                 }
               : msg
@@ -523,11 +627,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
       onAgentReplan: (payload: AgentReplanPayload) => {
         if (get().streamingMessageId !== assistantId) return;
         if (!payload || typeof payload !== "object") return;
+        const narrative = narrateAgentEvent("replan", payload);
         set((state) => ({
+          agentReasoningStartAt: state.agentReasoningStartAt ?? Date.now(),
           messages: state.messages.map((msg) =>
             msg.id === state.streamingMessageId
               ? {
                   ...msg,
+                  agentReasoning: (msg.agentReasoning ?? "") + narrative,
+                  isAgentReasoning: true,
                   agentTimeline: [
                     ...(msg.agentTimeline ?? []),
                     {
@@ -548,6 +656,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
           messages: state.messages.map((msg) =>
             msg.id === state.streamingMessageId
               ? { ...msg, pendingProposal: payload }
+              : msg
+          )
+        }));
+      },
+      onReasoningTrace: (payload: ReasoningTracePayload) => {
+        if (get().streamingMessageId !== assistantId) return;
+        if (!payload || typeof payload !== "object") return;
+        set((state) => ({
+          messages: state.messages.map((msg) =>
+            msg.id === state.streamingMessageId
+              ? {
+                  ...msg,
+                  reasoningTraces: [...(msg.reasoningTraces ?? []), payload]
+                }
               : msg
           )
         }));
@@ -610,6 +732,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     id: String(payload.messageId),
                     status: "done",
                     isThinking: false,
+                    tokenUsage: payload.totalUsage ?? message.tokenUsage,
                     agentTimeline: finalizeLatestRunningStep(
                       message.agentTimeline,
                       "SUCCESS",
@@ -629,6 +752,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                     ...message,
                     status: "done",
                     isThinking: false,
+                    tokenUsage: payload.totalUsage ?? message.tokenUsage,
                     agentTimeline: finalizeLatestRunningStep(
                       message.agentTimeline,
                       "SUCCESS",
@@ -671,6 +795,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }),
           isStreaming: false,
           thinkingStartAt: null,
+          agentReasoningStartAt: null,
           streamTaskId: null,
           streamAbort: null,
           streamingMessageId: null,
@@ -682,6 +807,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set((state) => ({
           isStreaming: false,
           thinkingStartAt: null,
+          agentReasoningStartAt: null,
           streamTaskId: null,
           streamAbort: null,
           streamingMessageId: null,
@@ -711,6 +837,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
           get().updateSessionTitle(get().currentSessionId as string, payload.title);
         }
       },
+      onMemorySaved: (payload: { content: string }) => {
+        if (payload?.content) {
+          toast.success(`已记住：${payload.content}`, { duration: 3000 });
+        }
+      },
       onError: (error: Error) => {
         if (get().streamingMessageId !== assistantId) return;
         const state = get();
@@ -723,6 +854,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set((currentState) => ({
           isStreaming: false,
           thinkingStartAt: null,
+          agentReasoningStartAt: null,
           streamTaskId: null,
           streamAbort: null,
           cancelRequested: false,
@@ -831,9 +963,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!delta) return;
     set((state) => {
       const shouldFinalizeThinking = state.thinkingStartAt != null;
-      const duration = computeThinkingDuration(state.thinkingStartAt);
+      const thinkDuration = computeThinkingDuration(state.thinkingStartAt);
+      const shouldFinalizeReasoning = state.agentReasoningStartAt != null;
+      const reasoningDuration = computeThinkingDuration(state.agentReasoningStartAt);
       return {
         thinkingStartAt: shouldFinalizeThinking ? null : state.thinkingStartAt,
+        agentReasoningStartAt: shouldFinalizeReasoning ? null : state.agentReasoningStartAt,
         messages: state.messages.map((message) => {
           if (message.id !== state.streamingMessageId) return message;
           if (message.status === "cancelled" || message.status === "error") return message;
@@ -842,7 +977,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
             content: message.content + delta,
             isThinking: shouldFinalizeThinking ? false : message.isThinking,
             thinkingDuration:
-              shouldFinalizeThinking && !message.thinkingDuration ? duration : message.thinkingDuration
+              shouldFinalizeThinking && !message.thinkingDuration ? thinkDuration : message.thinkingDuration,
+            isAgentReasoning: shouldFinalizeReasoning ? false : message.isAgentReasoning,
+            agentReasoningDuration:
+              shouldFinalizeReasoning && !message.agentReasoningDuration
+                ? reasoningDuration
+                : message.agentReasoningDuration
           };
         })
       };
